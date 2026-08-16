@@ -1,0 +1,124 @@
+import {
+  Home,
+  MessageSquare,
+  History,
+  FolderOpen,
+  Share2,
+  Database,
+  Puzzle,
+  Settings,
+} from "lucide-react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import { useTheme } from "../contexts/ThemeContext";
+
+const navItems = [
+  { icon: Home, path: "/dashboard", label: "Home" },
+  { icon: MessageSquare, path: "/threads", label: "Threads" },
+  { icon: History, path: "/history", label: "History" },
+  { icon: FolderOpen, path: "/files", label: "Files" },
+  { icon: Share2, path: "/shared", label: "Shared" },
+  { icon: Database, path: "/plugins", label: "Plugins" },
+];
+
+function getFallbackAvatar(email) {
+  const seed = email || "default";
+  return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+    seed
+  )}&backgroundColor=3b82f6,06b6d4`;
+}
+
+export default function Sidebar() {
+  const { profile, user } = useAuth();
+  const { theme } = useTheme();
+
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const darkMode = theme === "dark";
+
+  const avatarUrl = profile?.avatar_url
+    ? `${profile.avatar_url}?v=${profile.updated_at}`
+    : getFallbackAvatar(user?.email);
+
+  return (
+    <div
+      className={`w-[60px] min-h-screen border-r flex flex-col items-center py-3 fixed left-0 top-0 z-40 ${
+        darkMode
+          ? "bg-[#111111] border-[#222]"
+          : "bg-white border-gray-200"
+      }`}
+    >
+      {/* Logo */}
+      <button
+        onClick={() => navigate("/dashboard")}
+        className="w-10 h-10 flex items-center justify-center mb-6 hover:scale-105 transition-transform"
+      >
+        <img
+          src="/image.png"
+          alt="NetrootAI"
+          className="w-9 h-9 object-contain"
+        />
+      </button>
+
+      {/* Navigation */}
+      <nav className="flex flex-col items-center gap-1 flex-1">
+        {navItems.map(({ icon: Icon, path, label }) => {
+          const active = location.pathname === path;
+
+          return (
+            <button
+              key={path}
+              onClick={() => navigate(path)}
+              title={label}
+              className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${
+                active
+                  ? darkMode
+                    ? "bg-white/10 text-white"
+                    : "bg-blue-50 text-blue-600"
+                  : darkMode
+                  ? "text-gray-500 hover:text-gray-300 hover:bg-white/5"
+                  : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+              }`}
+            >
+              <Icon className="w-5 h-5" />
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* Bottom */}
+      <div className="flex flex-col items-center gap-2 mt-auto">
+        <button
+          onClick={() => navigate("/project-settings")}
+          title="Project Settings"
+          className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${
+            location.pathname === "/project-settings"
+              ? darkMode
+                ? "bg-white/10 text-white"
+                : "bg-blue-50 text-blue-600"
+              : darkMode
+              ? "text-gray-500 hover:text-gray-300 hover:bg-white/5"
+              : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          <Settings className="w-5 h-5" />
+        </button>
+
+        <img
+          key={avatarUrl}
+          src={avatarUrl}
+          alt="avatar"
+          onClick={() => navigate("/settings")}
+          className={`w-9 h-9 rounded-full object-cover border-2 cursor-pointer hover:border-[#3b82f6] transition-colors ${
+            location.pathname === "/settings"
+              ? "border-blue-500"
+              : darkMode
+              ? "border-[#333]"
+              : "border-gray-200"
+          }`}
+        />
+      </div>
+    </div>
+  );
+}
