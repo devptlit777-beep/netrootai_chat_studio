@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle, ArrowRight, Loader2, XCircle } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { usePlan } from '../contexts/PlanContext';
+import { useAuth } from '../contexts/AuthContext';
 import API_BASE from '../lib/api';
 
 export default function CheckoutSuccessPage() {
@@ -11,6 +12,7 @@ export default function CheckoutSuccessPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { refresh } = usePlan();
+  const { user, profile } = useAuth();
 
   const sessionId = searchParams.get('session_id');
   const planId = searchParams.get('plan') || 'pro';
@@ -42,6 +44,15 @@ export default function CheckoutSuccessPage() {
         }
         // Refresh plan in context so UI updates immediately
         await refresh();
+        // Send Pro upgrade email (best-effort)
+        fetch(`${API_BASE}/api/send-pro-upgrade`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: user?.email,
+            full_name: profile?.full_name || user?.user_metadata?.full_name,
+          }),
+        }).catch(() => {});
         setStatus('success');
       } catch (e) {
         setStatus('error');

@@ -12,10 +12,12 @@
     "typecheck": "tsc --noEmit -p tsconfig.app.json"
   },
   "dependencies": {
+    "@huggingface/inference": "^4.13.28",
     "@huggingface/transformers": "^4.2.0",
     "@supabase/supabase-js": "^2.57.4",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "js-yaml": "^5.4.1",
     "lucide-react": "^0.344.0",
     "nodemailer": "^9.0.3",
     "openai": "^6.45.0",
@@ -23,7 +25,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
-    "react-router-dom": "^7.18.1",
+    "react-router-dom": "^7.18.4",
     "remark-gfm": "^4.0.1",
     "resend": "^6.18.0",
     "stripe": "^22.3.2"

@@ -16,7 +16,7 @@ import {
 
 const GPT5_MODELS = [
   { id: 'openai/gpt-oss-20b', label: 'GPT OSS 20B', tag: '🥈 Fast' },
-  { id: 'qwen/qwen3.6-27b', label: 'Qwen3 27B Vision', tag: '🖼️ Vision' },
+  { id: 'qwen/qwen3.8-27b', label: 'Qwen3.8 27B Vision', tag: '🖼️ Vision' },
   { id: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B', tag: '🥉 Fast' },
   { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B', tag: '⭐ Versatile' },
   { id: 'openai/gpt-oss-120b', label: 'GPT OSS 120B', tag: '⚡ Strong' },
@@ -48,7 +48,7 @@ export default function SettingsPage() {
         {tab === 'user' ? (
           <UserTab profile={profile} user={user} onSaved={refreshProfile} darkMode={darkMode} />
         ) : (
-          <SecurityTab userId={user?.id ?? ''} onSignOutAll={signOut} darkMode={darkMode} />
+          <SecurityTab userId={user?.id ?? ''} onSignOut={signOut} darkMode={darkMode} />
         )}
       </div>
     </div>
@@ -59,11 +59,10 @@ function TabBtn({ label, active, onClick, darkMode }) {
   return (
     <button
       onClick={onClick}
-      className={`px-4 py-2.5 text-sm font-medium transition-all relative ${
-        active
-          ? darkMode ? 'text-white' : 'text-gray-900'
-          : darkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-500 hover:text-gray-700'
-      }`}
+      className={`px-4 py-2.5 text-sm font-medium transition-all relative ${active
+        ? darkMode ? 'text-white' : 'text-gray-900'
+        : darkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-500 hover:text-gray-700'
+        }`}
     >
       {label}
       {active && (
@@ -328,7 +327,7 @@ function UserTab({ profile, user, onSaved, darkMode }) {
   );
 }
 
-function SecurityTab({ userId, onSignOutAll, darkMode }) {
+function SecurityTab({ userId, onSignOut, darkMode }) {
   const [apiKeys, setApiKeys] = useState([]);
   const [loadedKeys, setLoadedKeys] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
@@ -425,7 +424,7 @@ function SecurityTab({ userId, onSignOutAll, darkMode }) {
             </div>
           </div>
           <button
-            onClick={loadedKeys ? () => {} : loadApiKeys}
+            onClick={loadedKeys ? () => { } : loadApiKeys}
             className={`text-sm border rounded-lg px-4 py-2 transition-colors ${darkMode ? 'text-white bg-[#1e1e1e] hover:bg-[#2a2a2a] border-[#2a2a2a]' : 'text-gray-700 bg-white hover:bg-gray-50 border-gray-300'}`}
           >
             {loadedKeys ? 'Hide keys' : 'View all keys'}
@@ -521,15 +520,15 @@ function SecurityTab({ userId, onSignOutAll, darkMode }) {
           <div className="flex items-center gap-3">
             <LogOut className={`w-4 h-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
             <div>
-              <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>Log out of all devices</p>
-              <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Revokes all active sessions</p>
+              <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>Log out</p>
+              <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>End the current session</p>
             </div>
           </div>
           <button
-            onClick={onSignOutAll}
+            onClick={onSignOut}
             className={`text-sm border rounded-lg px-4 py-2 transition-colors ${darkMode ? 'text-white bg-[#1e1e1e] hover:bg-[#2a2a2a] border-[#2a2a2a]' : 'text-gray-700 bg-white hover:bg-gray-50 border-gray-300'}`}
           >
-            Log out all
+            Log out
           </button>
         </div>
       </div>

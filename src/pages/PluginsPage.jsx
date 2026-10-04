@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { usePlan } from '../contexts/PlanContext';
 import { supabase } from '../lib/supabase';
 import { ensureCorePlugins } from '../lib/corePlugins';
 import { Search, X, Settings, CheckCircle, Loader2 } from 'lucide-react';
@@ -29,11 +30,11 @@ const PLUGINS = [
     { id: 'web-search', name: 'Web Search', description: 'Search the web in real time. No API key required; add an optional Brave Search key for improved results.', category: 'Search', icon: '🌐', needsConfig: true },
     { id: 'calculator', name: 'Calculator', description: 'Evaluate math expressions precisely. The AI runs your formula server-side and returns the exact result.', category: 'Productivity', icon: '🧮', needsConfig: false },
     { id: 'pdf-search', name: 'PDF.js Search', description: 'Extract and search text from uploaded PDF files using PDF.js, then answer questions about the document.', category: 'Data', icon: '📄', needsConfig: false },
-    // { id: 'image-describe', name: 'Image Description', description: 'Describe uploaded images locally with Hugging Face Transformers.js.', category: 'Data', icon: '🖼️', needsConfig: false },
-    // { id: 'arxiv', name: 'arXiv Search', description: 'Search academic papers on arXiv.org. The AI fetches real paper titles and abstracts to answer research questions.', category: 'Search', icon: '📚', needsConfig: false },
-    // { id: 'code-runner', name: 'Code Runner', description: 'Execute JavaScript snippets in a sandboxed Node.js VM. The AI runs code and returns the actual output.', category: 'Code', icon: '⚡', needsConfig: false },
-    // { id: 'github', name: 'GitHub', description: 'Search public repos, read files, and fetch issues from GitHub using your personal access token.', category: 'Code', icon: '🐙', needsConfig: true },
-    // { id: 'notion', name: 'Notion', description: 'Search and read your Notion pages and databases using your integration token.', category: 'Productivity', icon: '📝', needsConfig: true },
+    { id: 'json-transformer', name: 'JSON / YAML Converter', description: 'Prettify, minify, validate, or instantly convert data between JSON and YAML formats.', category: 'Data', icon: '🔄', needsConfig: false, proOnly: true },
+    { id: 'arxiv', name: 'arXiv Search', description: 'Search academic papers on arXiv.org and use real paper titles and abstracts in answers.', category: 'Search', icon: '📚', needsConfig: false, proOnly: true },
+    { id: 'code-runner', name: 'Code Runner', description: 'Execute JavaScript snippets in a sandboxed Node.js VM and return the actual output.', category: 'Code', icon: '⚡', needsConfig: false, proOnly: true },
+    // { id: 'github', name: 'GitHub', description: 'Search public repositories, read files, and fetch issues with your personal access token.', category: 'Code', icon: '🐙', needsConfig: true, proOnly: true },
+    // { id: 'notion', name: 'Notion', description: 'Search and read Notion pages and databases using your integration token.', category: 'Productivity', icon: '📝', needsConfig: true, proOnly: true },
     // { id: 'jira', name: 'Jira', description: 'Query Jira issues and sprints using your Atlassian credentials.', category: 'Productivity', icon: '🎯', needsConfig: true },
     // { id: 'slack', name: 'Slack', description: 'Search Slack channels and summarise threads using your bot token.', category: 'Communication', icon: '💬', needsConfig: true },
     // { id: 'postgres', name: 'PostgreSQL', description: 'Run read-only SQL queries against your Postgres database via a connection URL.', category: 'Data', icon: '🐘', needsConfig: true },
@@ -143,6 +144,7 @@ function ConfigModal({ plugin, config, onSave, onClose, darkMode }) {
 export default function PluginsPage() {
     const { theme } = useTheme();
     const { user } = useAuth();
+    const { plan } = usePlan();
     const darkMode = theme === 'dark';
 
     const [pluginStates, setPluginStates] = useState({});
@@ -206,6 +208,7 @@ export default function PluginsPage() {
     }
 
     async function handleToggle(plugin) {
+        if (plugin.proOnly && plan === 'free') return;
         const current = pluginStates[plugin.id];
         const isEnabled = current?.enabled || false;
 
@@ -276,6 +279,7 @@ export default function PluginsPage() {
                         {filtered.map(plugin => {
                             const state = pluginStates[plugin.id];
                             const enabled = state?.enabled || false;
+                            const locked = plugin.proOnly && plan === 'free';
                             const isSaving = saving === plugin.id;
 
                             return (
@@ -294,6 +298,7 @@ export default function PluginsPage() {
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
+                                            {locked && <span className="text-[10px] font-semibold uppercase tracking-wide text-purple-400">Pro</span>}
                                             {enabled && plugin.needsConfig && (
                                                 <button onClick={() => setConfigModal(plugin)} title="Edit config"
                                                     className={`p-1 rounded-lg transition-colors ${darkMode ? 'text-gray-500 hover:text-gray-300 hover:bg-white/5' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}>
@@ -303,7 +308,7 @@ export default function PluginsPage() {
                                             {isSaving ? (
                                                 <Loader2 className="w-5 h-5 animate-spin text-blue-400" />
                                             ) : (
-                                                <Toggle enabled={enabled} onChange={() => handleToggle(plugin)} darkMode={darkMode} />
+                                                <Toggle enabled={enabled} onChange={() => handleToggle(plugin)} darkMode={darkMode} disabled={locked} />
                                             )}
                                         </div>
                                     </div>

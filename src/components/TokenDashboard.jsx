@@ -1,13 +1,15 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Sparkles, RefreshCw, BarChart3, Clock, Cpu } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import API_BASE from '../lib/api';
 
 const DEFAULT_GROQ_USAGE = {
     model: 'openai/gpt-oss-20b',
     modelDisplayName: 'GPT OSS 20B',
     contextWindow: 131072,
-    dailyTokenLimit: 1000000,
+    dailyTokenLimit: 100000,
     tokensUsedToday: 0,
-    remainingTokens: 1000000,
+    remainingTokens: 100000,
     usedPercent: 0,
     periodLabel: 'Last 30 days',
     period: '30d',
@@ -34,6 +36,7 @@ function formatTime(date) {
 }
 
 export default function TokenDashboard({ darkMode }) {
+    const { session } = useAuth();
     const [usageData, setUsageData] = useState(DEFAULT_GROQ_USAGE);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -56,7 +59,11 @@ export default function TokenDashboard({ darkMode }) {
         setError(null);
 
         try {
-            const response = await fetch(`/api/usage?period=${period}`, { signal: controller.signal });
+            if (!session?.access_token) throw new Error('Sign in to view your usage.');
+            const response = await fetch(`${API_BASE}/api/my-usage?period=${period}`, {
+                signal: controller.signal,
+                headers: { Authorization: `Bearer ${session.access_token}` },
+            });
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || 'Failed to load usage data.');
             setUsageData({ ...DEFAULT_GROQ_USAGE, ...data });
@@ -71,7 +78,7 @@ export default function TokenDashboard({ darkMode }) {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [period]);
+    }, [period, session?.access_token]);
 
     useEffect(() => {
         loadUsage();
@@ -89,6 +96,7 @@ export default function TokenDashboard({ darkMode }) {
         { label: 'Mon', tokens: 0 }, { label: 'Tue', tokens: 0 }, { label: 'Wed', tokens: 0 },
         { label: 'Thu', tokens: 0 }, { label: 'Fri', tokens: 0 }, { label: 'Sat', tokens: 0 }, { label: 'Sun', tokens: 0 },
     ];
+    const maxTimelineTokens = Math.max(...timeline.map(point => Number(point.tokens) || 0), 1);
 
     const usedPct = usageData.usedPercent || 0;
     const hasLimit = usageData.dailyTokenLimit !== null;
@@ -110,8 +118,9 @@ export default function TokenDashboard({ darkMode }) {
                             <Cpu className={`h-5 w-5 ${darkMode ? 'text-sky-400' : 'text-sky-600'}`} />
                         </div>
                         <div>
-                            <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Active model</p>
-                            <p className={`text-base font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{usageData.modelDisplayName || usageData.model}</p>
+                            {/* <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Active model</p> */}
+                            <p className={`text-base font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>ALL MODELS</p>
+                            {/* <p className={`text-base font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{usageData.modelDisplayName || usageData.model}</p> */}
                         </div>
                     </div>
                     <div className="text-right">
@@ -187,12 +196,14 @@ export default function TokenDashboard({ darkMode }) {
                         </div>
                         <div className="mt-4 h-32 overflow-hidden rounded-3xl bg-[#111111] px-3 py-3">
                             <div className="flex h-full items-end gap-2">
-                                {timeline.map((point) => {
-                                    const max = Math.max(...timeline.map(i => i.tokens), 1);
-                                    const height = Math.max(1, Math.round((point.tokens / max) * 100));
+                                {timeline.map((point, index) => {
+                                    const tokens = Number(point.tokens) || 0;
+                                    const height = tokens > 0 ? Math.max(8, Math.round((tokens / maxTimelineTokens) * 100)) : 0;
                                     return (
-                                        <div key={point.label} className="flex-1">
-                                            <div className="mx-auto h-full rounded-full bg-gradient-to-b from-sky-400 to-sky-700 transition-all duration-300" style={{ height: `${height}%` }} />
+                                        <div key={`${point.label}-${index}`} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end">
+                                            <div className="flex h-24 w-full items-end justify-center">
+                                                <div className="w-3/5 rounded-t-md bg-gradient-to-t from-sky-700 to-sky-400 transition-all duration-300" style={{ height: `${height}%` }} title={`${point.label}: ${formatNumber(tokens)} tokens`} />
+                                            </div>
                                             <p className="mt-2 text-center text-[10px] uppercase tracking-[0.15em] text-gray-500">{point.label}</p>
                                         </div>
                                     );

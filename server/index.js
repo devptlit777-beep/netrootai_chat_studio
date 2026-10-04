@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import https from 'node:https';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -6,7 +7,8 @@ import vm from 'node:vm';
 import { Resend } from 'resend';
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
-import { PLAN_LIMITS, canUseModel, canUseTokens, getPlanLimits, normalizePlan } from './planLimits.js';
+import * as yaml from 'js-yaml';
+import { PLAN_LIMITS, canUseModel, canUseTokens, getPlanLimits, normalizeModel, normalizePlan, canUseImageGeneration, getModelImageLimit } from './planLimits.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -18,6 +20,7 @@ const GROQ_API_URL = 'https://api.groq.com/openai/v1/responses';
 const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 const VISION_MODELS = new Set([
+    'qwen/qwen3.8-27b',
     'qwen/qwen3.6-27b',
 ]);
 
@@ -25,6 +28,7 @@ const VISION_MODELS = new Set([
 loadEnvFile();
 
 const AI_PROVIDER = (process.env.AI_PROVIDER || 'openai').toLowerCase();
+const RESEND_FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'NetRoot AI <noreply@netrootai.tech>';
 
 
 function loadEnvFile() {
@@ -45,50 +49,77 @@ function loadEnvFile() {
     }
 }
 
-function sendJson(res, statusCode, payload) {
-    const origin = res.req?.headers?.origin || '';
+function sendJson(res, statusCode, payload, req) {
+    const origin = req?.headers?.origin || '';
     const allowed = ['http://127.0.0.1:5173', 'http://localhost:5173', 'https://netrootai.tech', 'https://ampjiasvmmhxeqwdullc.supabase.co'];
     const corsOrigin = allowed.includes(origin) ? origin : '*';
     res.writeHead(statusCode, {
         'Content-Type': 'application/json',
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
         'Access-Control-Allow-Origin': corsOrigin,
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     });
     res.end(JSON.stringify(payload));
 }
 
-// ─── Usage Store ─────────────────────────────────────────────────────────────
+// ─── Usage Store (Supabase-backed — shared across local + VPS) ────────────────────
 
-const USAGE_FILE = join(PROJECT_ROOT, 'server', 'usage-data.json');
-
-function loadUsageStore() {
-    try { if (existsSync(USAGE_FILE)) return JSON.parse(readFileSync(USAGE_FILE, 'utf8')); }
-    catch { /* ignore */ }
-    return [];
+function getSupabaseClient() {
+    const url = process.env.VITE_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) return null;
+    return createClient(url, key, { auth: { persistSession: false } });
 }
 
-function saveUsageStore() {
+async function recordUsage({ inputTokens, outputTokens, cachedTokens, latencyMs, model, userEmail, plan, prompt }) {
+    const sb = getSupabaseClient();
+    if (!sb) {
+        console.warn('[usage] Supabase client not available — check VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY env vars');
+        return;
+    }
+    const promptText = typeof prompt === 'string' ? prompt.trim() : String(prompt || '').trim();
     try {
-        const cutoff = Date.now() - 90 * 86400000;
-        writeFileSync(USAGE_FILE, JSON.stringify(usageStore.filter(e => e.ts >= cutoff)));
-    } catch { /* ignore */ }
+        const { error } = await sb.from('usage_logs').insert({
+            ts: Date.now(),
+            user_email: userEmail?.toLowerCase?.() || null,
+            model,
+            plan: normalizePlan(plan),
+            input_tokens: inputTokens || 0,
+            output_tokens: outputTokens || 0,
+            cached_tokens: cachedTokens || 0,
+            latency_ms: latencyMs || 0,
+            prompt: promptText || null,
+        });
+        if (error) console.error('[usage] insert failed:', error.message, error.details || '');
+        else console.log('[usage] recorded:', userEmail, inputTokens + outputTokens, 'tokens');
+    } catch (error) {
+        console.error('[usage] insert exception:', error.message);
+    }
 }
 
-const usageStore = loadUsageStore();
-
-function recordUsage({ inputTokens, outputTokens, cachedTokens, latencyMs, model, userEmail, plan }) {
-    usageStore.push({
-        ts: Date.now(),
-        inputTokens,
-        outputTokens,
-        cachedTokens,
-        latencyMs,
-        model,
-        userEmail: userEmail?.toLowerCase?.() || null,
-        plan: normalizePlan(plan),
-    });
-    saveUsageStore();
+async function queryUsage(whereClause = {}) {
+    const sb = getSupabaseClient();
+    if (!sb) return [];
+    const cutoff = Date.now() - 90 * 86400000;
+    let q = sb.from('usage_logs').select('*').gte('ts', cutoff).order('ts', { ascending: false }).limit(50000);
+    if (whereClause.userEmail) q = q.eq('user_email', whereClause.userEmail.toLowerCase());
+    if (whereClause.since) q = q.gte('ts', whereClause.since);
+    const { data, error } = await q;
+    if (error) { console.warn('[usage] query error:', error.message); return []; }
+    return (data || []).map(r => ({
+        ts: r.ts,
+        userEmail: r.user_email,
+        model: r.model,
+        plan: r.plan,
+        inputTokens: r.input_tokens,
+        outputTokens: r.output_tokens,
+        cachedTokens: r.cached_tokens,
+        latencyMs: r.latency_ms,
+        prompt: r.prompt || r.query || r.message || null,
+    }));
 }
 
 function estimateRequestTokens(prompt, attachments = []) {
@@ -98,10 +129,21 @@ function estimateRequestTokens(prompt, attachments = []) {
 }
 
 function getTodayUserUsage(userEmail) {
+    // Synchronous fallback — returns 0, actual limit check uses async path
+    return 0;
+}
+
+async function getTodayUserUsageAsync(userEmail) {
     const cutoff = Date.now() - 86400000;
-    return usageStore
-        .filter(entry => entry.ts >= cutoff && entry.userEmail && entry.userEmail === String(userEmail).toLowerCase())
-        .reduce((sum, entry) => sum + (entry.inputTokens || 0) + (entry.outputTokens || 0), 0);
+    const entries = await queryUsage({ userEmail, since: cutoff });
+    return entries.reduce((sum, e) => sum + e.inputTokens + e.outputTokens, 0);
+}
+
+async function getCurrentMonthImageUsageAsync(userEmail, modelName) {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const entries = await queryUsage({ userEmail, since: monthStart });
+    return entries.filter(e => e.model === modelName).length;
 }
 
 async function resolveUserPlan(req, body = {}) {
@@ -118,8 +160,12 @@ async function resolveUserPlan(req, body = {}) {
         const found = users?.find(u => u.email?.toLowerCase() === String(email).toLowerCase());
         if (!found) return { plan: 'free', email: String(email).toLowerCase() };
 
-        const { data } = await supabase.from('profiles').select('plan').eq('id', found.id).single();
-        return { plan: normalizePlan(data?.plan || 'free'), email: String(email).toLowerCase() };
+        const [{ data: profile }, { data: subscription }] = await Promise.all([
+            supabase.from('profiles').select('plan, free_trial_ends_at').eq('id', found.id).single(),
+            supabase.from('subscriptions').select('plan, status, current_period_end, cancel_at_period_end, interval_months').eq('user_id', found.id).maybeSingle(),
+        ]);
+        const summary = subscriptionSummary(subscription, profile?.plan || 'free', profile?.free_trial_ends_at);
+        return { plan: summary.effective_plan, email: String(email).toLowerCase(), accessExpired: summary.access_expired, featureAccess: profile?.feature_access || {} };
     } catch (err) {
         console.warn('[plan] failed to resolve user plan:', err.message);
         return { plan: 'free', email: String(email).toLowerCase() };
@@ -147,12 +193,15 @@ function handlePlanLimits(req, res) {
     });
 }
 
-function handleUsage(req, res) {
+async function handleUsage(req, res, userEmail = null) {
     const url = new URL(req.url, 'http://127.0.0.1');
     const period = url.searchParams.get('period') || '30d';
     const days = period === '1d' ? 1 : period === '7d' ? 7 : 30;
     const label = period === '1d' ? 'Last 24 hours' : period === '7d' ? 'Last 7 days' : 'Last 30 days';
-    const entries = usageStore.filter(e => e.ts >= Date.now() - days * 86400000);
+    const since = Date.now() - days * 86400000;
+    const entries = await queryUsage({ since, userEmail });
+    const entries30d = days === 30 ? entries : await queryUsage({ since: Date.now() - 30 * 86400000, userEmail });
+    const entries24h = entries30d.filter(entry => entry.ts >= Date.now() - 86400000);
 
     const inputTokens = entries.reduce((s, e) => s + e.inputTokens, 0);
     const outputTokens = entries.reduce((s, e) => s + e.outputTokens, 0);
@@ -179,9 +228,10 @@ function handleUsage(req, res) {
         'allam-2-7b': { dailyLimit: 500000, contextWindow: 4096, displayName: 'ALLaM 2 7B' },
         'groq/compound': { dailyLimit: null, contextWindow: 131072, displayName: 'Compound' },
         'groq/compound-mini': { dailyLimit: null, contextWindow: 131072, displayName: 'Compound Mini' },
+        'black-forest-labs/FLUX.1-schnell': { dailyLimit: 100000, contextWindow: 0, displayName: 'FLUX.1 Schnell' },
     };
     const modelInfo = MODEL_LIMITS[modelId] || { dailyLimit: 200000, contextWindow: 131072, displayName: modelId };
-    const todayEntries = usageStore.filter(e => e.ts >= Date.now() - 86400000);
+    const todayEntries = entries.filter(e => e.ts >= Date.now() - 86400000);
     const tokensUsedToday = todayEntries.reduce((s, e) => s + e.inputTokens + e.outputTokens, 0);
 
     // Per-model token usage for today
@@ -189,6 +239,24 @@ function handleUsage(req, res) {
     for (const e of todayEntries) {
         const m = e.model || modelId;
         perModelTokens[m] = (perModelTokens[m] || 0) + e.inputTokens + e.outputTokens;
+    }
+
+    const perModel = {};
+    for (const entry of entries30d) {
+        const model = entry.model || modelId;
+        if (!perModel[model]) perModel[model] = { tokens: 0, requests: 0 };
+        perModel[model].tokens += entry.inputTokens + entry.outputTokens;
+        perModel[model].requests += 1;
+    }
+
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
+    const fluxModelId = 'black-forest-labs/FLUX.1-schnell';
+    const perModelImages = { [fluxModelId]: 0 };
+    for (const entry of entries30d) {
+        const entryModel = String(entry.model || '').trim().toLowerCase();
+        if (entryModel !== fluxModelId) continue;
+        if (entry.ts < monthStart) continue;
+        perModelImages[fluxModelId] += 1;
     }
 
     const dailyLimit = modelInfo.dailyLimit;
@@ -199,6 +267,13 @@ function handleUsage(req, res) {
         model: modelId, modelDisplayName: modelInfo.displayName, contextWindow: modelInfo.contextWindow,
         dailyTokenLimit: dailyLimit, tokensUsedToday, remainingTokens, usedPercent,
         perModelTokens,
+        perModelImages,
+        imageUsageThisMonth: perModelImages[fluxModelId],
+        tokens24h: entries24h.reduce((sum, entry) => sum + entry.inputTokens + entry.outputTokens, 0),
+        tokens30d: entries30d.reduce((sum, entry) => sum + entry.inputTokens + entry.outputTokens, 0),
+        requests30d: entries30d.length,
+        avgLatency30d: entries30d.length ? Math.round(entries30d.reduce((sum, entry) => sum + entry.latencyMs, 0) / entries30d.length) : 0,
+        perModel,
         periodLabel: label, period, totalSpend, totalTokens: inputTokens + outputTokens,
         inputTokens, outputTokens, cachedTokens, totalRequests, averageLatencyMs,
         tokenTimeline: buildTimeline(entries, days),
@@ -375,6 +450,131 @@ async function runPdfSearch(prompt, attachments) {
         return `PDF search failed: ${error.message}`;
     }
 }
+// Image Generation — FLUX.1-schnell via HuggingFace (nscale provider)
+function hfRequest(prompt, token) {
+    return new Promise((resolve, reject) => {
+        const data = JSON.stringify({
+            model: 'black-forest-labs/FLUX.1-schnell',
+            prompt,
+            num_inference_steps: 4,
+            width: 1024,
+            height: 1024,
+        });
+        const options = {
+            hostname: 'router.huggingface.co',
+            path: '/nscale/v1/images/generations',
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(data),
+            },
+            timeout: 120000,
+        };
+        const req = https.request(options, (hfRes) => {
+            const chunks = [];
+            hfRes.on('data', c => chunks.push(c));
+            hfRes.on('end', () => resolve({ status: hfRes.statusCode, buffer: Buffer.concat(chunks) }));
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('HuggingFace request timed out')); });
+        req.write(data);
+        req.end();
+    });
+}
+
+async function openSoraVideoRequest(prompt, token) {
+    const endpoint = process.env.OPEN_SORA_ENDPOINT?.trim();
+    if (!endpoint) {
+        throw new Error('Open-Sora-v2 is not hosted by Hugging Face Inference API. Configure OPEN_SORA_ENDPOINT with a running Open-Sora deployment.');
+    }
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputs: prompt }),
+    });
+    const contentType = response.headers.get('content-type') || '';
+    if (!response.ok) {
+        const errorBody = await response.text();
+        let message = errorBody.slice(0, 300);
+        try { message = JSON.parse(errorBody).error || JSON.parse(errorBody).detail || message; } catch { }
+        if (response.status === 400 && message.toLowerCase().includes('not supported by provider')) {
+            throw new Error('Open-Sora-v2 is not supported by the selected inference provider. Configure OPEN_SORA_ENDPOINT with a running Open-Sora deployment.');
+        }
+        if (response.status === 404 || response.status === 503) {
+            throw new Error('Open-Sora-v2 is not deployed by Hugging Face Inference Providers. Configure OPEN_SORA_ENDPOINT with a running Open-Sora deployment.');
+        }
+        throw new Error(`Open-Sora request failed (${response.status}): ${message}`);
+    }
+    if (contentType.includes('application/json')) {
+        const data = await response.json();
+        const videoUrl = data.video_url || data.video?.url || data.url;
+        if (!videoUrl) throw new Error('Open-Sora endpoint returned no video URL.');
+        return videoUrl;
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length) throw new Error('Open-Sora returned an empty video.');
+    return `data:${contentType || 'video/mp4'};base64,${buffer.toString('base64')}`;
+}
+
+async function handleImageStudio(req, res) {
+    const body = await readJson(req);
+    const prompt = String(body.prompt || '').trim();
+    if (!prompt) { sendJson(res, 400, { error: 'Prompt is required.' }, req); return; }
+
+    const { accessExpired, featureAccess } = await resolveUserPlan(req, body);
+    if (accessExpired && !featureAccess?.['image-studio']) {
+        sendJson(res, 403, { error: 'Upgrade to Pro to access Image Studio.' }, req);
+        return;
+    }
+
+    const hfToken = process.env.HF_TOKEN;
+    if (!hfToken) { sendJson(res, 500, { error: 'HF_TOKEN is not configured.' }, req); return; }
+
+    console.log('[image-studio] generating:', prompt.slice(0, 80));
+
+    try {
+        const { status, buffer } = await hfRequest(prompt, hfToken);
+        const text = buffer.toString();
+        if (status !== 200) {
+            console.error('[image-studio] HF error:', status, text.slice(0, 300));
+            sendJson(res, 502, { error: `Image generation failed (${status}): ${text.slice(0, 200)}` }, req);
+            return;
+        }
+        const json = JSON.parse(text);
+        const b64 = json?.data?.[0]?.b64_json;
+        if (!b64) { sendJson(res, 502, { error: 'No image data in response.' }, req); return; }
+        const imageUrl = `data:image/png;base64,${b64}`;
+        sendJson(res, 200, { imageUrl }, req);
+    } catch (e) {
+        console.error('[image-studio] error:', e.message);
+        sendJson(res, 500, { error: e.message }, req);
+    }
+}
+
+async function handleVideoGeneration(req, res) {
+    const body = await readJson(req);
+    const prompt = String(body.prompt || '').trim();
+    if (!prompt) { sendJson(res, 400, { error: 'Prompt is required.' }, req); return; }
+
+    const { accessExpired, featureAccess } = await resolveUserPlan(req, body);
+    if (accessExpired && !featureAccess?.['image-studio']) {
+        sendJson(res, 403, { error: 'Upgrade to Pro to access video generation.' }, req);
+        return;
+    }
+
+    const hfToken = process.env.HF_TOKEN;
+    if (!hfToken) { sendJson(res, 500, { error: 'HF_TOKEN is not configured.' }, req); return; }
+
+    try {
+        const videoUrl = await openSoraVideoRequest(prompt, hfToken);
+        sendJson(res, 200, { videoUrl, model: 'hpcai-tech/Open-Sora-v2', provider: 'huggingface' }, req);
+    } catch (error) {
+        const unavailable = error.message.includes('OPEN_SORA_ENDPOINT') || error.message.includes('not supported by the selected inference provider') || error.message.includes('not deployed by Hugging Face');
+        sendJson(res, unavailable ? 503 : 500, { error: `Video generation unavailable: ${error.message}` }, req);
+    }
+}
+
 // Image Generation — DALL-E 3
 async function runImageGen(prompt, openaiKey) {
     const res = await fetch('https://api.openai.com/v1/images/generations', {
@@ -506,6 +706,43 @@ function runCalculator(expr) {
         return result === null || Number.isNaN(result) ? 'Invalid expression' : String(result);
     } catch (e) { return `Error: ${e.message}`; }
 }
+
+function extractStructuredData(prompt) {
+    const fenced = String(prompt || '').match(/```(?:json|yaml|yml)?\s*\n?([\s\S]*?)```/i);
+    if (fenced) return fenced[1].trim();
+
+    const text = String(prompt || '').trim();
+    const starts = ['{', '['].map(marker => text.indexOf(marker)).filter(index => index >= 0);
+    return starts.length ? text.slice(Math.min(...starts)).trim() : text;
+}
+
+function runJsonTransformer(prompt) {
+    const request = String(prompt || '').toLowerCase();
+    const source = extractStructuredData(prompt);
+    let value;
+
+    try {
+        try {
+            value = JSON.parse(source);
+        } catch {
+            value = yaml.load(source);
+        }
+    } catch (error) {
+        return `JSON/YAML validation failed: ${error.message}`;
+    }
+
+    if (request.includes('valid')) {
+        return `Valid JSON/YAML input.\n\nParsed value:\n\`\`\`json\n${JSON.stringify(value, null, 2)}\n\`\`\``;
+    }
+    if (request.includes('yaml') || request.includes('yml')) {
+        return `YAML output:\n\`\`\`yaml\n${yaml.dump(value, { noRefs: true, lineWidth: -1 })}\`\`\``;
+    }
+    if (request.includes('minif')) {
+        return `Minified JSON:\n\`\`\`json\n${JSON.stringify(value)}\n\`\`\``;
+    }
+    return `Pretty JSON:\n\`\`\`json\n${JSON.stringify(value, null, 2)}\n\`\`\``;
+}
+
 // arXiv — free public API
 async function runArxiv(query) {
     try {
@@ -624,6 +861,8 @@ async function resolvePlugins(prompt, plugins, attachments) {
         } else if (p.plugin_id === 'calculator') {
             const match = extractMathExpression(prompt);
             if (match) result = `Calculator result: ${runCalculator(match)}`;
+        } else if (p.plugin_id === 'json-transformer') {
+            result = runJsonTransformer(prompt);
         } else if (p.plugin_id === 'arxiv') {
             result = await runArxiv(prompt);
         } else if (p.plugin_id === 'code-runner') {
@@ -682,7 +921,7 @@ function extractAnswer(data) {
 
 async function handleChat(req, res) {
     const body = await readJson(req);
-    const prompt = String(body.prompt || '').trim();
+    const prompt = String(body.prompt || body.query || body.message || body.content || '').trim();
 
     if (!prompt && (!Array.isArray(body.attachments) || body.attachments.length === 0)) {
         sendJson(res, 400, { error: 'Prompt is required.' });
@@ -691,7 +930,7 @@ async function handleChat(req, res) {
 
     const { plan, email } = await resolveUserPlan(req, body);
     const planLimits = getPlanLimits(plan);
-    const selectedModel = body.model || process.env.GROQ_MODEL || process.env.OPENAI_MODEL || 'openai/gpt-oss-20b';
+    const selectedModel = normalizeModel(body.model || process.env.GROQ_MODEL || process.env.OPENAI_MODEL || 'openai/gpt-oss-20b');
     const requestStart = Date.now();
 
     console.log('[chat] plan:', plan, '| model:', selectedModel, '| canUse:', canUseModel(plan, selectedModel), '| allowedModels:', JSON.stringify(getPlanLimits(plan).allowedModels));
@@ -702,8 +941,45 @@ async function handleChat(req, res) {
         return;
     }
 
+    if (selectedModel === 'black-forest-labs/FLUX.1-schnell') {
+        const imageLimit = getModelImageLimit(plan, selectedModel);
+        const usedImagesThisMonth = email ? await getCurrentMonthImageUsageAsync(email, selectedModel) : 0;
+        if (!canUseImageGeneration(plan, selectedModel, usedImagesThisMonth)) {
+            sendJson(res, 429, {
+                error: `You have reached your monthly image limit for the ${plan} plan. Pro/Enterprise users can generate up to ${imageLimit} images per month.`,
+            });
+            return;
+        }
+
+        const hfToken = process.env.HF_TOKEN;
+        if (!hfToken) { sendJson(res, 500, { error: 'HF_TOKEN is not configured.' }); return; }
+        try {
+            const { status, buffer } = await hfRequest(prompt, hfToken);
+            const data = JSON.parse(buffer.toString());
+            const b64 = data?.data?.[0]?.b64_json;
+            if (status !== 200 || !b64) {
+                sendJson(res, 502, { error: `Image generation failed (${status}).` });
+                return;
+            }
+            await recordUsage({
+                inputTokens: estimateRequestTokens(prompt),
+                outputTokens: 0,
+                cachedTokens: 0,
+                latencyMs: Date.now() - requestStart,
+                model: selectedModel,
+                userEmail: email,
+                plan,
+                prompt,
+            });
+            sendJson(res, 200, { answer: `Generated image for: ${prompt}`, imageUrl: `data:image/png;base64,${b64}` });
+        } catch (error) {
+            sendJson(res, 500, { error: `Image generation failed: ${error.message}` });
+        }
+        return;
+    }
+
     const estimatedTokens = estimateRequestTokens(prompt, body.attachments);
-    const alreadyUsedToday = getTodayUserUsage(email);
+    const alreadyUsedToday = await getTodayUserUsageAsync(email);
     if (!canUseTokens(plan, alreadyUsedToday, estimatedTokens)) {
         sendJson(res, 429, {
             error: `You have reached your daily token limit for the ${plan} plan. Upgrade to Pro for ${planLimits.dailyTokenLimit} daily tokens.`,
@@ -711,7 +987,11 @@ async function handleChat(req, res) {
         return;
     }
 
-    const { pluginContext, imageUrl } = await resolvePlugins(prompt, body.plugins, body.attachments);
+    const allowedPlugins = new Set(planLimits.allowedPlugins || []);
+    const permittedPlugins = Array.isArray(body.plugins)
+        ? body.plugins.filter(plugin => allowedPlugins.has(plugin.plugin_id))
+        : [];
+    const { pluginContext, imageUrl } = await resolvePlugins(prompt, permittedPlugins, body.attachments);
 
     if (imageUrl) {
         sendJson(res, 200, { answer: `Here is your generated image for: *${prompt}*`, imageUrl });
@@ -730,6 +1010,18 @@ async function handleChat(req, res) {
         );
         const data = await googleResponse.json().catch(() => ({}));
         if (!googleResponse.ok) { sendJson(res, googleResponse.status, { error: data.error?.message || 'Google AI failed.' }); return; }
+        if (data.usageMetadata) {
+            recordUsage({
+                inputTokens: data.usageMetadata.promptTokenCount || 0,
+                outputTokens: data.usageMetadata.candidatesTokenCount || 0,
+                cachedTokens: data.usageMetadata.cachedContentTokenCount || 0,
+                latencyMs: Date.now() - requestStart,
+                model: googleModel,
+                userEmail: email,
+                plan,
+                prompt,
+            });
+        }
         sendJson(res, 200, { answer: data?.candidates?.[0]?.content || 'Empty response.' });
         return;
     }
@@ -761,7 +1053,7 @@ async function handleChat(req, res) {
             console.log('[chat] non-vision response status:', groqResponse.status, '| data:', JSON.stringify(data).slice(0, 200));
             if (!groqResponse.ok) { sendJson(res, groqResponse.status, { error: data.error?.message || 'Groq request failed.' }); return; }
             const answer = data.choices?.[0]?.message?.content || 'No response.';
-            if (data.usage) recordUsage({ inputTokens: data.usage.prompt_tokens || 0, outputTokens: data.usage.completion_tokens || 0, cachedTokens: 0, latencyMs: Date.now() - groqStart, model: groqModel, userEmail: email, plan });
+            if (data.usage) recordUsage({ inputTokens: data.usage.prompt_tokens || 0, outputTokens: data.usage.completion_tokens || 0, cachedTokens: 0, latencyMs: Date.now() - groqStart, model: groqModel, userEmail: email, plan, prompt });
             sendJson(res, 200, { answer });
             return;
         }
@@ -796,7 +1088,7 @@ async function handleChat(req, res) {
             console.log('[chat] vision response status:', groqResponse.status, '| data:', JSON.stringify(data).slice(0, 200));
             if (!groqResponse.ok) { sendJson(res, groqResponse.status, { error: data.error?.message || 'Groq vision request failed.' }); return; }
             const answer = data.choices?.[0]?.message?.content || 'No response.';
-            if (data.usage) recordUsage({ inputTokens: data.usage.prompt_tokens || 0, outputTokens: data.usage.completion_tokens || 0, cachedTokens: 0, latencyMs: Date.now() - groqStart, model: groqModel, userEmail: email, plan });
+            if (data.usage) recordUsage({ inputTokens: data.usage.prompt_tokens || 0, outputTokens: data.usage.completion_tokens || 0, cachedTokens: 0, latencyMs: Date.now() - groqStart, model: groqModel, userEmail: email, plan, prompt });
             sendJson(res, 200, { answer });
             return;
         }
@@ -819,6 +1111,7 @@ async function handleChat(req, res) {
                 model: groqModel,
                 userEmail: email,
                 plan,
+                prompt,
             });
         }
         const answer = data.choices?.[0]?.message?.content || 'No response.';
@@ -844,6 +1137,7 @@ async function handleChat(req, res) {
             model: process.env.OPENAI_MODEL || 'gpt-4.1',
             userEmail: email,
             plan,
+            prompt,
         });
     }
     sendJson(res, 200, { answer: extractAnswer(data) });
@@ -864,8 +1158,16 @@ async function handleGetPlan(req, res) {
     const found = users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
     if (!found) { sendJson(res, 200, { plan: 'free' }); return; }
 
-    const { data } = await supabase.from('profiles').select('plan').eq('id', found.id).single();
-    sendJson(res, 200, { plan: data?.plan || 'free' });
+    const [{ data: profile }, { data: subscription }] = await Promise.all([
+        supabase.from('profiles').select('plan, free_trial_ends_at, feature_access').eq('id', found.id).single(),
+        supabase.from('subscriptions').select('plan, status, current_period_end, cancel_at_period_end, interval_months').eq('user_id', found.id).maybeSingle(),
+    ]);
+    const summary = subscriptionSummary(subscription, profile?.plan || 'free', profile?.free_trial_ends_at);
+    // Enforce expiry even if a Stripe webhook was delayed.
+    if (profile?.plan !== summary.effective_plan) {
+        await supabase.from('profiles').upsert({ id: found.id, plan: summary.effective_plan }, { onConflict: 'id' });
+    }
+    sendJson(res, 200, { ...summary, plan: summary.effective_plan, feature_access: profile?.feature_access || {} });
 }
 
 // ─── Stripe ──────────────────────────────────────────────────────────────────
@@ -875,9 +1177,52 @@ const STRIPE_WEBHOOK_URL = IS_VPS
     ? 'https://netrootai.tech/api/stripe/webhook'
     : 'https://ampjiasvmmhxeqwdullc.supabase.co/functions/v1/stripe-webhook';
 
+function toIsoFromStripeTimestamp(timestamp) {
+    return Number.isFinite(timestamp) ? new Date(timestamp * 1000).toISOString() : null;
+}
+
+function subscriptionSummary(subscription, fallbackPlan = 'free', freeTrialEndsAt = null) {
+    const plan = normalizePlan(subscription?.plan || fallbackPlan);
+    const periodEnd = subscription?.current_period_end || null;
+    const expired = Boolean(periodEnd && new Date(periodEnd).getTime() <= Date.now());
+    const paidPlan = plan !== 'free';
+    const active = paidPlan && !expired && ['active', 'trialing', 'past_due'].includes(subscription?.status || 'active');
+
+    const freeTrialExpired = !paidPlan && Boolean(freeTrialEndsAt && new Date(freeTrialEndsAt).getTime() <= Date.now());
+    return {
+        plan,
+        effective_plan: active ? plan : 'free',
+        plan_status: active || (!paidPlan && !freeTrialExpired) ? 'active' : 'expired',
+        current_period_end: paidPlan ? periodEnd : freeTrialEndsAt,
+        auto_renew: Boolean(active && !subscription?.cancel_at_period_end),
+        subscription_status: subscription?.status || (paidPlan ? 'expired' : 'free'),
+        interval_months: subscription?.interval_months || 1,
+        access_expired: !active && (paidPlan || freeTrialExpired),
+    };
+}
+
+function stripeSubscriptionData(subscription) {
+    const periodEnd = subscription?.current_period_end || subscription?.items?.data?.[0]?.current_period_end;
+    return {
+        status: subscription?.status || 'active',
+        current_period_end: toIsoFromStripeTimestamp(periodEnd),
+        cancel_at_period_end: Boolean(subscription?.cancel_at_period_end),
+        interval_months: subscription?.items?.data?.[0]?.price?.recurring?.interval_count || 1,
+    };
+}
+
+async function applyCheckoutRenewalPreference(stripe, subscription, autoRenew) {
+    if (autoRenew || !subscription) return subscription;
+    const subscriptionId = typeof subscription === 'string' ? subscription : subscription.id;
+    return stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: true });
+}
+
 async function handleCreateCheckout(req, res) {
-    const { email, plan } = await readJson(req);
+    const { email, plan, months: requestedMonths, autoRenew: requestedAutoRenew } = await readJson(req);
     if (!email || !plan) { sendJson(res, 400, { error: 'email and plan are required.' }); return; }
+    const months = Number(requestedMonths || 1);
+    if (!Number.isInteger(months) || months < 1 || months > 12) { sendJson(res, 400, { error: 'Choose a plan duration from 1 to 12 months.' }); return; }
+    const autoRenew = requestedAutoRenew !== false;
 
     const stripeKey = process.env.STRIPE_SECRET_KEY;
     if (!stripeKey) { sendJson(res, 500, { error: 'Stripe not configured.' }); return; }
@@ -888,9 +1233,9 @@ async function handleCreateCheckout(req, res) {
     const lineItems = [{
         price_data: {
             currency: 'usd',
-            product_data: { name: `NetRoot AI ${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan` },
-            unit_amount: plan === 'pro' ? 1900 : 0,
-            recurring: { interval: 'month' },
+            product_data: { name: `NetRoot AI ${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan (${months} month${months === 1 ? '' : 's'})` },
+            unit_amount: plan === 'pro' ? 1900 * months : 0,
+            recurring: { interval: 'month', interval_count: months },
         },
         quantity: 1,
     }];
@@ -907,7 +1252,7 @@ async function handleCreateCheckout(req, res) {
         line_items: lineItems,
         success_url: `${origin}/checkout/success?plan=${plan}&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${origin}/pricing`,
-        metadata: { email, plan },
+        metadata: { email, plan, months: String(months), auto_renew: String(autoRenew) },
     });
 
     sendJson(res, 200, { url: session.url });
@@ -939,7 +1284,7 @@ async function handleCancelSubscription(req, res) {
     let subscription = null;
     try {
         const { data, error: subErr } = await supabase.from('subscriptions')
-            .select('stripe_subscription_id, stripe_customer_id, stripe_session_id')
+            .select('stripe_subscription_id, stripe_customer_id, stripe_session_id, current_period_end')
             .eq('user_id', found.id)
             .single();
         if (subErr && subErr.code !== 'PGRST116') {
@@ -952,35 +1297,42 @@ async function handleCancelSubscription(req, res) {
     }
 
     const stripeKey = process.env.STRIPE_SECRET_KEY;
+    const scheduledCancellation = Boolean(subscription?.stripe_subscription_id);
+    let stripePeriodEnd = subscription?.current_period_end || null;
     if (stripeKey && subscription?.stripe_subscription_id) {
         try {
             const stripe = new Stripe(stripeKey);
-            await stripe.subscriptions.del(subscription.stripe_subscription_id);
+            const updatedSubscription = await stripe.subscriptions.update(subscription.stripe_subscription_id, { cancel_at_period_end: true });
+            stripePeriodEnd = toIsoFromStripeTimestamp(updatedSubscription.current_period_end) || stripePeriodEnd;
         } catch (err) {
             console.warn(`[stripe] cancel-subscription failed for ${email}: ${err.message}`);
         }
     }
 
-    const { error: profileErr } = await supabase.from('profiles')
-        .upsert({ id: found.id, plan: 'free' }, { onConflict: 'id' });
-    if (profileErr) { sendJson(res, 500, { error: profileErr.message }); return; }
+    if (!scheduledCancellation) {
+        const { error: profileErr } = await supabase.from('profiles')
+            .upsert({ id: found.id, plan: 'free' }, { onConflict: 'id' });
+        if (profileErr) { sendJson(res, 500, { error: profileErr.message }); return; }
+    }
 
     try {
         await supabase.from('subscriptions').upsert({
             user_id: found.id,
             email: email.toLowerCase(),
-            plan: 'free',
+            plan: scheduledCancellation ? 'pro' : 'free',
             stripe_customer_id: subscription?.stripe_customer_id || null,
-            stripe_subscription_id: null,
-            stripe_session_id: null,
-            status: 'cancelled',
+            stripe_subscription_id: scheduledCancellation ? subscription.stripe_subscription_id : null,
+            stripe_session_id: scheduledCancellation ? subscription?.stripe_session_id || null : null,
+            status: scheduledCancellation ? 'active' : 'cancelled',
+            current_period_end: scheduledCancellation ? stripePeriodEnd : null,
+            cancel_at_period_end: scheduledCancellation,
             updated_at: new Date().toISOString(),
         }, { onConflict: 'user_id' });
     } catch (e) {
         console.error('[stripe] cancel-subscription update failed:', e.message);
     }
 
-    sendJson(res, 200, { plan: 'free' });
+    sendJson(res, 200, { plan: scheduledCancellation ? 'pro' : 'free', cancel_at_period_end: scheduledCancellation, current_period_end: scheduledCancellation ? stripePeriodEnd : null });
 }
 
 // Called from the success page — verifies the session directly with Stripe
@@ -1014,6 +1366,11 @@ async function handleVerifySession(req, res) {
     const found = users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
     if (!found) { sendJson(res, 404, { error: 'User not found.' }); return; }
 
+    let stripeSubscription = typeof session.subscription === 'string'
+        ? await stripe.subscriptions.retrieve(session.subscription)
+        : session.subscription;
+    stripeSubscription = await applyCheckoutRenewalPreference(stripe, stripeSubscription, session.metadata?.auto_renew !== 'false');
+
     // upsert profile plan
     const { error: profileErr } = await supabase.from('profiles')
         .upsert({ id: found.id, plan }, { onConflict: 'id' });
@@ -1028,7 +1385,7 @@ async function handleVerifySession(req, res) {
             stripe_customer_id: session.customer,
             stripe_subscription_id: session.subscription,
             stripe_session_id: session.id,
-            status: 'active',
+            ...stripeSubscriptionData(stripeSubscription),
             updated_at: new Date().toISOString(),
         }, { onConflict: 'user_id' });
     } catch { /* best-effort */ }
@@ -1091,6 +1448,7 @@ async function handleStripeWebhook(req, res) {
                 stripe_session_id: subData.stripe_session_id || null,
                 status: subData.status || 'active',
                 current_period_end: subData.current_period_end || null,
+                cancel_at_period_end: Boolean(subData.cancel_at_period_end),
                 updated_at: new Date().toISOString(),
             }, { onConflict: 'user_id' });
         } catch (e) { console.error('[stripe] subscription upsert error:', e.message); }
@@ -1102,11 +1460,15 @@ async function handleStripeWebhook(req, res) {
         const session = event.data.object;
         const email = session.metadata?.email || session.customer_email;
         const plan = session.metadata?.plan || 'pro';
+        let subscription = typeof session.subscription === 'string'
+            ? await stripe.subscriptions.retrieve(session.subscription)
+            : session.subscription;
+        subscription = await applyCheckoutRenewalPreference(stripe, subscription, session.metadata?.auto_renew !== 'false');
         await applyPlanToUser(email, plan, {
             stripe_customer_id: session.customer,
             stripe_subscription_id: session.subscription,
             stripe_session_id: session.id,
-            status: 'active',
+            ...stripeSubscriptionData(subscription),
         });
     }
 
@@ -1120,8 +1482,7 @@ async function handleStripeWebhook(req, res) {
             await applyPlanToUser(email, 'pro', {
                 stripe_customer_id: invoice.customer,
                 stripe_subscription_id: subId,
-                status: 'active',
-                current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
+                ...stripeSubscriptionData(sub),
             });
         }
     }
@@ -1135,6 +1496,8 @@ async function handleStripeWebhook(req, res) {
             stripe_customer_id: sub.customer,
             stripe_subscription_id: sub.id,
             status: 'cancelled',
+            current_period_end: toIsoFromStripeTimestamp(sub.current_period_end),
+            cancel_at_period_end: true,
         });
     }
 
@@ -1173,6 +1536,352 @@ async function handleUpgradePlan(req, res) {
     if (updateErr) { sendJson(res, 500, { error: updateErr.message }); return; }
 
     sendJson(res, 200, { plan: 'pro' });
+}
+
+async function handleAdminUserDetail(req, res) {
+    const url = new URL(req.url, 'http://127.0.0.1');
+    const email = url.searchParams.get('email')?.toLowerCase();
+    if (!email) { sendJson(res, 400, { error: 'email is required.' }); return; }
+
+    const now = Date.now();
+    const DAY = 86400000;
+
+    const supabase = getSupabaseClient();
+    let subscription = null;
+    let profile = null;
+    if (supabase) {
+        const { data: { users } } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+        const user = users?.find(candidate => candidate.email?.toLowerCase() === email);
+        if (user) {
+            const [{ data: subscriptionData }, { data: profileData }] = await Promise.all([
+                supabase.from('subscriptions').select('plan, status, current_period_end, cancel_at_period_end, interval_months').eq('user_id', user.id).maybeSingle(),
+                supabase.from('profiles').select('plan, free_trial_ends_at, feature_access').eq('id', user.id).maybeSingle(),
+            ]);
+            subscription = subscriptionData;
+            profile = profileData;
+        }
+    }
+
+    const [entries24h, entries7d, entries30d] = await Promise.all([
+        queryUsage({ userEmail: email, since: now - DAY }),
+        queryUsage({ userEmail: email, since: now - 7 * DAY }),
+        queryUsage({ userEmail: email, since: now - 30 * DAY }),
+    ]);
+
+    const sum = arr => arr.reduce((s, e) => s + e.inputTokens + e.outputTokens, 0);
+
+    const perModel = {};
+    for (const e of entries30d) {
+        const m = e.model || 'unknown';
+        if (!perModel[m]) perModel[m] = { tokens: 0, requests: 0 };
+        perModel[m].tokens += e.inputTokens + e.outputTokens;
+        perModel[m].requests += 1;
+    }
+
+    // Recent queries with throughput & latency (last 30d, max 100)
+    const queries = entries30d.slice(0, 100).map(e => ({
+        ts: e.ts,
+        prompt: e.prompt ? e.prompt.slice(0, 200) : null,
+        model: e.model,
+        inputTokens: e.inputTokens,
+        outputTokens: e.outputTokens,
+        totalTokens: e.inputTokens + e.outputTokens,
+        latencyMs: e.latencyMs,
+        // throughput = output tokens per second
+        throughput: e.latencyMs > 0 ? Math.round((e.outputTokens / e.latencyMs) * 1000) : 0,
+    }));
+
+    sendJson(res, 200, {
+        subscription: subscriptionSummary(subscription, profile?.plan || 'free', profile?.free_trial_ends_at),
+        feature_access: profile?.feature_access || {},
+        tokens24h: sum(entries24h),
+        tokens7d: sum(entries7d),
+        tokens30d: sum(entries30d),
+        requests24h: entries24h.length,
+        requests30d: entries30d.length,
+        avgLatencyMs: entries30d.length ? Math.round(entries30d.reduce((s, e) => s + e.latencyMs, 0) / entries30d.length) : 0,
+        avgThroughput: entries30d.length ? Math.round(entries30d.reduce((s, e) => s + (e.latencyMs > 0 ? (e.outputTokens / e.latencyMs) * 1000 : 0), 0) / entries30d.length) : 0,
+        perModel,
+        timeline: buildTimeline(entries7d, 7),
+        queries,
+    });
+}
+
+async function handleAdminFeatureAccess(req, res) {
+    const { email, feature, enabled } = await readJson(req);
+    const normalizedEmail = email?.trim().toLowerCase();
+    if (!normalizedEmail || !feature || typeof enabled !== 'boolean') {
+        sendJson(res, 400, { error: 'email, feature, and enabled are required.' });
+        return;
+    }
+
+    const allowedFeatures = new Set(['threads', 'files', 'plugins', 'image-studio', 'settings', 'project-settings']);
+    if (!allowedFeatures.has(feature)) { sendJson(res, 400, { error: 'Unsupported feature.' }); return; }
+
+    const supabase = getSupabaseClient();
+    if (!supabase) { sendJson(res, 500, { error: 'Supabase not configured.' }); return; }
+    const { data: { users }, error: usersError } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    if (usersError) { sendJson(res, 500, { error: usersError.message }); return; }
+    const user = users?.find(candidate => candidate.email?.toLowerCase() === normalizedEmail);
+    if (!user) { sendJson(res, 404, { error: 'User not found.' }); return; }
+
+    const { data: profile, error: profileError } = await supabase.from('profiles').select('feature_access').eq('id', user.id).maybeSingle();
+    if (profileError) { sendJson(res, 500, { error: profileError.message }); return; }
+    const featureAccess = { ...(profile?.feature_access || {}), [feature]: enabled };
+    const { error: updateError } = await supabase.from('profiles').update({ feature_access: featureAccess }).eq('id', user.id);
+    if (updateError) { sendJson(res, 500, { error: updateError.message }); return; }
+    sendJson(res, 200, { feature_access: featureAccess });
+}
+
+async function handleAdminReactivateUser(req, res) {
+    const { email } = await readJson(req);
+    const normalizedEmail = email?.trim().toLowerCase();
+    if (!normalizedEmail) { sendJson(res, 400, { error: 'email is required.' }); return; }
+
+    const supabase = getSupabaseClient();
+    if (!supabase) { sendJson(res, 500, { error: 'Supabase not configured.' }); return; }
+
+    const { data: { users }, error: usersError } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    if (usersError) { sendJson(res, 500, { error: usersError.message }); return; }
+    const user = users?.find(candidate => candidate.email?.toLowerCase() === normalizedEmail);
+    if (!user) { sendJson(res, 404, { error: 'User not found.' }); return; }
+
+    const { data: subscription, error: subscriptionError } = await supabase.from('subscriptions')
+        .select('plan, status, current_period_end, cancel_at_period_end, interval_months, stripe_customer_id, stripe_subscription_id, stripe_session_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+    if (subscriptionError) { sendJson(res, 500, { error: subscriptionError.message }); return; }
+
+    const { data: profile, error: profileError } = await supabase.from('profiles')
+        .select('plan, free_trial_ends_at')
+        .eq('id', user.id)
+        .maybeSingle();
+    if (profileError) { sendJson(res, 500, { error: profileError.message }); return; }
+
+    const currentSummary = subscriptionSummary(subscription, profile?.plan || 'free', profile?.free_trial_ends_at);
+    if (!currentSummary.access_expired) {
+        sendJson(res, 400, { error: 'This user does not have an expired plan.' });
+        return;
+    }
+
+    const periodEnd = new Date();
+    periodEnd.setMonth(periodEnd.getMonth() + 1);
+    const { error: updateSubscriptionError } = await supabase.from('subscriptions').upsert({
+        user_id: user.id,
+        email: normalizedEmail,
+        plan: 'free',
+        status: 'active',
+        current_period_end: null,
+        cancel_at_period_end: false,
+        interval_months: 1,
+        stripe_customer_id: subscription?.stripe_customer_id || null,
+        stripe_subscription_id: subscription?.stripe_subscription_id || null,
+        stripe_session_id: subscription?.stripe_session_id || null,
+        updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id' });
+    if (updateSubscriptionError) { sendJson(res, 500, { error: updateSubscriptionError.message }); return; }
+
+    const { error: updateProfileError } = await supabase.from('profiles')
+        .upsert({ id: user.id, plan: 'free', free_trial_ends_at: periodEnd.toISOString() }, { onConflict: 'id' });
+    if (updateProfileError) { sendJson(res, 500, { error: updateProfileError.message }); return; }
+
+    sendJson(res, 200, {
+        plan: 'free',
+        current_period_end: periodEnd.toISOString(),
+        plan_status: 'active',
+        auto_renew: false,
+        interval_months: 1,
+        access_expired: false,
+    });
+}
+
+async function handleMyUsage(req, res) {
+    const authorization = req.headers.authorization || '';
+    const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+    const supabase = getSupabaseClient();
+    if (!token || !supabase) { sendJson(res, 401, { error: 'Sign in to view your usage.' }); return; }
+
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user?.email) { sendJson(res, 401, { error: 'Your session is no longer valid.' }); return; }
+    await handleUsage(req, res, user.email);
+}
+
+async function handleAdminUsers(req, res) {
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !serviceRoleKey) { sendJson(res, 500, { error: 'Supabase not configured.' }); return; }
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
+
+    // Get all auth users
+    const { data: { users: authUsers } } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+
+    // Get all profiles and subscription state for plan administration.
+    const { data: profiles } = await supabase.from('profiles').select('id, plan, full_name, free_trial_ends_at');
+    const { data: subscriptions } = await supabase.from('subscriptions')
+        .select('user_id, plan, status, current_period_end, cancel_at_period_end, interval_months, stripe_subscription_id');
+    const hydratedSubscriptions = await hydrateSubscriptionEndDates(supabase, subscriptions || []);
+    const profileMap = {};
+    for (const p of profiles || []) profileMap[p.id] = p;
+    const subscriptionMap = {};
+    for (const subscription of hydratedSubscriptions) subscriptionMap[subscription.user_id] = subscription;
+
+    // Get per-user token usage from last 30 days
+    const since30d = Date.now() - 30 * 86400000;
+    const allEntries = await queryUsage({ since: since30d });
+    const perUserTokens = {};
+    for (const entry of allEntries) {
+        if (!entry.userEmail) continue;
+        perUserTokens[entry.userEmail] = (perUserTokens[entry.userEmail] || 0) + entry.inputTokens + entry.outputTokens;
+    }
+
+    const users = (authUsers || []).map(u => ({
+        id: u.id,
+        email: u.email,
+        full_name: profileMap[u.id]?.full_name || u.user_metadata?.full_name || null,
+        ...subscriptionSummary(subscriptionMap[u.id], profileMap[u.id]?.plan || 'free', profileMap[u.id]?.free_trial_ends_at),
+        tokens: perUserTokens[u.email?.toLowerCase()] || 0,
+        created_at: u.created_at,
+    }));
+
+    sendJson(res, 200, { users });
+}
+
+async function hydrateSubscriptionEndDates(supabase, subscriptions) {
+    const stripeKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeKey) return subscriptions;
+
+    const stripe = new Stripe(stripeKey);
+    return Promise.all(subscriptions.map(async subscription => {
+        if (subscription.current_period_end || !subscription.stripe_subscription_id) return subscription;
+        try {
+            const stripeSubscription = await stripe.subscriptions.retrieve(subscription.stripe_subscription_id);
+            const updates = stripeSubscriptionData(stripeSubscription);
+            if (!updates.current_period_end) return subscription;
+            const { error } = await supabase.from('subscriptions')
+                .update(updates)
+                .eq('user_id', subscription.user_id);
+            if (error) console.warn(`[admin] failed to save period end for ${subscription.email || subscription.user_id}: ${error.message}`);
+            return { ...subscription, ...updates };
+        } catch (error) {
+            console.warn(`[admin] failed to retrieve Stripe subscription ${subscription.stripe_subscription_id}: ${error.message}`);
+            return subscription;
+        }
+    }));
+}
+
+async function sendTransactionalEmail(email, subject, html) {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) { console.warn('[email] RESEND_API_KEY not set'); return { success: false, error: 'RESEND_API_KEY not configured.' }; }
+    const resend = new Resend(apiKey);
+    const { error } = await resend.emails.send({
+        from: RESEND_FROM_EMAIL,
+        to: email,
+        subject,
+        html,
+    });
+    if (error) console.error('[email] resend error:', error);
+    else console.log(`[email] sent "${subject}" to ${email}`);
+    return error ? { success: false, error: error.message } : { success: true };
+}
+
+function emailLayout(content) {
+    return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#0e0e0e;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0e0e0e;padding:40px 20px">
+    <tr><td align="center">
+      <table width="480" cellpadding="0" cellspacing="0" style="background:#141414;border:1px solid #2a2a2a;border-radius:16px;overflow:hidden">
+        <tr><td style="padding:32px 40px 24px;border-bottom:1px solid #1f1f1f">
+          <p style="margin:0;font-size:20px;font-weight:700;color:#ffffff">NetRoot AI</p>
+        </td></tr>
+        ${content}
+        <tr><td style="padding:20px 40px;border-top:1px solid #1f1f1f">
+          <p style="margin:0;font-size:12px;color:#4b5563">&copy; ${new Date().getFullYear()} NetRoot AI. All rights reserved.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+async function handleSendWelcome(req, res) {
+    const { email, full_name } = await readJson(req);
+    if (!email) { sendJson(res, 400, { error: 'email is required.' }); return; }
+    const name = full_name ? full_name.split(' ')[0] : 'there';
+    const html = emailLayout(`
+        <tr><td style="padding:32px 40px">
+          <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#ffffff">Welcome to NetRoot AI, ${name}! 🎉</h1>
+          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#9ca3af">Your free account is ready. Here's what you get:</p>
+          <ul style="margin:0 0 24px;padding-left:20px;font-size:14px;line-height:2;color:#9ca3af">
+            <li>AI-powered chat with multiple models</li>
+            <li>Daily token allowance</li>
+            <li>Plugin integrations</li>
+            <li>Image Studio access</li>
+          </ul>
+          <a href="https://netrootai.tech/dashboard" style="display:inline-block;background:linear-gradient(135deg,#3b82f6,#6366f1);color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;border-radius:10px">Start Chatting</a>
+          <p style="margin:28px 0 0;font-size:12px;color:#4b5563">Upgrade to Pro anytime for 10× token limits and all premium features.</p>
+        </td></tr>`);
+    await sendTransactionalEmail(email, 'Welcome to NetRoot AI! 🚀', html);
+    sendJson(res, 200, { success: true });
+}
+
+async function handleSendProUpgrade(req, res) {
+    const { email, full_name } = await readJson(req);
+    if (!email) { sendJson(res, 400, { error: 'email is required.' }); return; }
+    const name = full_name ? full_name.split(' ')[0] : 'there';
+    const html = emailLayout(`
+        <tr><td style="padding:32px 40px">
+          <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#ffffff">You're now on Pro, ${name}! ⚡</h1>
+          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#9ca3af">Your NetRoot AI Pro plan is now active. Here's what's unlocked:</p>
+          <ul style="margin:0 0 24px;padding-left:20px;font-size:14px;line-height:2;color:#9ca3af">
+            <li>10× daily token limits</li>
+            <li>Access to all premium AI models</li>
+            <li>All plugins unlocked</li>
+            <li>Priority support</li>
+          </ul>
+          <a href="https://netrootai.tech/dashboard" style="display:inline-block;background:linear-gradient(135deg,#8b5cf6,#6366f1);color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;border-radius:10px">Go to Dashboard</a>
+          <p style="margin:28px 0 0;font-size:12px;color:#4b5563">Thank you for supporting NetRoot AI. Your subscription renews monthly.</p>
+        </td></tr>`);
+    await sendTransactionalEmail(email, 'Welcome to NetRoot AI Pro! ⚡', html);
+    sendJson(res, 200, { success: true });
+}
+
+async function handleSendExpiredPlanEmail(req, res) {
+    const { email } = await readJson(req);
+    const normalizedEmail = email?.trim().toLowerCase();
+    if (!normalizedEmail) { sendJson(res, 400, { error: 'email is required.' }); return; }
+
+    const supabase = getSupabaseClient();
+    if (!supabase) { sendJson(res, 500, { error: 'Supabase not configured.' }); return; }
+
+    const { data: { users }, error: usersError } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    if (usersError) { sendJson(res, 500, { error: usersError.message }); return; }
+    const user = users?.find(candidate => candidate.email?.toLowerCase() === normalizedEmail);
+    if (!user) { sendJson(res, 404, { error: 'User not found.' }); return; }
+
+    const [{ data: subscription }, { data: profile }] = await Promise.all([
+        supabase.from('subscriptions').select('plan, status, current_period_end, cancel_at_period_end, interval_months').eq('user_id', user.id).maybeSingle(),
+        supabase.from('profiles').select('plan, free_trial_ends_at, full_name').eq('id', user.id).maybeSingle(),
+    ]);
+    const summary = subscriptionSummary(subscription, profile?.plan || 'free', profile?.free_trial_ends_at);
+    if (!summary.access_expired) {
+        sendJson(res, 409, { error: 'This user does not currently have an expired plan.' });
+        return;
+    }
+
+    const name = profile?.full_name?.split(' ')[0] || 'there';
+    const endDate = summary.current_period_end ? new Date(summary.current_period_end).toLocaleDateString() : 'recently';
+    const html = emailLayout(`
+        <tr><td style="padding:32px 40px">
+          <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#ffffff">Your NetRoot AI plan has expired, ${name}</h1>
+          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#9ca3af">Your ${summary.plan} plan ended on ${endDate}. Your account is still available on the Free plan.</p>
+          <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#9ca3af">Upgrade again to restore higher token limits, premium models, and all premium features.</p>
+          <a href="https://netrootai.tech/pricing" style="display:inline-block;background:linear-gradient(135deg,#3b82f6,#6366f1);color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;border-radius:10px">View Plans</a>
+        </td></tr>`);
+    const result = await sendTransactionalEmail(normalizedEmail, 'Your NetRoot AI plan has expired', html);
+    if (!result.success) { sendJson(res, 500, { error: result.error }); return; }
+    sendJson(res, 200, { success: true });
 }
 
 async function handleSendEmail(req, res) {
@@ -1218,7 +1927,7 @@ async function handleSendEmail(req, res) {
 
     const resend = new Resend(apiKey);
     const { error } = await resend.emails.send({
-        from: 'NetRoot AI <onboarding@resend.dev>',
+        from: RESEND_FROM_EMAIL,
         to: email,
         subject,
         html,
@@ -1242,6 +1951,10 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'GET' && req.url.startsWith('/api/usage')) {
         try { await handleUsage(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
+        return;
+    }
+    if (req.method === 'GET' && req.url.startsWith('/api/my-usage')) {
+        try { await handleMyUsage(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
         return;
     }
     if (req.method === 'POST' && req.url === '/api/chat') {
@@ -1272,13 +1985,56 @@ const server = createServer(async (req, res) => {
         try { await handleStripeWebhook(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
         return;
     }
+    if (req.method === 'GET' && req.url === '/api/admin/users') {
+        try { await handleAdminUsers(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
+        return;
+    }
+    if (req.method === 'GET' && req.url.startsWith('/api/admin/user-detail')) {
+        try { await handleAdminUserDetail(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
+        return;
+    }
+    if (req.method === 'POST' && req.url === '/api/admin/feature-access') {
+        try { await handleAdminFeatureAccess(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
+        return;
+    }
+    if (req.method === 'POST' && req.url === '/api/admin/reactivate-user') {
+        try { await handleAdminReactivateUser(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
+        return;
+    }
     if (req.method === 'POST' && req.url === '/api/send-email') {
         try { await handleSendEmail(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
+        return;
+    }
+    if (req.method === 'POST' && req.url === '/api/send-welcome') {
+        try { await handleSendWelcome(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
+        return;
+    }
+    if (req.method === 'POST' && req.url === '/api/send-pro-upgrade') {
+        try { await handleSendProUpgrade(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
+        return;
+    }
+    if (req.method === 'POST' && req.url === '/api/admin/send-expired-plan-email') {
+        try { await handleSendExpiredPlanEmail(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
+        return;
+    }
+    if (req.method === 'POST' && req.url === '/api/image-studio') {
+        try { await handleImageStudio(req, res); } catch (e) { console.error('[image-studio]', e); sendJson(res, 500, { error: e.message }, req); }
+        return;
+    }
+    if (req.method === 'POST' && req.url === '/api/video-generation') {
+        try { await handleVideoGeneration(req, res); } catch (e) { console.error('[video-generation]', e); sendJson(res, 500, { error: e.message }, req); }
         return;
     }
     sendJson(res, 404, { error: 'Not found.' });
 });
 
-server.listen(PORT, '127.0.0.1', () => {
-    console.log(`API server running at http://127.0.0.1:${PORT}`);
+const HOST = process.env.HOST || '0.0.0.0';
+
+server.listen(PORT, HOST, () => {
+    console.log(`API server running at http://${HOST}:${PORT}`);
+    console.log(`[env] VITE_SUPABASE_URL: ${process.env.VITE_SUPABASE_URL ? 'SET' : 'MISSING'}`);
+    console.log(`[env] SUPABASE_SERVICE_ROLE_KEY: ${process.env.SUPABASE_SERVICE_ROLE_KEY ? 'SET' : 'MISSING'}`);
+    console.log(`[env] AI_PROVIDER: ${process.env.AI_PROVIDER || 'not set'}`);
+    console.log(`[env] IS_VPS: ${process.env.IS_VPS || 'not set'}`);
+    console.log(`[bind] Listening on ${HOST}:${PORT}`);
 });

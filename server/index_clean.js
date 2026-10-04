@@ -17,6 +17,7 @@ const GROQ_API_URL = 'https://api.groq.com/openai/v1/responses';
 const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 const VISION_MODELS = new Set([
+    'qwen/qwen3.8-27b',
     'qwen/qwen3.6-27b'
 ]);
 // const GOOGLE_AI_BASE_URL = 'https://generativelanguage.googleapis.com/v1/models';

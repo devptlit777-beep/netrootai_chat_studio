@@ -4,7 +4,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { usePlan } from '../contexts/PlanContext';
 import { useAuth } from '../contexts/AuthContext';
 import API_BASE from '../lib/api';
-import { DEFAULT_PLAN_LIMITS, fetchPlanLimits } from '../lib/planLimits';
+import { DEFAULT_PLAN_LIMITS, fetchPlanLimits, getModelImageLimit } from '../lib/planLimits';
 
 const PRO_PLAN = {
     name: 'NetRoot AI Pro',
@@ -21,6 +21,8 @@ export default function PricingPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [planLimits, setPlanLimits] = useState(DEFAULT_PLAN_LIMITS);
+    const [months, setMonths] = useState(1);
+    const [autoRenewChoice, setAutoRenewChoice] = useState(true);
 
     useEffect(() => {
         let cancelled = false;
@@ -35,9 +37,11 @@ export default function PricingPage() {
     const freeModelsCount = planLimits.free?.allowedModels?.length || DEFAULT_PLAN_LIMITS.free.allowedModels.length;
     const proLimit = planLimits.pro?.dailyTokenLimit || DEFAULT_PLAN_LIMITS.pro.dailyTokenLimit;
     const proModelsCount = planLimits.pro?.allowedModels?.length || DEFAULT_PLAN_LIMITS.pro.allowedModels.length;
+    const fluxImageLimit = getModelImageLimit('pro', 'black-forest-labs/FLUX.1-schnell');
     const proFeatures = [
         `${proLimit.toLocaleString()} tokens / day`,
         `${proModelsCount} model${proModelsCount === 1 ? '' : 's'} available`,
+        `FLUX image generation: ${fluxImageLimit} images / month`,
         'All plugins + priority queue',
         'Email support',
         'Usage analytics',
@@ -57,7 +61,7 @@ export default function PricingPage() {
             const res = await fetch(`${API_BASE}/api/create-checkout`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: user.email, plan: 'pro' }),
+                body: JSON.stringify({ email: user.email, plan: 'pro', months, autoRenew: autoRenewChoice }),
             });
             const data = await res.json();
             if (!res.ok) { setError(data.error || 'Failed to start checkout.'); return; }
@@ -88,6 +92,15 @@ export default function PricingPage() {
                 )}
 
                 <div className={`max-w-2xl mx-auto mb-6 rounded-2xl border px-5 py-4 ${darkMode ? 'border-[#2a2a2a] bg-[#141414]' : 'border-gray-200 bg-white'}`}>
+                    <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Choose your Pro duration</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                        {[1, 2, 3, 6, 12].map(value => <button key={value} type="button" onClick={() => setMonths(value)} className={`px-3 py-2 rounded-lg text-sm font-semibold border ${months === value ? 'bg-blue-600 border-blue-500 text-white' : darkMode ? 'border-[#333] text-gray-400 hover:text-white' : 'border-gray-200 text-gray-600'}`}>{value} {value === 1 ? 'month' : 'months'}</button>)}
+                    </div>
+                    <p className={`text-xs mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>${(19 * months).toFixed(2)} is billed every {months} month{months === 1 ? '' : 's'} until cancelled.</p>
+                    <label className={`mt-3 flex items-center gap-2 text-xs cursor-pointer ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}><input type="checkbox" checked={autoRenewChoice} onChange={event => setAutoRenewChoice(event.target.checked)} className="accent-blue-600" /> Auto-renew this plan when the selected term ends</label>
+                </div>
+
+                <div className={`max-w-2xl mx-auto mb-6 rounded-2xl border px-5 py-4 ${darkMode ? 'border-[#2a2a2a] bg-[#141414]' : 'border-gray-200 bg-white'}`}>
                     <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Plan limits at a glance</p>
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
                         <div className={`rounded-xl border p-3 ${darkMode ? 'border-[#2a2a2a] bg-[#1a1a1a]' : 'border-gray-200 bg-gray-50'}`}>
@@ -96,7 +109,7 @@ export default function PricingPage() {
                         </div>
                         <div className={`rounded-xl border p-3 ${darkMode ? 'border-blue-500/30 bg-blue-500/10' : 'border-blue-200 bg-blue-50'}`}>
                             <p className={`text-xs font-semibold uppercase tracking-wide ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>Pro</p>
-                            <p className={`mt-1 text-sm ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>{proLimit.toLocaleString()} tokens/day • {proModelsCount} model{proModelsCount === 1 ? '' : 's'}</p>
+                            <p className={`mt-1 text-sm ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>{proLimit.toLocaleString()} tokens/day • {proModelsCount} model{proModelsCount === 1 ? '' : 's'} • FLUX: {fluxImageLimit} images/month</p>
                         </div>
                     </div>
                 </div>

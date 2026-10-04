@@ -1,37 +1,28 @@
-import { plugin } from 'postcss';
 import { supabase } from './supabase';
 
 const CORE_PLUGINS = [
   { plugin_id: 'web-search', enabled: true, config: {} },
   { plugin_id: 'calculator', enabled: true, config: {} },
   { plugin_id: 'pdf-search', enabled: true, config: {} },
-  //{ plugin_id: 'image-describe', enabled: true, config: {} }
+  { plugin_id: 'json-transformer', enabled: true, config: {} },
+  { plugin_id: 'code-runner', enabled: true, config: {} },
+  { plugin_id: 'arxiv', enabled: true, config: {} },
+
 ];
 
+const _running = new Set();
+const _done = new Set();
+
 export async function ensureCorePlugins(userId) {
-  if (!userId) return;
-
-  for (const plugin of CORE_PLUGINS) {
-    const payload = { user_id: userId, ...plugin };
-    const { data, error } = await supabase
+  if (!userId || _running.has(userId) || _done.has(userId)) return;
+  _running.add(userId);
+  try {
+    const rows = CORE_PLUGINS.map(p => ({ user_id: userId, ...p }));
+    await supabase
       .from('user_plugins')
-      .select('plugin_id')
-      .eq('user_id', userId)
-      .eq('plugin_id', plugin.plugin_id)
-      .maybeSingle();
-
-    if (error && error.code !== 'PGRST116') {
-      throw error;
-    }
-
-    if (data) {
-      await supabase
-        .from('user_plugins')
-        .update(payload)
-        .eq('user_id', userId)
-        .eq('plugin_id', plugin.plugin_id);
-    } else {
-      await supabase.from('user_plugins').insert(payload);
-    }
+      .upsert(rows, { onConflict: 'user_id,plugin_id', ignoreDuplicates: true });
+    _done.add(userId);
+  } finally {
+    _running.delete(userId);
   }
 }

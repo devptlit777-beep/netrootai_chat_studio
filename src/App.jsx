@@ -1,19 +1,48 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
+import { usePlan } from "./contexts/PlanContext";
 
+import AdminPage from "./pages/AdminPage";
+import AdminUserPage from "./pages/AdminUserPage";
 import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
 import SettingsPage from "./pages/SettingsPage";
 import ProjectSettingsPage from "./pages/ProjectSettingsPage";
 import StoragePage from "./pages/StoragePage";
 import PluginsPage from "./pages/PluginsPage";
+import ImageStudioPage from "./pages/ImageStudioPage";
 import ResetPassword from "./pages/ResetPassword";
 import ThreadsPage from "./pages/ThreadsPage";
+import HelpPage from "./pages/HelpPage";
 import PricingPage from './pages/PricingPage';
 import CheckoutSuccessPage from './pages/CheckoutSuccessPage';
 import { PlanProvider } from "./contexts/PlanContext";
 import Sidebar from "./components/Sidebar";
+
+function UpgradeRequired({ darkMode }) {
+  const navigate = useNavigate();
+
+  return (
+    <div className={`min-h-screen flex items-center justify-center px-6 ${darkMode ? "bg-[#0e0e0e] text-white" : "bg-gray-50 text-gray-900"}`}>
+      <div className={`w-full max-w-md rounded-2xl border p-8 text-center ${darkMode ? "bg-[#111] border-[#2a2a2a]" : "bg-white border-gray-200"}`}>
+        <h1 className="text-xl font-bold">Upgrade to Pro to access this feature</h1>
+        <p className={`mt-3 text-sm leading-6 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+          Your one-month access period has ended. Chat remains available on the Free plan, but this feature requires an active Pro plan.
+        </p>
+        <button onClick={() => navigate("/pricing")} className="mt-6 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700">
+          Upgrade to Pro
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function FeatureGate({ children, darkMode, feature }) {
+  const { accessExpired, featureAccess, loading } = usePlan();
+  if (loading) return null;
+  return accessExpired && !featureAccess?.[feature] ? <UpgradeRequired darkMode={darkMode} /> : children;
+}
 
 function ProtectedLayout() {
   const { user, loading } = useAuth();
@@ -73,18 +102,22 @@ function ProtectedLayout() {
 
           <Route path="/checkout/success" element={<CheckoutSuccessPage />} />
 
-          <Route path="/threads" element={<ThreadsPage />} />
+          <Route path="/threads" element={<FeatureGate darkMode={darkMode} feature="threads"><ThreadsPage /></FeatureGate>} />
 
-          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/help" element={<HelpPage />} />
+
+          <Route path="/settings" element={<FeatureGate darkMode={darkMode} feature="settings"><SettingsPage /></FeatureGate>} />
 
           <Route
             path="/project-settings"
-            element={<ProjectSettingsPage />}
+            element={<FeatureGate darkMode={darkMode} feature="project-settings"><ProjectSettingsPage /></FeatureGate>}
           />
 
-          <Route path="/files" element={<StoragePage />} />
+          <Route path="/files" element={<FeatureGate darkMode={darkMode} feature="files"><StoragePage /></FeatureGate>} />
 
-          <Route path="/plugins" element={<PluginsPage />} />
+          <Route path="/plugins" element={<FeatureGate darkMode={darkMode} feature="plugins"><PluginsPage /></FeatureGate>} />
+
+          <Route path="/image-studio" element={<FeatureGate darkMode={darkMode} feature="image-studio"><ImageStudioPage /></FeatureGate>} />
 
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
@@ -100,10 +133,11 @@ function AuthRoutes() {
 
   return (
     <Routes>
-      <Route
-        path="/login"
-        element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />}
-      />
+      <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
+
+      <Route path="/admin" element={<AdminPage />} />
+
+      <Route path="/admin/user/:email" element={<AdminUserPage />} />
 
       <Route path="/reset" element={<ResetPassword />} />
 

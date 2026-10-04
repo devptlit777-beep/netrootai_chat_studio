@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import API_BASE from '../lib/api';
 
 const AuthContext = createContext(null);
 
@@ -68,6 +69,15 @@ export function AuthProvider({ children }) {
       options: { data: { full_name: fullName } },
     });
     if (error) return { error: error.message };
+    // Auto sign-in immediately after signup (no email confirmation)
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    if (signInError) return { error: signInError.message };
+    // Send welcome email (best-effort)
+    fetch(`${API_BASE}/api/send-welcome`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, full_name: fullName }),
+    }).catch(() => {});
     return { error: null };
   }
 
@@ -95,7 +105,7 @@ export function AuthProvider({ children }) {
   }
 
   async function signOut() {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
   }
 
   async function resetPassword(email) {

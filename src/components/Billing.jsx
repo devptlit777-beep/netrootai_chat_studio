@@ -3,7 +3,7 @@ import { Loader2, Check, Zap, Star, Shield } from 'lucide-react';
 import { usePlan } from '../contexts/PlanContext';
 import { useAuth } from '../contexts/AuthContext';
 import API_BASE from '../lib/api';
-import { DEFAULT_PLAN_LIMITS, fetchPlanLimits } from '../lib/planLimits';
+import { DEFAULT_PLAN_LIMITS, fetchPlanLimits, getModelImageLimit } from '../lib/planLimits';
 
 const PLANS = [
   {
@@ -14,10 +14,10 @@ const PLANS = [
     color: 'gray',
     icon: Shield,
     features: [
-      '20,000 tokens / day',
+      '10,000 tokens / day',
       '3 models available',
       'Basic plugins',
-      'Community support',
+      'token dashboard',
     ],
   },
   {
@@ -30,7 +30,8 @@ const PLANS = [
     badge: 'Most popular',
     features: [
       '100,000 tokens / day',
-      '4 models available',
+      '6 models available',
+      '10 images generated per month with FLUX',
       'All plugins + priority queue',
       'Email support',
       'Usage analytics',
@@ -56,11 +57,14 @@ const PLANS = [
 ];
 
 export default function Billing({ darkMode }) {
-  const { plan, refresh } = usePlan();
+  const { plan, refresh, autoRenew, planEndDate } = usePlan();
   const { user } = useAuth();
   const [loadingPlan, setLoadingPlan] = useState(null);
   const [error, setError] = useState('');
+  const [downgradeMessage, setDowngradeMessage] = useState('');
   const [planLimits, setPlanLimits] = useState(DEFAULT_PLAN_LIMITS);
+  const [months, setMonths] = useState(1);
+  const [autoRenewChoice, setAutoRenewChoice] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,16 +78,18 @@ export default function Billing({ darkMode }) {
   const freeModelsCount = planLimits.free?.allowedModels?.length || DEFAULT_PLAN_LIMITS.free.allowedModels.length;
   const proLimit = planLimits.pro?.dailyTokenLimit || DEFAULT_PLAN_LIMITS.pro.dailyTokenLimit;
   const proModelsCount = planLimits.pro?.allowedModels?.length || DEFAULT_PLAN_LIMITS.pro.allowedModels.length;
+  const fluxImageLimit = getModelImageLimit('pro', 'black-forest-labs/FLUX.1-schnell');
 
   async function handleUpgrade(planId) {
     if (!user?.email) return;
     setError('');
+    setDowngradeMessage('');
     setLoadingPlan(planId);
     try {
       const res = await fetch(`${API_BASE}/api/create-checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: user.email, plan: planId }),
+        body: JSON.stringify({ email: user.email, plan: planId, months, autoRenew: autoRenewChoice }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Failed to start checkout.'); return; }
@@ -108,6 +114,10 @@ export default function Billing({ darkMode }) {
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Failed to downgrade to Free.'); return; }
       await refresh();
+      const endDate = data.current_period_end ? new Date(data.current_period_end).toLocaleDateString() : null;
+      setDowngradeMessage(data.cancel_at_period_end
+        ? `Auto-renewal is off. Your Pro access remains active until ${endDate || 'the end of the current billing period'}.`
+        : 'Your plan has been changed to Free.');
     } catch {
       setError('Network error. Please try again.');
     } finally {
@@ -121,6 +131,9 @@ export default function Billing({ darkMode }) {
         <div className={`px-4 py-3 rounded-xl text-sm font-medium ${darkMode ? 'bg-red-500/10 border border-red-500/25 text-red-400' : 'bg-red-50 border border-red-200 text-red-700'}`}>
           {error}
         </div>
+      )}
+      {downgradeMessage && (
+        <div className={`px-4 py-3 rounded-xl text-sm font-medium ${darkMode ? 'bg-emerald-500/10 border border-emerald-500/25 text-emerald-400' : 'bg-emerald-50 border border-emerald-200 text-emerald-700'}`}>{downgradeMessage}</div>
       )}
 
       {/* Current plan banner */}
@@ -143,9 +156,9 @@ export default function Billing({ darkMode }) {
               </span>{' '}plan
             </p>
             <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-              {plan === 'free' ? `Upgrade to raise your daily token limit to ${proLimit.toLocaleString()} and unlock ${proModelsCount} model${proModelsCount === 1 ? '' : 's'}.`
-                : plan === 'pro' ? `You currently have ${proLimit.toLocaleString()} daily tokens and access to ${proModelsCount} model${proModelsCount === 1 ? '' : 's'}.`
-                  : 'You have unlimited tokens and full access to all features.'}
+              {plan === 'free' ? `Upgrade to raise your daily token limit to ${proLimit.toLocaleString()} and unlock ${proModelsCount} model${proModelsCount === 1 ? '' : 's'}; FLUX includes ${fluxImageLimit} images/month.`
+                : plan === 'pro' ? `You currently have ${proLimit.toLocaleString()} daily tokens, access to ${proModelsCount} model${proModelsCount === 1 ? '' : 's'}, and FLUX allows ${fluxImageLimit} images/month.`
+                  : 'You have unlimited tokens and full access to all features, including FLUX at up to 10 images/month.'}
             </p>
           </div>
         </div>
@@ -160,9 +173,18 @@ export default function Billing({ darkMode }) {
           </div>
           <div className={`rounded-xl p-3 border ${darkMode ? 'border-blue-500/30 bg-blue-500/10' : 'border-blue-200 bg-blue-50'}`}>
             <p className={`text-xs font-semibold uppercase tracking-wide ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>Pro</p>
-            <p className={`mt-1 text-sm ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>{proLimit.toLocaleString()} tokens/day • {proModelsCount} model{proModelsCount === 1 ? '' : 's'}</p>
+            <p className={`mt-1 text-sm ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>{proLimit.toLocaleString()} tokens/day • {proModelsCount} model{proModelsCount === 1 ? '' : 's'} • FLUX: {fluxImageLimit} images/month</p>
           </div>
         </div>
+      </div>
+
+      <div className={`rounded-2xl border px-5 py-4 ${darkMode ? 'border-[#2a2a2a] bg-[#161616]' : 'border-gray-200 bg-white'}`}>
+        <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Choose Pro duration</p>
+        <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>You will be charged ${(19 * months).toFixed(2)} every {months} month{months === 1 ? '' : 's'} until you cancel.</p>
+        <div className="mt-3 flex gap-2">
+          {[1, 2, 3, 6, 12].map(value => <button key={value} type="button" onClick={() => setMonths(value)} className={`px-3 py-2 rounded-lg text-sm font-semibold border ${months === value ? 'bg-blue-600 border-blue-500 text-white' : darkMode ? 'border-[#333] text-gray-400 hover:text-white' : 'border-gray-200 text-gray-600'}`}>{value} {value === 1 ? 'month' : 'months'}</button>)}
+        </div>
+        <label className={`mt-4 flex items-center gap-2 text-xs cursor-pointer ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}><input type="checkbox" checked={autoRenewChoice} onChange={event => setAutoRenewChoice(event.target.checked)} className="accent-blue-600" /> Auto-renew this plan when the selected term ends</label>
       </div>
 
       {/* Plan cards */}
@@ -207,7 +229,7 @@ export default function Billing({ darkMode }) {
                 </div>
                 {p.id === 'free' && plan !== 'free' && (
                   <p className={`mt-3 text-xs leading-relaxed ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                    Cancel your current paid subscription and return to Free. You can upgrade again anytime.
+                    {autoRenew ? `Cancel renewal at the end of the current billing period${planEndDate ? ` (${new Date(planEndDate).toLocaleDateString()})` : ''}.` : 'Your cancellation is scheduled; Pro access continues until the plan end date.'}
                   </p>
                 )}
               </div>
@@ -223,7 +245,7 @@ export default function Billing({ darkMode }) {
               </ul>
 
               <button
-                disabled={isCurrent || !!loadingPlan}
+                disabled={isCurrent || !!loadingPlan || (p.id === 'free' && plan !== 'free' && !autoRenew)}
                 onClick={() => {
                   if (isCurrent) return;
                   if (p.id === 'enterprise') {
@@ -247,7 +269,7 @@ export default function Billing({ darkMode }) {
               >
                 {loadingPlan === p.id
                   ? <><Loader2 className="w-4 h-4 animate-spin" /> Redirecting…</>
-                  : isCurrent ? 'Current plan' : p.id === 'free' ? 'Downgrade to Free' : p.cta}
+                  : isCurrent ? 'Current plan' : p.id === 'free' ? (plan !== 'free' && !autoRenew ? 'Cancellation scheduled' : 'Downgrade to Free') : p.cta}
               </button>
             </div>
           );

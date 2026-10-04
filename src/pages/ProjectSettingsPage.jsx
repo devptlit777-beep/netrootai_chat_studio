@@ -13,7 +13,7 @@ import ApiKeysTab from '../components/ApiKeysTab';
 import TokenDashboard from '../components/TokenDashboard';
 import BillingTab from '../components/Billing';
 import API_BASE from '../lib/api';
-import { DEFAULT_PLAN_LIMITS, fetchPlanLimits, normalizePlan } from '../lib/planLimits';
+import { DEFAULT_PLAN_LIMITS, fetchPlanLimits, getModelImageLimit, normalizePlan } from '../lib/planLimits';
 // import MembersTab from '../components/MembersTab';
 // import GroupsTab from '../components/GroupsTab';
 // import RolesTab from '../components/RolesTab';
@@ -183,22 +183,22 @@ const ALL_MODELS = [
     usageWeight: 0.35,
   },
   {
-    id: 'llama-3.1-8b-instant',
-    name: 'Llama 3.1 8B',
+    id: 'allam-2-7b',
+    name: 'Allam 2 7B',
     desc: 'Fast lightweight model for quick responses',
     rpm: 30, tpm: 30000, dailyTokens: 500000, contextWindow: 131072,
     usageWeight: 0.08,
   },
   {
-    id: 'qwen/qwen3.6-27b',
-    name: 'Qwen3.6 27B ',
+    id: 'qwen/qwen3.8-27b',
+    name: 'Qwen3.8 27B',
     desc: 'Vision-capable model for image understanding and multimodal tasks',
     rpm: 30, tpm: 6000, dailyTokens: 200000, contextWindow: 131072,
     usageWeight: 0.10,
   },
   {
-    id: 'llama-3.3-70b-versatile',
-    name: 'Llama 3.3 70B',
+    id: 'groq/compound-mini',
+    name: 'Compound Mini',
     desc: 'Versatile model for coding, reasoning, and chat',
     rpm: 30, tpm: 6000, dailyTokens: 100000, contextWindow: 131072,
     usageWeight: 0.12,
@@ -210,6 +210,13 @@ const ALL_MODELS = [
     rpm: 30, tpm: 6000, dailyTokens: 100000, contextWindow: 131072,
     usageWeight: 0.12,
   },
+  {
+    id: 'black-forest-labs/FLUX.1-schnell',
+    name: 'FLUX.1 Schnell',
+    desc: 'Image generation model • 10 images/month on Pro/Enterprise',
+    rpm: 10, tpm: 0, dailyTokens: 1000, contextWindow: 0,
+    usageWeight: 1,
+  },
 ];
 
 function getVisibleModelIds(plan) {
@@ -220,6 +227,7 @@ function getVisibleModelIds(plan) {
 
 /* Limites tab  */
 function LimitsTab({ darkMode, onUpgrade }) {
+  const { session } = useAuth();
   const { plan } = usePlan();
   const [usageData, setUsageData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -236,20 +244,49 @@ function LimitsTab({ darkMode, onUpgrade }) {
   }, []);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/usage?period=1d`)
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((d) => { setUsageData(d); setLoading(false); })
-      .catch((err) => { console.error('Usage fetch failed:', err); setLoading(false); });
-  }, []);
+    if (!session?.access_token) return;
+    let cancelled = false;
+    const loadUsage = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/my-usage?period=1d&_=${Date.now()}`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          cache: 'no-store',
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        if (!cancelled) {
+          setUsageData(data);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Usage fetch failed:', err);
+          setLoading(false);
+        }
+      }
+    };
+    const refreshOnFocus = () => { loadUsage(); };
+    const refreshOnVisible = () => {
+      if (document.visibilityState === 'visible') loadUsage();
+    };
+
+    loadUsage();
+    window.addEventListener('focus', refreshOnFocus);
+    document.addEventListener('visibilitychange', refreshOnVisible);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', refreshOnFocus);
+      document.removeEventListener('visibilitychange', refreshOnVisible);
+    };
+  }, [session?.access_token]);
 
   useEffect(() => {
     setAllowedModels(getVisibleModelIds(plan));
   }, [plan, planLimits]);
 
   const perModelTokens = usageData?.perModelTokens || {};
+  const perModelImages = usageData?.perModelImages || {};
+  const imageUsageThisMonth = usageData?.imageUsageThisMonth ?? perModelImages['black-forest-labs/FLUX.1-schnell'] ?? 0;
   const activePlanLimits = planLimits[normalizePlan(plan)] || planLimits.free;
   const planLimit = activePlanLimits.dailyTokenLimit;
   const freeLimit = planLimits.free?.dailyTokenLimit || DEFAULT_PLAN_LIMITS.free.dailyTokenLimit;
@@ -265,7 +302,7 @@ function LimitsTab({ darkMode, onUpgrade }) {
             Model Rate Limits
           </h3>
           <p className={`text-sm mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-            {plan === 'pro' ? `Pro includes ${proLimit.toLocaleString()} daily tokens and ${proModelsCount} model${proModelsCount === 1 ? '' : 's'}.` : `Free includes ${freeLimit.toLocaleString()} daily tokens and ${freeModelsCount} model${freeModelsCount === 1 ? '' : 's'}. Upgrade to Pro for ${proLimit.toLocaleString()} daily tokens and ${proModelsCount} model${proModelsCount === 1 ? '' : 's'}.`}
+            {plan === 'pro' ? `Pro includes ${proLimit.toLocaleString()} daily tokens, ${proModelsCount} model${proModelsCount === 1 ? '' : 's'}, and FLUX at 10 images/month.` : `Free includes ${freeLimit.toLocaleString()} daily tokens and ${freeModelsCount} model${freeModelsCount === 1 ? '' : 's'}. Upgrade to Pro for ${proLimit.toLocaleString()} daily tokens, ${proModelsCount} model${proModelsCount === 1 ? '' : 's'}, and FLUX at 10 images/month.`}
           </p>
         </div>
 
@@ -317,12 +354,13 @@ function LimitsTab({ darkMode, onUpgrade }) {
 
       <div className="space-y-3">
         {ALL_MODELS.filter(m => allowedModels.includes(m.id)).map(model => {
-          const usedTokens = perModelTokens[model.id] || 0;
-          const effectiveLimit = planLimit;
+          const isFlux = model.id === 'black-forest-labs/FLUX.1-schnell';
+          const usedValue = isFlux ? imageUsageThisMonth : (perModelTokens[model.id] || 0);
+          const effectiveLimit = isFlux ? getModelImageLimit(plan, model.id) : planLimit;
 
           const rawPct =
             effectiveLimit && effectiveLimit > 0
-              ? Math.round((usedTokens / effectiveLimit) * 100)
+              ? Math.round((usedValue / effectiveLimit) * 100)
               : 0;
 
           const dailyPct = Math.min(100, Math.max(0, rawPct));
@@ -364,7 +402,7 @@ function LimitsTab({ darkMode, onUpgrade }) {
                       Daily limit reached
                     </p>
                     <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {model.name} is blocked until midnight or you upgrade
+                      {isFlux ? `${model.name} is blocked until the next month or you upgrade` : `${model.name} is blocked until midnight or you upgrade`}
                     </p>
                   </div>
 
@@ -442,7 +480,7 @@ function LimitsTab({ darkMode, onUpgrade }) {
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                        Daily tokens
+                        {isFlux ? 'Images this month' : 'Daily tokens'}
                       </span>
 
                       <span
@@ -457,7 +495,7 @@ function LimitsTab({ darkMode, onUpgrade }) {
                                 : 'text-gray-500'
                           }`}
                       >
-                        {usedTokens.toLocaleString()} / {effectiveLimit.toLocaleString()} ({dailyPct}%)
+                        {usedValue.toLocaleString()} / {effectiveLimit.toLocaleString()} ({dailyPct}%)
                       </span>
                     </div>
 
@@ -478,13 +516,13 @@ function LimitsTab({ darkMode, onUpgrade }) {
               {!isBlocked && isOver && (
                 <div className={`px-5 py-3 border-t flex items-center gap-3 ${darkMode ? 'border-[#2a2a2a] bg-red-500/5' : 'border-red-100 bg-red-50'}`}>
                   <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0" />
-                  <span className={`text-xs font-medium ${darkMode ? 'text-red-400' : 'text-red-600'}`}>Daily limit reached — upgrade to continue using this model.</span>
+                  <span className={`text-xs font-medium ${darkMode ? 'text-red-400' : 'text-red-600'}`}>{isFlux ? 'Monthly limit reached — upgrade to continue generating images.' : 'Daily limit reached — upgrade to continue using this model.'}</span>
                 </div>
               )}
               {!isBlocked && isWarn && (
                 <div className={`px-5 py-3 border-t flex items-center gap-3 ${darkMode ? 'border-[#2a2a2a] bg-yellow-500/5' : 'border-yellow-100 bg-yellow-50'}`}>
                   <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
-                  <span className={`text-xs font-medium ${darkMode ? 'text-yellow-400' : 'text-yellow-700'}`}>Approaching daily limit — consider upgrading your plan.</span>
+                  <span className={`text-xs font-medium ${darkMode ? 'text-yellow-400' : 'text-yellow-700'}`}>{isFlux ? 'Approaching monthly image limit — consider upgrading your plan.' : 'Approaching daily limit — consider upgrading your plan.'}</span>
                 </div>
               )}
             </div>
