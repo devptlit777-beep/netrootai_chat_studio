@@ -483,39 +483,7 @@ function hfRequest(prompt, token) {
     });
 }
 
-async function openSoraVideoRequest(prompt, token) {
-    const endpoint = process.env.OPEN_SORA_ENDPOINT?.trim();
-    if (!endpoint) {
-        throw new Error('Open-Sora-v2 is not hosted by Hugging Face Inference API. Configure OPEN_SORA_ENDPOINT with a running Open-Sora deployment.');
-    }
-    const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inputs: prompt }),
-    });
-    const contentType = response.headers.get('content-type') || '';
-    if (!response.ok) {
-        const errorBody = await response.text();
-        let message = errorBody.slice(0, 300);
-        try { message = JSON.parse(errorBody).error || JSON.parse(errorBody).detail || message; } catch { }
-        if (response.status === 400 && message.toLowerCase().includes('not supported by provider')) {
-            throw new Error('Open-Sora-v2 is not supported by the selected inference provider. Configure OPEN_SORA_ENDPOINT with a running Open-Sora deployment.');
-        }
-        if (response.status === 404 || response.status === 503) {
-            throw new Error('Open-Sora-v2 is not deployed by Hugging Face Inference Providers. Configure OPEN_SORA_ENDPOINT with a running Open-Sora deployment.');
-        }
-        throw new Error(`Open-Sora request failed (${response.status}): ${message}`);
-    }
-    if (contentType.includes('application/json')) {
-        const data = await response.json();
-        const videoUrl = data.video_url || data.video?.url || data.url;
-        if (!videoUrl) throw new Error('Open-Sora endpoint returned no video URL.');
-        return videoUrl;
-    }
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (!buffer.length) throw new Error('Open-Sora returned an empty video.');
-    return `data:${contentType || 'video/mp4'};base64,${buffer.toString('base64')}`;
-}
+const AGNES_VIDEO_MODEL = 'agnes-video-2.5-flash';
 
 async function handleImageStudio(req, res) {
     const body = await readJson(req);
@@ -528,8 +496,8 @@ async function handleImageStudio(req, res) {
         return;
     }
 
-    const hfToken = process.env.HF_TOKEN;
-    if (!hfToken) { sendJson(res, 500, { error: 'HF_TOKEN is not configured.' }, req); return; }
+    const hfToken = process.env.HF_IMAGE_TOKEN || process.env.HF_TOKEN;
+    if (!hfToken) { sendJson(res, 500, { error: 'HF_IMAGE_TOKEN is not configured (set it or provide the legacy HF_TOKEN).' }, req); return; }
 
     console.log('[image-studio] generating:', prompt.slice(0, 80));
 
@@ -556,6 +524,13 @@ async function handleVideoGeneration(req, res) {
     const body = await readJson(req);
     const prompt = String(body.prompt || '').trim();
     if (!prompt) { sendJson(res, 400, { error: 'Prompt is required.' }, req); return; }
+    if (prompt.length > 16000) { sendJson(res, 400, { error: 'Prompt must be 16,000 characters or fewer.' }, req); return; }
+    const allowedAspectRatios = new Set(['16:9', '9:16']);
+    const aspectRatio = String(body.aspectRatio || '');
+    if (!allowedAspectRatios.has(aspectRatio)) {
+        sendJson(res, 400, { error: 'Unsupported video aspect ratio.' }, req);
+        return;
+    }
 
     const { accessExpired, featureAccess } = await resolveUserPlan(req, body);
     if (accessExpired && !featureAccess?.['image-studio']) {
@@ -563,15 +538,165 @@ async function handleVideoGeneration(req, res) {
         return;
     }
 
-    const hfToken = process.env.HF_TOKEN;
-    if (!hfToken) { sendJson(res, 500, { error: 'HF_TOKEN is not configured.' }, req); return; }
+    const apiKey = process.env.AGNES_API_KEY;
+    if (!apiKey) { sendJson(res, 500, { error: 'AGNES_API_KEY is not configured.' }, req); return; }
 
     try {
-        const videoUrl = await openSoraVideoRequest(prompt, hfToken);
-        sendJson(res, 200, { videoUrl, model: 'hpcai-tech/Open-Sora-v2', provider: 'huggingface' }, req);
+        const fetchAgnes = async (url, options, operation) => {
+            try {
+                return await fetch(url, options);
+            } catch (error) {
+                const errorCode = typeof error?.cause?.code === 'string' ? ` (${error.cause.code})` : '';
+                throw new Error(`Agnes ${operation} request failed${errorCode}: ${error.message}`, { cause: error });
+            }
+        };
+        const apiBase = new URL(process.env.AGNES_BASE_URL || 'https://apihub.agnes-ai.com/v1');
+        if (apiBase.protocol !== 'https:') throw new Error('AGNES_BASE_URL must use HTTPS.');
+        apiBase.pathname = apiBase.pathname.replace(/\/+$/, '');
+
+        const headers = {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+        };
+        const createUrl = new URL(`${apiBase.pathname}/videos`, apiBase.origin);
+        const createBody = JSON.stringify({
+            model: AGNES_VIDEO_MODEL,
+            prompt,
+            mode: 'text',
+            seconds: '5',
+            size: '720P',
+            aspect_ratio: aspectRatio,
+        });
+        const maxCreateAttempts = 3;
+        let task;
+        for (let attempt = 0; attempt < maxCreateAttempts; attempt++) {
+            const createResponse = await fetchAgnes(createUrl, {
+                method: 'POST',
+                headers,
+                body: createBody,
+                signal: AbortSignal.timeout(30_000),
+            }, 'video task creation');
+            const createText = await createResponse.text();
+            let responseBody;
+            try {
+                responseBody = JSON.parse(createText);
+            } catch {
+                responseBody = null;
+            }
+
+            if (!createResponse.ok) {
+                const providerMessage = responseBody?.error?.message
+                    || responseBody?.error
+                    || responseBody?.message
+                    || createText.slice(0, 300);
+                const message = String(providerMessage);
+                const queueFull = createResponse.status === 503 && /video queue is full|queue is full/i.test(message);
+                if (!queueFull || attempt === maxCreateAttempts - 1) {
+                    if (queueFull) {
+                        throw new Error(`Agnes video queue is still full after ${maxCreateAttempts} attempts. Please wait at least a minute before trying again. ${message}`);
+                    }
+                    throw new Error(`Agnes task creation failed (${createResponse.status}): ${message}`);
+                }
+
+                const retryAfter = createResponse.headers.get('retry-after');
+                const retryAfterSeconds = retryAfter && /^\d+(?:\.\d+)?$/.test(retryAfter)
+                    ? Number(retryAfter) * 1000
+                    : retryAfter ? Date.parse(retryAfter) - Date.now() : NaN;
+                const minimumRetryMs = 60_000 * (attempt + 1);
+                const retryDelayMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+                    ? Math.max(minimumRetryMs, retryAfterSeconds)
+                    : minimumRetryMs;
+                if (retryDelayMs > 5 * 60_000) {
+                    throw new Error(`Agnes video queue is full and requested a long retry delay. Please wait ${Math.ceil(retryDelayMs / 60_000)} minutes before trying again. ${message}`);
+                }
+                console.warn(`[video-generation] Agnes video queue is full; retrying in ${retryDelayMs}ms (attempt ${attempt + 2}/${maxCreateAttempts}).`);
+                await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+                continue;
+            }
+
+            if (!responseBody || typeof responseBody !== 'object' || Array.isArray(responseBody)) {
+                throw new Error(`Agnes task creation returned invalid JSON (${createResponse.status}).`);
+            }
+            task = responseBody;
+            break;
+        }
+
+        const videoId = task.video_id;
+        if (typeof videoId !== 'string' || !videoId) {
+            throw new Error('Agnes task creation response did not include a video_id.');
+        }
+
+        const pollUrl = new URL('/agnesapi', apiBase.origin);
+        pollUrl.searchParams.set('video_id', videoId);
+        pollUrl.searchParams.set('model_name', AGNES_VIDEO_MODEL);
+        const deadline = Date.now() + 10 * 60 * 1000;
+        let result;
+        while (Date.now() < deadline) {
+            const remainingMs = deadline - Date.now();
+            const pollResponse = await fetchAgnes(pollUrl, {
+                headers: { Authorization: headers.Authorization },
+                signal: AbortSignal.timeout(Math.min(30_000, remainingMs)),
+            }, 'video status check');
+            const pollText = await pollResponse.text();
+            try {
+                result = JSON.parse(pollText);
+            } catch {
+                throw new Error(`Agnes status check returned invalid JSON (${pollResponse.status}).`);
+            }
+            if (!result || typeof result !== 'object' || Array.isArray(result)) {
+                throw new Error('Agnes status check returned an invalid response.');
+            }
+            if (!pollResponse.ok) {
+                const message = result.error?.message || result.error || result.message || pollText.slice(0, 300);
+                throw new Error(`Agnes status check failed (${pollResponse.status}): ${message}`);
+            }
+
+            const status = String(result.status || '').toLowerCase();
+            if (status === 'completed') break;
+            if (status === 'failed') {
+                const message = result.error?.message || result.error || result.message || 'The provider reported a failed task.';
+                throw new Error(`Agnes video generation failed: ${message}`);
+            }
+            if (!['queued', 'in_progress', 'pending', 'running'].includes(status)) {
+                throw new Error(`Agnes returned an unexpected video task status: ${status || 'missing'}.`);
+            }
+            await new Promise(resolve => setTimeout(resolve, Math.min(2000, Math.max(0, deadline - Date.now()))));
+        }
+        if (!result || String(result.status || '').toLowerCase() !== 'completed') {
+            throw new Error('Agnes video generation timed out after 10 minutes.');
+        }
+        if (typeof result.url !== 'string' || !result.url) {
+            throw new Error('Agnes completed the task without returning a video URL.');
+        }
+
+        const videoUrl = new URL(result.url);
+        if (videoUrl.protocol !== 'https:' || videoUrl.username || videoUrl.password) {
+            throw new Error('Agnes returned an invalid video URL.');
+        }
+        const videoResponse = await fetchAgnes(
+            videoUrl,
+            { signal: AbortSignal.timeout(120_000) },
+            'generated video download',
+        );
+        if (!videoResponse.ok) {
+            throw new Error(`Could not download the generated video (${videoResponse.status}).`);
+        }
+        const videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
+        if (!videoBuffer.length) throw new Error('Agnes returned an empty video.');
+
+        const origin = req?.headers?.origin || '';
+        const allowed = ['http://127.0.0.1:5173', 'http://localhost:5173', 'https://netrootai.tech', 'https://ampjiasvmmhxeqwdullc.supabase.co'];
+        const contentType = videoResponse.headers.get('content-type') || '';
+        res.writeHead(200, {
+            'Content-Type': contentType.startsWith('video/') ? contentType : 'video/mp4',
+            'Content-Length': videoBuffer.length,
+            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+            'Access-Control-Allow-Origin': allowed.includes(origin) ? origin : '*',
+        });
+        res.end(videoBuffer);
     } catch (error) {
-        const unavailable = error.message.includes('OPEN_SORA_ENDPOINT') || error.message.includes('not supported by the selected inference provider') || error.message.includes('not deployed by Hugging Face');
-        sendJson(res, unavailable ? 503 : 500, { error: `Video generation unavailable: ${error.message}` }, req);
+        console.error('[video-generation] Agnes AI error:', error);
+        sendJson(res, 502, { error: `Video generation failed: ${error.message}` }, req);
     }
 }
 
@@ -951,8 +1076,8 @@ async function handleChat(req, res) {
             return;
         }
 
-        const hfToken = process.env.HF_TOKEN;
-        if (!hfToken) { sendJson(res, 500, { error: 'HF_TOKEN is not configured.' }); return; }
+        const hfToken = process.env.HF_IMAGE_TOKEN || process.env.HF_TOKEN;
+        if (!hfToken) { sendJson(res, 500, { error: 'HF_IMAGE_TOKEN is not configured (set it or provide the legacy HF_TOKEN).' }); return; }
         try {
             const { status, buffer } = await hfRequest(prompt, hfToken);
             const data = JSON.parse(buffer.toString());
