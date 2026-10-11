@@ -29,6 +29,7 @@ export default function AdminUserPage() {
         ['files', 'Files'],
         ['plugins', 'Plugins'],
         ['image-studio', 'Image Studio'],
+        ['ppt-studio', 'PPT Studio'],
         ['settings', 'Settings'],
         ['project-settings', 'Project Settings'],
     ];

@@ -14,17 +14,17 @@ const PLAN_LIMITS = {
     free: {
         dailyTokenLimit: 10000,
         allowedModels: ['openai/gpt-oss-20b', 'allam-2-7b', 'qwen/qwen3.8-27b'],
-        allowedPlugins: ['web-search', 'calculator', 'pdf-search'],
+        allowedPlugins: ['web-search', 'calculator', 'pdf-search', 'ppt-generator'],
     },
     pro: {
         dailyTokenLimit: 100000,
         allowedModels: ['openai/gpt-oss-20b', 'allam-2-7b', 'qwen/qwen3.8-27b', 'groq/compound-mini', 'openai/gpt-oss-120b', 'black-forest-labs/FLUX.1-schnell'],
-        allowedPlugins: ['web-search', 'calculator', 'pdf-search', 'json-transformer', 'arxiv', 'code-runner', 'github', 'notion'],
+        allowedPlugins: ['web-search', 'calculator', 'pdf-search', 'json-transformer', 'arxiv', 'code-runner', 'github', 'notion', 'ppt-generator'],
     },
     enterprise: {
         dailyTokenLimit: null,
         allowedModels: ['openai/gpt-oss-20b', 'allam-2-7b', 'qwen/qwen3.8-27b', 'groq/compound-mini', 'openai/gpt-oss-120b', 'black-forest-labs/FLUX.1-schnell'],
-        allowedPlugins: ['web-search', 'calculator', 'pdf-search', 'json-transformer', 'arxiv', 'code-runner', 'github', 'notion', 'jira', 'slack', 'linear'],
+        allowedPlugins: ['web-search', 'calculator', 'pdf-search', 'json-transformer', 'arxiv', 'code-runner', 'github', 'notion', 'jira', 'slack', 'linear', 'ppt-generator'],
     },
 };
 

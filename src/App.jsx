@@ -12,6 +12,7 @@ import ProjectSettingsPage from "./pages/ProjectSettingsPage";
 import StoragePage from "./pages/StoragePage";
 import PluginsPage from "./pages/PluginsPage";
 import ImageStudioPage from "./pages/ImageStudioPage";
+import PptStudioPage from "./pages/PptStudioPage";
 import ResetPassword from "./pages/ResetPassword";
 import ThreadsPage from "./pages/ThreadsPage";
 import HelpPage from "./pages/HelpPage";
@@ -118,6 +119,8 @@ function ProtectedLayout() {
           <Route path="/plugins" element={<FeatureGate darkMode={darkMode} feature="plugins"><PluginsPage /></FeatureGate>} />
 
           <Route path="/image-studio" element={<FeatureGate darkMode={darkMode} feature="image-studio"><ImageStudioPage /></FeatureGate>} />
+
+          <Route path="/ppt-studio" element={<FeatureGate darkMode={darkMode} feature="ppt-studio"><PptStudioPage /></FeatureGate>} />
 
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

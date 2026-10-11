@@ -7,7 +7,7 @@ const CORE_PLUGINS = [
   { plugin_id: 'json-transformer', enabled: true, config: {} },
   { plugin_id: 'code-runner', enabled: true, config: {} },
   { plugin_id: 'arxiv', enabled: true, config: {} },
-
+  { plugin_id: 'ppt-generator', enabled: true, config: {} },
 ];
 
 const _running = new Set();

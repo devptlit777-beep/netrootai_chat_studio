@@ -1,0 +1,302 @@
+/* NetRoot AI Slide Studio - Native Design System & Theme Engine */
+
+:root {
+  /* Default Executive Dark Theme (Midnight) */
+  --slide-bg: #111111;
+  --slide-bg-gradient: linear-gradient(145deg, #0e0e0e 0%, #18181b 100%);
+  --slide-title: #f8fafc;
+  --slide-card-bg: rgba(24, 24, 27, 0.85);
+  --slide-card-border: rgba(255, 255, 255, 0.08);
+  --slide-text: #e2e8f0;
+  --slide-text-muted: #9ca3af;
+  --slide-accent: #3b82f6;
+  --slide-accent-secondary: #f59e0b;
+  --slide-accent-glow: rgba(59, 130, 246, 0.25);
+  --slide-badge-bg: rgba(59, 130, 246, 0.15);
+  --slide-badge-text: #93c5fd;
+  --slide-font-title: 'Outfit', sans-serif;
+  --slide-font-body: 'Plus Jakarta Sans', sans-serif;
+}
+
+/* Theme 2: Minimalist Clean */
+.theme-clean {
+  --slide-bg: #ffffff;
+  --slide-bg-gradient: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+  --slide-title: #0f172a;
+  --slide-card-bg: rgba(248, 250, 252, 0.95);
+  --slide-card-border: #e2e8f0;
+  --slide-text: #334155;
+  --slide-text-muted: #64748b;
+  --slide-accent: #2563eb;
+  --slide-accent-secondary: #f97316;
+  --slide-accent-glow: rgba(37, 99, 235, 0.2);
+  --slide-badge-bg: #dbeafe;
+  --slide-badge-text: #1d4ed8;
+}
+
+/* Theme 3: Cyber Aurora */
+.theme-aurora {
+  --slide-bg: #0d0718;
+  --slide-bg-gradient: linear-gradient(145deg, #090314 0%, #1a0b2e 100%);
+  --slide-title: #f5d0fe;
+  --slide-card-bg: rgba(26, 14, 46, 0.8);
+  --slide-card-border: rgba(168, 85, 247, 0.2);
+  --slide-text: #e2e8f0;
+  --slide-text-muted: #a855f7;
+  --slide-accent: #c084fc;
+  --slide-accent-secondary: #06b6d4;
+  --slide-accent-glow: rgba(192, 132, 252, 0.3);
+  --slide-badge-bg: rgba(168, 85, 247, 0.2);
+  --slide-badge-text: #f0abfc;
+}
+
+/* Theme 4: Warm Emerald */
+.theme-emerald {
+  --slide-bg: #fbf9f5;
+  --slide-bg-gradient: linear-gradient(145deg, #fdfbf7 0%, #f5efe6 100%);
+  --slide-title: #064e3b;
+  --slide-card-bg: rgba(255, 255, 255, 0.9);
+  --slide-card-border: #e6dfd5;
+  --slide-text: #374151;
+  --slide-text-muted: #6b7280;
+  --slide-accent: #059669;
+  --slide-accent-secondary: #0ea5e9;
+  --slide-accent-glow: rgba(5, 150, 105, 0.2);
+  --slide-badge-bg: #d1fae5;
+  --slide-badge-text: #065f46;
+}
+
+/* Theme 5: Pastel Baby Pink / Blush */
+.theme-blush, .theme-rose {
+  --slide-bg: #140810;
+  --slide-bg-gradient: linear-gradient(145deg, #10060d 0%, #220d1c 100%);
+  --slide-title: #fce7f3;
+  --slide-card-bg: rgba(36, 14, 28, 0.85);
+  --slide-card-border: rgba(244, 114, 182, 0.28);
+  --slide-text: #f1f5f9;
+  --slide-text-muted: #f472b6;
+  --slide-accent: #f472b6;
+  --slide-accent-secondary: #fb7185;
+  --slide-accent-glow: rgba(244, 114, 182, 0.35);
+  --slide-badge-bg: rgba(244, 114, 182, 0.22);
+  --slide-badge-text: #fbcfe8;
+}
+
+/* Theme 6: Solar Gold & Amber */
+.theme-amber {
+  --slide-bg: #140d04;
+  --slide-bg-gradient: linear-gradient(145deg, #0f0902 0%, #201305 100%);
+  --slide-title: #fef3c7;
+  --slide-card-bg: rgba(36, 21, 6, 0.85);
+  --slide-card-border: rgba(245, 158, 11, 0.28);
+  --slide-text: #f1f5f9;
+  --slide-text-muted: #f59e0b;
+  --slide-accent: #f59e0b;
+  --slide-accent-secondary: #06b6d4;
+  --slide-accent-glow: rgba(245, 158, 11, 0.35);
+  --slide-badge-bg: rgba(245, 158, 11, 0.22);
+  --slide-badge-text: #fde68a;
+}
+
+/* Theme 7: Royal Crimson & Ruby */
+.theme-crimson {
+  --slide-bg: #140507;
+  --slide-bg-gradient: linear-gradient(145deg, #0f0305 0%, #20070a 100%);
+  --slide-title: #ffe4e6;
+  --slide-card-bg: rgba(36, 8, 12, 0.85);
+  --slide-card-border: rgba(239, 68, 68, 0.28);
+  --slide-text: #f1f5f9;
+  --slide-text-muted: #ef4444;
+  --slide-accent: #ef4444;
+  --slide-accent-secondary: #f59e0b;
+  --slide-accent-glow: rgba(239, 68, 68, 0.35);
+  --slide-badge-bg: rgba(239, 68, 68, 0.22);
+  --slide-badge-text: #fecdd3;
+}
+
+/* Mode 2: Pastel Canvas Pop (Rich Brand-Tinted Canvas + Pure White Pop-out Cards) */
+.slide-mode-light-canvas, .slide-mode-light {
+  --slide-bg: #e0f2fe !important;
+  --slide-bg-gradient: linear-gradient(145deg, #e0f2fe 0%, #bae6fd 100%) !important;
+  --slide-title: #0f172a !important;
+  --slide-card-bg: #ffffff !important;
+  --slide-card-border: rgba(125, 211, 252, 0.95) !important;
+  --slide-text: #334155 !important;
+  --slide-text-muted: #64748b !important;
+  --slide-accent: #0284c7 !important;
+  --slide-badge-bg: #e0f2fe !important;
+  --slide-badge-text: #0369a1 !important;
+}
+.theme-aurora.slide-mode-light-canvas, .theme-aurora.slide-mode-light {
+  --slide-bg: #f5f3ff !important;
+  --slide-bg-gradient: linear-gradient(145deg, #f5f3ff 0%, #ede9fe 100%) !important;
+  --slide-card-border: rgba(196, 181, 253, 0.95) !important;
+  --slide-accent: #9333ea !important;
+  --slide-badge-bg: #f3e8ff !important;
+  --slide-badge-text: #7e22ce !important;
+}
+.theme-emerald.slide-mode-light-canvas, .theme-emerald.slide-mode-light {
+  --slide-bg: #ecfdf5 !important;
+  --slide-bg-gradient: linear-gradient(145deg, #ecfdf5 0%, #d1fae5 100%) !important;
+  --slide-card-border: rgba(110, 231, 183, 0.95) !important;
+  --slide-accent: #059669 !important;
+  --slide-badge-bg: #d1fae5 !important;
+  --slide-badge-text: #065f46 !important;
+}
+.theme-clean.slide-mode-light-canvas, .theme-clean.slide-mode-light {
+  --slide-bg: #eff6ff !important;
+  --slide-bg-gradient: linear-gradient(145deg, #eff6ff 0%, #dbeafe 100%) !important;
+  --slide-card-border: rgba(147, 197, 253, 0.95) !important;
+  --slide-accent: #2563eb !important;
+  --slide-badge-bg: #dbeafe !important;
+  --slide-badge-text: #1d4ed8 !important;
+}
+.theme-blush.slide-mode-light-canvas, .theme-blush.slide-mode-light,
+.theme-rose.slide-mode-light-canvas, .theme-rose.slide-mode-light {
+  --slide-bg: #fdf2f8 !important;
+  --slide-bg-gradient: linear-gradient(145deg, #fdf2f8 0%, #fce7f3 100%) !important;
+  --slide-card-bg: #ffffff !important;
+  --slide-card-border: rgba(244, 114, 182, 0.85) !important;
+  --slide-title: #831843 !important;
+  --slide-text: #374151 !important;
+  --slide-text-muted: #9d174d !important;
+  --slide-accent: #db2777 !important;
+  --slide-badge-bg: #fce7f3 !important;
+  --slide-badge-text: #9d174d !important;
+}
+.theme-amber.slide-mode-light-canvas, .theme-amber.slide-mode-light {
+  --slide-bg: #fffbeb !important;
+  --slide-bg-gradient: linear-gradient(145deg, #fffbeb 0%, #fef3c7 100%) !important;
+  --slide-card-bg: #ffffff !important;
+  --slide-card-border: rgba(245, 158, 11, 0.85) !important;
+  --slide-title: #78350f !important;
+  --slide-text: #374151 !important;
+  --slide-text-muted: #92400e !important;
+  --slide-accent: #d97706 !important;
+  --slide-badge-bg: #fef3c7 !important;
+  --slide-badge-text: #92400e !important;
+}
+.theme-crimson.slide-mode-light-canvas, .theme-crimson.slide-mode-light {
+  --slide-bg: #fff1f2 !important;
+  --slide-bg-gradient: linear-gradient(145deg, #fff1f2 0%, #ffe4e6 100%) !important;
+  --slide-card-bg: #ffffff !important;
+  --slide-card-border: rgba(239, 68, 68, 0.85) !important;
+  --slide-title: #881337 !important;
+  --slide-text: #374151 !important;
+  --slide-text-muted: #9f1239 !important;
+  --slide-accent: #dc2626 !important;
+  --slide-badge-bg: #ffe4e6 !important;
+  --slide-badge-text: #9f1239 !important;
+}
+
+/* Mode 3: Tinted Brand Cards (Neutral Slate Canvas + Brand-Tinted Cards) */
+.slide-mode-light-cards {
+  --slide-bg: #f8fafc !important;
+  --slide-bg-gradient: linear-gradient(145deg, #f8fafc 0%, #f1f5f9 100%) !important;
+  --slide-title: #0f172a !important;
+  --slide-card-bg: rgba(224, 242, 254, 0.78) !important;
+  --slide-card-border: rgba(56, 189, 248, 0.85) !important;
+  --slide-text: #1e293b !important;
+  --slide-text-muted: #475569 !important;
+  --slide-accent: #0284c7 !important;
+  --slide-badge-bg: #bae6fd !important;
+  --slide-badge-text: #0369a1 !important;
+}
+.theme-aurora.slide-mode-light-cards {
+  --slide-card-bg: rgba(243, 232, 255, 0.78) !important;
+  --slide-card-border: rgba(168, 85, 247, 0.85) !important;
+  --slide-accent: #9333ea !important;
+  --slide-badge-bg: #e9d5ff !important;
+  --slide-badge-text: #7e22ce !important;
+}
+.theme-emerald.slide-mode-light-cards {
+  --slide-card-bg: rgba(236, 253, 245, 0.78) !important;
+  --slide-card-border: rgba(16, 185, 129, 0.85) !important;
+  --slide-accent: #059669 !important;
+  --slide-badge-bg: #a7f3d0 !important;
+  --slide-badge-text: #065f46 !important;
+}
+.theme-clean.slide-mode-light-cards {
+  --slide-card-bg: rgba(239, 246, 255, 0.78) !important;
+  --slide-card-border: rgba(59, 130, 246, 0.85) !important;
+  --slide-accent: #2563eb !important;
+  --slide-badge-bg: #bfdbfe !important;
+  --slide-badge-text: #1d4ed8 !important;
+}
+.theme-blush.slide-mode-light-cards,
+.theme-rose.slide-mode-light-cards {
+  --slide-bg: #f8fafc !important;
+  --slide-bg-gradient: linear-gradient(145deg, #f8fafc 0%, #f1f5f9 100%) !important;
+  --slide-title: #831843 !important;
+  --slide-card-bg: rgba(253, 242, 248, 0.85) !important;
+  --slide-card-border: rgba(244, 114, 182, 0.75) !important;
+  --slide-text: #374151 !important;
+  --slide-text-muted: #9d174d !important;
+  --slide-accent: #db2777 !important;
+  --slide-badge-bg: #fce7f3 !important;
+  --slide-badge-text: #9d174d !important;
+}
+.theme-amber.slide-mode-light-cards {
+  --slide-bg: #f8fafc !important;
+  --slide-bg-gradient: linear-gradient(145deg, #f8fafc 0%, #f1f5f9 100%) !important;
+  --slide-title: #78350f !important;
+  --slide-card-bg: rgba(254, 243, 199, 0.85) !important;
+  --slide-card-border: rgba(245, 158, 11, 0.75) !important;
+  --slide-text: #374151 !important;
+  --slide-text-muted: #92400e !important;
+  --slide-accent: #d97706 !important;
+  --slide-badge-bg: #fef3c7 !important;
+  --slide-badge-text: #92400e !important;
+}
+.theme-crimson.slide-mode-light-cards {
+  --slide-bg: #f8fafc !important;
+  --slide-bg-gradient: linear-gradient(145deg, #f8fafc 0%, #f1f5f9 100%) !important;
+  --slide-title: #881337 !important;
+  --slide-card-bg: rgba(255, 228, 230, 0.85) !important;
+  --slide-card-border: rgba(239, 68, 68, 0.75) !important;
+  --slide-text: #374151 !important;
+  --slide-text-muted: #9f1239 !important;
+  --slide-accent: #dc2626 !important;
+  --slide-badge-bg: #ffe4e6 !important;
+  --slide-badge-text: #9f1239 !important;
+}
+
+/* 16:9 Landscape Slide Canvas */
+.slide-stage-canvas {
+  width: 960px;
+  height: 540px;
+  aspect-ratio: 16 / 9;
+  background: var(--slide-bg-gradient);
+  border: 1px solid var(--slide-card-border);
+  border-radius: 16px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.slide-title-style {
+  font-family: var(--slide-font-title);
+  color: var(--slide-title);
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.slide-card-block {
+  background: var(--slide-card-bg);
+  border: 1px solid var(--slide-card-border);
+  backdrop-filter: blur(12px);
+  color: var(--slide-text);
+  transition: all 0.2s ease;
+}
+.slide-card-block:hover {
+  border-color: var(--slide-accent);
+}
+
+.workspace-canvas-bg {
+  background-color: #0e0e0e;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 24px 24px;
+}

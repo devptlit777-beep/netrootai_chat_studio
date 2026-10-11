@@ -9,6 +9,7 @@ import {
   Settings,
   Sparkles,
   HelpCircle,
+  Presentation,
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
@@ -23,6 +24,7 @@ const navItems = [
   { icon: Share2, path: "/shared", label: "Shared" },
   { icon: Database, path: "/plugins", label: "Plugins" },
   { icon: Sparkles, path: "/image-studio", label: "Image Studio" },
+  { icon: Presentation, path: "/ppt-studio", label: "PPT Studio" },
 ];
 
 function getFallbackAvatar(email) {
@@ -68,7 +70,7 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex flex-col items-center gap-1 flex-1">
-        {navItems.filter(({ path }) => path === "/dashboard" || canUse(path === "/threads" ? "threads" : path === "/files" ? "files" : path === "/plugins" ? "plugins" : path === "/image-studio" ? "image-studio" : "none")).map(({ icon: Icon, path, label }) => {
+        {navItems.filter(({ path }) => path === "/dashboard" || canUse(path === "/threads" ? "threads" : path === "/files" ? "files" : path === "/plugins" ? "plugins" : path === "/image-studio" ? "image-studio" : path === "/ppt-studio" ? "ppt-studio" : "none")).map(({ icon: Icon, path, label }) => {
           const active = location.pathname === path;
 
           return (
