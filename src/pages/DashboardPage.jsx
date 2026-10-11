@@ -1127,6 +1127,7 @@ import { usePlan } from '../contexts/PlanContext';
 import API_BASE from '../lib/api';
 import { DEFAULT_PLAN_LIMITS, fetchPlanLimits, normalizePlan } from '../lib/planLimits';
 import { copyChatContext, downloadAsWord, downloadAsPdf, downloadAsPpt } from '../lib/chatExport';
+import PptChatDeckCard from '../components/ppt/PptChatDeckCard';
 
 const PLUGIN_ICONS = {
   'web-search': '🌐', 'calculator': '🧮', 'pdf-search': '📄', 'arxiv': '📚', 'code-runner': '⚡',
@@ -1594,6 +1595,7 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
           model,
           plugins: enabledPlugins,
           email: user?.email,
+          userId: user?.id,
         }),
       });
 
@@ -1605,6 +1607,32 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
       let aiContent = data.answer || "No response from AI.";
       if (data.imageUrl) {
         aiContent = `__IMAGE__${data.imageUrl}`;
+      }
+      if (data.pptDeck) {
+        try {
+          localStorage.setItem('netroot_active_working_deck', JSON.stringify({
+            id: data.pptDeck.deckId,
+            slides: data.pptDeck.slides,
+            deckTitle: data.pptDeck.title,
+            currentTheme: data.pptDeck.theme || 'midnight',
+            currentSeed: data.pptDeck.seed_color || '#0EA5E9',
+          }));
+          const saved = JSON.parse(localStorage.getItem('netroot_saved_slides') || '[]');
+          const idx = saved.findIndex(d => d.id === data.pptDeck.deckId);
+          const item = {
+            id: data.pptDeck.deckId,
+            title: data.pptDeck.title,
+            slides: data.pptDeck.slides,
+            theme: data.pptDeck.theme || 'midnight',
+            seed_color: data.pptDeck.seed_color || '#0EA5E9',
+            updated_at: new Date().toISOString(),
+          };
+          if (idx >= 0) saved[idx] = item;
+          else saved.unshift(item);
+          localStorage.setItem('netroot_saved_slides', JSON.stringify(saved));
+        } catch (e) {
+          console.warn('Could not cache ppt deck:', e);
+        }
       }
 
       const aiMsg = {
@@ -1715,13 +1743,23 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
   );
 
   function parseMessageContent(content) {
-    const match = content.match(/^__IMAGES__(.*?)__IMAGES__([\s\S]*)$/);
-    if (!match) return { images: [], text: content };
-    try {
-      return { images: JSON.parse(match[1]), text: match[2] };
-    } catch {
-      return { images: [], text: content };
+    let images = [];
+    let pptDeck = null;
+    let text = content || '';
+
+    const imgMatch = text.match(/^__IMAGES__(.*?)__IMAGES__([\s\S]*)$/);
+    if (imgMatch) {
+      try { images = JSON.parse(imgMatch[1]); } catch {}
+      text = imgMatch[2];
     }
+
+    const pptMatch = text.match(/__PPT_DECK__([\s\S]*?)__PPT_DECK__/);
+    if (pptMatch) {
+      try { pptDeck = JSON.parse(pptMatch[1]); } catch {}
+      text = text.replace(/__PPT_DECK__[\s\S]*?__PPT_DECK__/, '').trim();
+    }
+
+    return { images, pptDeck, text };
   }
 
   return (
@@ -1887,7 +1925,7 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
           {activeThread ? (
             <div className={`flex-1 overflow-y-auto px-6 py-6 space-y-6 ${darkMode ? '' : 'bg-gray-50'}`}>
               {messages.map(msg => {
-                const { images, text } = parseMessageContent(msg.content);
+                const { images, pptDeck, text } = parseMessageContent(msg.content);
                 return (
                   <div key={msg.id} className={`flex gap-3 items-end ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     {msg.role === 'assistant' && (
@@ -1896,14 +1934,15 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
                       </div>
                     )}
 
-                    <div className={`max-w-[72%] rounded-[24px] px-4 py-3 text-sm leading-7 whitespace-pre-wrap break-words shadow-sm ${msg.role === 'user'
-                      ? darkMode
-                        ? 'bg-blue-600 text-white border border-blue-700'
-                        : 'bg-blue-600 text-white border border-blue-600'
-                      : darkMode
-                        ? 'bg-[#111827] border border-[#27272a] text-gray-200'
-                        : 'bg-white border border-slate-200 text-slate-900'
-                      }`}>
+                    <div className="max-w-[72%] flex flex-col gap-1">
+                      <div className={`rounded-[24px] px-4 py-3 text-sm leading-7 whitespace-pre-wrap break-words shadow-sm ${msg.role === 'user'
+                        ? darkMode
+                          ? 'bg-blue-600 text-white border border-blue-700'
+                          : 'bg-blue-600 text-white border border-blue-600'
+                        : darkMode
+                          ? 'bg-[#111827] border border-[#27272a] text-gray-200'
+                          : 'bg-white border border-slate-200 text-slate-900'
+                        }`}>
 
                       {/* Attached images */}
                       {images.length > 0 && (
@@ -1999,7 +2038,34 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
                           {text}
                         </ReactMarkdown>
                       ) : null}
+
+                      {/* Render PPT Presentation Card if present */}
+                      {pptDeck && (
+                        <PptChatDeckCard pptDeck={pptDeck} darkMode={darkMode} />
+                      )}
                     </div>
+
+                    {/* Quick action button for assistant messages to convert discussion to PPT */}
+                    {msg.role === 'assistant' && !pptDeck && text.trim().length > 60 && (
+                      <div className="flex items-center gap-2 mt-1 px-1">
+                        <button
+                          onClick={() => {
+                            setInput("Create a 5-slide presentation from this discussion");
+                            textareaRef.current?.focus();
+                          }}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-all ${
+                            darkMode
+                              ? 'bg-blue-500/10 border-blue-500/25 text-blue-400 hover:bg-blue-500/20 hover:border-blue-500/40'
+                              : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100'
+                          }`}
+                          title="Convert this discussion to an AI presentation"
+                        >
+                          <Presentation className="w-3.5 h-3.5" />
+                          <span>📽️ Make PPT from this</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
 
                     {msg.role === 'user' && (
                       <img

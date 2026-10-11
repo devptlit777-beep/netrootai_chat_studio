@@ -165,7 +165,7 @@ async function resolveUserPlan(req, body = {}) {
             supabase.from('subscriptions').select('plan, status, current_period_end, cancel_at_period_end, interval_months').eq('user_id', found.id).maybeSingle(),
         ]);
         const summary = subscriptionSummary(subscription, profile?.plan || 'free', profile?.free_trial_ends_at);
-        return { plan: summary.effective_plan, email: String(email).toLowerCase(), accessExpired: summary.access_expired, featureAccess: profile?.feature_access || {} };
+        return { plan: summary.effective_plan, email: String(email).toLowerCase(), userId: found.id, accessExpired: summary.access_expired, featureAccess: profile?.feature_access || {} };
     } catch (err) {
         console.warn('[plan] failed to resolve user plan:', err.message);
         return { plan: 'free', email: String(email).toLowerCase() };
@@ -700,6 +700,219 @@ async function handleVideoGeneration(req, res) {
     }
 }
 
+async function handlePptGeneration(req, res) {
+    const body = await readJson(req);
+    const pptServiceUrl = process.env.PPT_SERVICE_URL || 'http://127.0.0.1:8001/api/generate';
+    try {
+        const response = await fetch(pptServiceUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const data = await response.json();
+        sendJson(res, response.status, data, req);
+    } catch (err) {
+        sendJson(res, 502, { error: `PPT service unavailable: ${err.message}` }, req);
+    }
+}
+
+// ─── Natural Language Chat-to-PPT Flow (Option A) ───────────────────────────
+
+function isPptGenerationRequest(text) {
+    if (!text || typeof text !== 'string') return false;
+    const t = text.toLowerCase().trim();
+
+    // 1. Negative filter: If the user is asking for suggestions, topics, ideas, or explanations, do not trigger PPT generation
+    const isInformationalQuery = /(?:suggest|ideas?|topics?|list\b|recommend|what\s+is|what\s+are|how\s+to|explain)/i.test(t);
+    if (isInformationalQuery) return false;
+
+    // 2. Must contain PPT or presentation terminology
+    const hasPptNoun = /(?:ppt|pptx|presentation|pitch\s*deck|slides?|powerpoint)/i.test(t);
+    if (!hasPptNoun) return false;
+
+    // 3. Must contain an explicit creation action verb
+    const hasCreationVerb = /(?:create|make|generate|build|prepare|design|convert)/i.test(t);
+    if (!hasCreationVerb) return false;
+
+    return true;
+}
+
+function extractSlideCount(text) {
+    if (!text || typeof text !== 'string') return 5;
+
+    // Strictly match digits followed by slide(s), e.g. "5 slides", "5-slide"
+    // Ignores non-slide counts such as "5 to 10 topics" or "5 points"
+    const m = text.match(/(\d+)\s*[-_]?\s*slides?\b/i)
+           || text.match(/slides?\s*[:=]?\s*(\d+)\b/i);
+
+    if (m) {
+        const count = parseInt(m[1], 10);
+        if (!isNaN(count)) return Math.max(1, Math.min(10, count));
+    }
+    return 5;
+}
+
+async function distillTopicFromConversation(history, userPrompt, groqApiKey) {
+    if (!Array.isArray(history) || history.length === 0) {
+        return userPrompt;
+    }
+
+    const relevant = history.slice(-6).filter(m => m && m.content && !m.content.startsWith('__IMAGE__') && !m.content.startsWith('__PPT_DECK__'));
+    if (relevant.length === 0) return userPrompt;
+
+    const historyText = relevant.map(m => {
+        const clean = m.content.replace(/__IMAGES__.*?__IMAGES__/g, '').replace(/__PPT_DECK__.*?__PPT_DECK__/g, '').trim();
+        return `${m.role === 'user' ? 'User' : 'Assistant'}: ${clean}`;
+    }).join('\n\n');
+
+    if (!groqApiKey) {
+        return `${userPrompt}\n\nContext:\n${historyText.slice(-600)}`;
+    }
+
+    try {
+        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${groqApiKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: 'openai/gpt-oss-20b',
+                temperature: 0.2,
+                max_tokens: 250,
+                messages: [
+                    {
+                        role: 'system',
+                        content: 'You are an executive pitch deck strategist. Summarize the discussion into a concise, high-impact presentation topic with 3-4 bullet takeaways for slide generation. Return ONLY the topic and summary bullets, no intro/outro.'
+                    },
+                    {
+                        role: 'user',
+                        content: `Conversation:\n${historyText.slice(-2500)}\n\nUser request: "${userPrompt}"\n\nExecutive Topic Summary:`
+                    }
+                ]
+            })
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            const text = data.choices?.[0]?.message?.content?.trim();
+            if (text) {
+                console.log('[ppt-flow] Distilled presentation topic:', text.slice(0, 100));
+                return text;
+            }
+        }
+    } catch (e) {
+        console.warn('[ppt-flow] Groq distillation fallback:', e.message);
+    }
+
+    return `${userPrompt}\n\nContext:\n${historyText.slice(-600)}`;
+}
+
+async function handleChatToPpt({ prompt, history, userEmail, userId, res, req, requestStart, plan }) {
+    const slideCount = extractSlideCount(prompt);
+    const groqApiKey = process.env.GROQ_API_KEY;
+    console.log(`[ppt-flow] Triggered natural PPT flow: ${slideCount} slides requested. User: ${userEmail || 'anon'}`);
+
+    const distilledTopic = await distillTopicFromConversation(history, prompt, groqApiKey);
+    const pptServiceBase = process.env.PPT_SERVICE_BASE || 'http://127.0.0.1:8001';
+
+    // 1. Generate slides via PPT service
+    let pptGenData;
+    try {
+        const genRes = await fetch(`${pptServiceBase}/api/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                prompt: distilledTopic,
+                num_slides: slideCount,
+                theme: 'midnight'
+            }),
+            signal: AbortSignal.timeout(60000)
+        });
+        if (!genRes.ok) {
+            const errText = await genRes.text();
+            throw new Error(`PPT generator returned ${genRes.status}: ${errText}`);
+        }
+        pptGenData = await genRes.json();
+    } catch (err) {
+        console.error('[ppt-flow] Generation failed:', err.message);
+        sendJson(res, 502, { error: `PPT Service Error: ${err.message}` }, req);
+        return;
+    }
+
+    const slides = pptGenData.slides || (pptGenData.slide ? [pptGenData.slide] : []);
+    const title = pptGenData.title || (slides[0]?.t ? slides[0].t.slice(0, 50) : 'AI Pitch Deck');
+    const theme = pptGenData.theme || 'midnight';
+    const seedColor = pptGenData.theme_seed_hex || '#0EA5E9';
+
+    const filename = `${title.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '_')}.pptx`;
+    const deckId = crypto.randomUUID();
+
+    // 3. Save to Supabase user_decks if user is known
+    const sb = getSupabaseClient();
+    if (sb && userId) {
+        try {
+            await sb.from('user_decks').insert({
+                id: deckId,
+                user_id: userId,
+                title,
+                slides,
+                theme,
+                seed_color: seedColor
+            });
+            console.log('[ppt-flow] Saved deck to Supabase user_decks:', deckId);
+        } catch (dbErr) {
+            console.warn('[ppt-flow] Supabase user_decks notice:', dbErr.message);
+        }
+    }
+
+    // 4. Record usage
+    await recordUsage({
+        inputTokens: estimateRequestTokens(prompt),
+        outputTokens: slides.length * 150,
+        cachedTokens: 0,
+        latencyMs: Date.now() - requestStart,
+        model: 'ppt-generator',
+        userEmail,
+        plan,
+        prompt
+    });
+
+    const pptDeck = {
+        deckId,
+        title,
+        slideCount: slides.length,
+        slides,
+        downloadUrl,
+        filename,
+        theme,
+        seed_color: seedColor
+    };
+
+    const answer = `A **${slides.length}-slide** presentation on **"${title}"** has been generated from this discussion!\n\nYou can open and edit it directly in **PPT Studio** or download the PowerPoint (.pptx) file below.\n\n__PPT_DECK__${JSON.stringify(pptDeck)}__PPT_DECK__`;
+
+    sendJson(res, 200, { answer, pptDeck }, req);
+}
+
+async function handlePptDownload(req, res) {
+    const pptServiceBase = process.env.PPT_SERVICE_BASE || 'http://127.0.0.1:8001';
+    const targetUrl = `${pptServiceBase}${req.url}`;
+    try {
+        const response = await fetch(targetUrl);
+        if (!response.ok) {
+            sendJson(res, response.status, { error: 'PPT download failed' }, req);
+            return;
+        }
+        const headers = {
+            'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            'Content-Disposition': response.headers.get('content-disposition') || 'attachment; filename="presentation.pptx"',
+            'Access-Control-Allow-Origin': '*',
+        };
+        const buffer = Buffer.from(await response.arrayBuffer());
+        res.writeHead(response.status, headers);
+        res.end(buffer);
+    } catch (e) {
+        sendJson(res, 502, { error: `Download proxy error: ${e.message}` }, req);
+    }
+}
+
 // Image Generation — DALL-E 3
 async function runImageGen(prompt, openaiKey) {
     const res = await fetch('https://api.openai.com/v1/images/generations', {
@@ -1053,10 +1266,26 @@ async function handleChat(req, res) {
         return;
     }
 
-    const { plan, email } = await resolveUserPlan(req, body);
+    const { plan, email, userId } = await resolveUserPlan(req, body);
+    const requestStart = Date.now();
+
+    // Intercept Natural Language Chat-to-PPT generation intent (Option A)
+    if (isPptGenerationRequest(prompt)) {
+        await handleChatToPpt({
+            prompt,
+            history: body.history,
+            userEmail: email,
+            userId: body.userId || userId,
+            res,
+            req,
+            requestStart,
+            plan,
+        });
+        return;
+    }
+
     const planLimits = getPlanLimits(plan);
     const selectedModel = normalizeModel(body.model || process.env.GROQ_MODEL || process.env.OPENAI_MODEL || 'openai/gpt-oss-20b');
-    const requestStart = Date.now();
 
     console.log('[chat] plan:', plan, '| model:', selectedModel, '| canUse:', canUseModel(plan, selectedModel), '| allowedModels:', JSON.stringify(getPlanLimits(plan).allowedModels));
     if (!canUseModel(plan, selectedModel)) {
@@ -1740,7 +1969,7 @@ async function handleAdminFeatureAccess(req, res) {
         return;
     }
 
-    const allowedFeatures = new Set(['threads', 'files', 'plugins', 'image-studio', 'settings', 'project-settings']);
+    const allowedFeatures = new Set(['threads', 'files', 'plugins', 'image-studio', 'ppt-studio', 'settings', 'project-settings']);
     if (!allowedFeatures.has(feature)) { sendJson(res, 400, { error: 'Unsupported feature.' }); return; }
 
     const supabase = getSupabaseClient();
@@ -2148,6 +2377,14 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'POST' && req.url === '/api/video-generation') {
         try { await handleVideoGeneration(req, res); } catch (e) { console.error('[video-generation]', e); sendJson(res, 500, { error: e.message }, req); }
+        return;
+    }
+    if (req.method === 'POST' && req.url === '/api/generate-ppt') {
+        try { await handlePptGeneration(req, res); } catch (e) { console.error('[ppt-generation]', e); sendJson(res, 500, { error: e.message }, req); }
+        return;
+    }
+    if (req.method === 'GET' && req.url.startsWith('/api/download/')) {
+        try { await handlePptDownload(req, res); } catch (e) { sendJson(res, 500, { error: e.message }, req); }
         return;
     }
     sendJson(res, 404, { error: 'Not found.' });

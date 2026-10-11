@@ -79,3 +79,12 @@ desktop.ini
 # Local development
 # ================================
 .local/
+
+# ================================
+# Python
+# ================================
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
