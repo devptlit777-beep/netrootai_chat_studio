@@ -674,6 +674,7 @@ export default function PptStudioPage() {
           slide_index: currentIndex,
           total_slides: slides.length,
           current_title: activeSlide.t,
+          current_layout: activeSlide.l,
         }),
       });
 

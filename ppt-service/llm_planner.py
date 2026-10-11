@@ -20,8 +20,7 @@ load_dotenv()
 
 GROQ_API_KEY = os.getenv("PPT_GROQ_API_KEY") or os.getenv("GROQ_API_KEY", "")
 GROQ_API_URL = os.getenv("PPT_GROQ_API_URL") or os.getenv("GROQ_API_URL", "https://api.groq.com/openai/v1")
-LM_STUDIO_URL = os.getenv("LM_STUDIO_URL", "http://localhost:1234/v1")
-DEFAULT_MODEL = os.getenv("PPT_MODEL") or os.getenv("PPT_DEFAULT_MODEL") or os.getenv("DEFAULT_MODEL", "qwen/qwen3.8-27b" if GROQ_API_KEY else "qwen3.5-4b")
+DEFAULT_MODEL = os.getenv("PPT_MODEL") or os.getenv("PPT_DEFAULT_MODEL") or os.getenv("DEFAULT_MODEL", "qwen/qwen3.8-27b")
 
 
 
@@ -328,150 +327,167 @@ def clean_presentation_title(prompt: str) -> str:
     return cleaned.title() if cleaned.islower() else (cleaned or "Executive Presentation")
 
 
-OUTLINE_PLANNER_SYSTEM_PROMPT = """You are an elite, executive-level presentation strategist and slide architect.
-Given a presentation topic and requested slide count, generate a crisp, strategic slide outline.
+OUTLINE_PLANNER_SYSTEM_PROMPT = """You are an expert universal presentation designer, content strategist, and visual storytelling specialist.
+Given a presentation topic and requested slide count, generate an accurate, coherent, and thoughtfully structured slide outline.
 Do NOT write full slides yet. Formulate the agenda, purpose, layout hint, and key subtopics (if any) for each slide.
 
-IMPORTANT CONTENT RULES:
-1. FIRST & FINAL SLIDE STRUCTURE (MANDATORY):
-   - Slide 1 MUST ALWAYS be the Cover slide with layout 'hero'. Its title must be a crisp, professional 3-to-6-word presentation title.
-   - The final slide MUST ALWAYS be a Strategic Takeaways, Conclusion, or Action Roadmap slide with layout 'statement' or 'title_content'.
-2. STRATEGIC, MEANINGFUL SUBTOPICS (6 TO 12 WORDS): Each subtopic must be clear, actionable, and informative. Avoid broken 2-word fragments. Clearly articulate the core concept or deliverable.
-3. NO FORCED SUBTOPICS: Some slides naturally have NO subtopics (e.g. Cover 'hero', Keynote Vision 'statement', or Single Metric 'stats'). In those cases, leave "subtopics" empty [].
-4. STRICT DATA REALITY FILTER FOR CHARTS: Only suggest 'chart_slide' if the slide explicitly analyzes measurable quantitative or financial metrics. Never suggest charts for conceptual, cultural, or qualitative topics.
-5. LAYOUT DIVERSITY & DOMAIN-SPECIFIC TITLES: Suggest distinct layout hints across the deck from: ['hero', 'statement', '2col', '3col', 'title_image_right', 'flowchart', 'timeline', 'stats', 'chart_slide']. Every title must be topic-specific and analytical. NEVER use generic titles like 'Phase 1, 2, 3' or 'Implementation Phase'.
-6. RECOMMENDED THEME:
-   - 'blush': Fashion, kids apparel, baby products, cosmetics, beauty, romantic or pink/rose aesthetics.
-   - 'emerald': Nature, sustainability, health, agriculture, biology, wellness, food.
-   - 'clean': Corporate, finance, legal, education, compliance, business strategy.
-   - 'aurora': AI, crypto, gaming, creative design, modern startups, music.
-   - 'midnight': Cloud infrastructure, cybersecurity, devops, deep tech, servers.
-7. ABSOLUTELY NO MARKDOWN ASTERISKS (** or *).
-8. STRICT JSON OUTPUT: Output ONLY a valid JSON object matching the requested schema.
+CORE PRINCIPLES:
+1. TOPIC-FIRST CONTENT:
+   - Adapt your tone, structure, and language to match the subject (cultural, spiritual, historical, educational, scientific, technical, artistic, or business).
+   - Never force corporate terminology or business KPIs into cultural, spiritual, or historical topics. Respect cultural and religious context.
+2. INTELLIGENT LAYOUT SELECTION:
+   - Available layouts: ['hero', 'title_image_right', 'timeline', 'flowchart', '2col', '3col', 'title_content', 'statement', 'stats', 'chart_slide'].
+   - Choose layouts based on the slide's actual communication goal. Do NOT force unnatural layouts or diversity quotas.
+   - For sequences, chronology, eras, or rituals (e.g. Seva Kram): prioritize 'timeline'.
+   - For processes and connected workflows: use 'flowchart'.
+   - For core principles, pillars, or comparisons: use '2col' or '3col'.
+   - For narrative storytelling with visuals: use 'title_image_right'.
+   - Never suggest 'chart_slide' unless the topic explicitly involves financial metrics, numerical data, or budgets.
+3. THEME SELECTION:
+   - Select the theme that best supports the content: 'blush', 'midnight', 'clean', 'aurora', 'emerald', 'amber', 'crimson'.
+4. STRICT JSON OUTPUT:
+   - Output ONLY a valid JSON object matching the requested schema. No markdown fences or chatter.
 
 OUTPUT FORMAT (JSON):
 {
-  "recommended_theme": "<blush | midnight | clean | aurora | emerald>",
+  "recommended_theme": "<blush | midnight | clean | aurora | emerald | amber | crimson>",
   "slides": [
     {
       "slide_index": 1,
-      "title": "<Slide Title>",
+      "title": "<Specific, Meaningful Slide Title>",
       "purpose": "<Brief 1-line purpose>",
-      "suggested_layout": "<hero | statement | 2col | 3col | title_image_right | flowchart | timeline | stats | chart_slide>",
-      "subtopics": [ "<Strategic Subtopic 1 (6-12 words)>", "<Strategic Subtopic 2 (6-12 words)>" ]
+      "suggested_layout": "<hero | title_image_right | timeline | flowchart | 2col | 3col | title_content | statement | stats | chart_slide>",
+      "subtopics": [ "<Meaningful Subtopic 1>", "<Meaningful Subtopic 2>" ]
     }
   ]
 }
 """
 
 
-SLIDE_PLANNER_SYSTEM_PROMPT = """You are an elite, executive-level presentation strategist and slide architect.
-Convert the user's natural-language topic into a structured, highly informative, and professionally handcrafted presentation deck.
+SLIDE_PLANNER_SYSTEM_PROMPT = """You are an expert universal presentation designer, content strategist, and visual storytelling specialist.
 
-CRITICAL CONTENT & WRITING REQUIREMENTS:
-1. MEANINGFUL, HIGH-IMPACT EXECUTIVE BULLETS (STRICTLY 10 TO 16 WORDS PER POINT):
-   - Every bullet point MUST be a complete, self-contained, professional sentence explaining the insight, operational mechanism, or measurable business impact (strictly 10 to 16 words).
-   - NEVER write choppy, telegraphic fragments like 'Water use cut 70%' or 'Demand projected 15%' where the reader cannot understand how or why.
-   - Write rich, informative statements that make complete sense on their own:
-     * INSTEAD OF: 'Water use cut 70% versus field irrigation'
-     * WRITE: 'Automated closed-loop hydroponics slashes fresh water consumption by 70% compared to traditional open-field irrigation.' (14 words)
-     * INSTEAD OF: 'Yield reaches 2.5 lb/ft², 30% above conventional farms'
-     * WRITE: 'Precision multi-tier LED racks increase crop yield to 2.5 lb/ft², outperforming traditional regional acreage by 30%.' (14 words)
-     * INSTEAD OF: 'Carbon footprint drops to 0.3kg'
-     * WRITE: 'Hyper-local urban facility proximity eliminates long-distance transport mileage, cutting produce carbon footprint to 0.3kg per ton.' (15 words)
-   - Keep sentences punchy and scannable (never write essay paragraphs or run-ons), but ensure each bullet delivers complete, understandable insight.
-2. ABSOLUTELY NO MARKDOWN ASTERISKS: NEVER output asterisks (** or *) anywhere in your output. Do NOT use markdown bold like **Keyword:**. Instead, write pure plain text with a colon: "Keyword: Clear punchy insight".
-3. STRICT DATA REALITY FILTER & EXACT SCHEMA FOR CHARTS:
-   - ONLY use 'chart_slide' if the user's topic explicitly requires quantitative metrics, financial growth, budget distribution, or measurable numeric benchmarks.
-   - NEVER invent fake dummy Q1-Q4 charts for conceptual, cultural, historical, strategic, policy, or process topics!
-   - When 'chart_slide' is used, category names and metrics MUST be domain-specific.
-   - STRICT CHART DATA SCHEMA & SCALE COHESION:
-     * 'chart_data' MUST contain: "title" (string), "categories" (array of 3 to 5 strings), and "series" (array of series objects with "name" string and "values" array of numbers).
-     * Format:
-       "chart_data": {
-         "title": "2026 Vertical Farming Yield & Resource Efficiency",
-         "categories": ["Yield Efficiency Index", "Water Savings (%)", "Energy Optimization (%)", "Emission Reduction (%)"],
-         "series": [
-           { "name": "Current Benchmark", "values": [65, 50, 45, 60] },
-           { "name": "2026 Target", "values": [95, 70, 75, 85] }
-         ]
-       }
-     * ALWAYS use the key name "values" (an array of numbers corresponding to categories). Do NOT use "data" or other names.
-     * DATA COHESION: Ensure all metrics in a single chart share comparable scales or units (e.g., all %, all $M, or normalized indexes) so bars are visually meaningful and balanced.
-     * The accompanying slide points ("c") for 'chart_slide' MUST be 3 to 4 analytical takeaways (10 to 16 words each) interpreting the data trends, drivers, and strategic implications.
-   - For all non-numeric ideas, use '2col', '3col', 'statement', 'title_image_right', 'flowchart', or 'timeline' instead.
-4. MANDATORY LAYOUT DIVERSITY:
-   - In any multi-slide presentation, every slide MUST have a DISTINCT layout type. Do NOT repeat layouts. Never default to [hero, chart, timeline].
-   - Select the best layout for each slide from:
-     * 'hero': Cover slide (Slide 1). "t" is title. "c" is [ "<Subtitle explaining deck mandate (10-15 words)>", "<Presenter • 2026>" ].
-     * 'statement': Keynote-grade high-impact vision slide (NO bullets). "t" is headline, "c" is [ "<One inspiring takeaway sentence between 12 and 16 words>" ].
-     * '2col': Comparison, dual pillars, or Problem vs Solution. Each column has a bold heading and 2 complete points (10-15 words each).
-     * '3col': 3 core pillars, stages, or values. Each column has a heading and 2 complete points (10-15 words each).
-     * 'flowchart': System architecture, technical data pipelines, and workflows. "c" is 3-4 connected nodes [ ["Node Title", "Component/Tech", "Architectural explanation (10-14 words)"] ].
-     * 'timeline': Phased execution roadmap. "c" is 3-4 phase items [ ["Phase Title", "Key deliverables and milestones (10-14 words)"] ].
-     * 'stats': Big quantitative KPIs. "c" is 3-4 metric items [ ["Big Metric (e.g. $14.2M or 99.8%)", "Label", "Context explaining significance (10-14 words)"] ].
-     * 'title_image_right': Visual storytelling with 4K photo. Left content has 3 complete points (10-16 words each).
-     * 'title_content': Deep strategic overview with 4 complete takeaways (10-16 words each).
-5. RECOMMENDED THEME:
-   - Match the mood of the topic in 'recommended_theme':
-     'blush' for fashion/kids/pink/beauty, 'emerald' for green/nature/health, 'clean' for corporate/finance/legal, 'aurora' for AI/web3/gaming, 'midnight' for cloud/cybersecurity.
-6. DYNAMIC SLIDE RHYTHM ('theme_mode'):
-   - Each slide can optionally set "theme_mode": "dark" | "light_canvas" | "light_cards".
-   - Best practice rhythm:
-     * Slide 1 (Hero/Cover): "dark" (dramatic keynote hook)
-     * Timelines, Flowcharts, and Complex Bento architectures: "light_canvas" (rich pastel canvas with crisp white cards)
-     * Stats KPIs, 2-Col Comparison, and 3-Col Pillars: "light_cards" (subtle brand-tinted cards)
-     * Final Slide (Conclusion / Keynote Statement): "dark" (authoritative closing)
-7. STRICT JSON FORMAT: Output ONLY raw, valid JSON. Do NOT output markdown fences, python code, commentary, or <think> tags.
+Your mission is to create accurate, engaging, coherent, and visually well-designed presentations for any topic, including cultural, spiritual, historical, educational, scientific, technical, artistic, and business subjects.
 
-JSON STRUCTURE:
+CORE PRINCIPLES:
+
+1. TOPIC-FIRST CONTENT
+- Understand the user's topic, audience, purpose, and requested slide count before planning.
+- Adapt the language, tone, depth, examples, and structure to the subject.
+- Never force corporate terminology, business KPIs, financial metrics, or management frameworks into cultural, spiritual, historical, or conceptual topics.
+- Respect cultural and religious context. Do not invent historical facts, religious practices, quotations, scripture references, or statistics.
+- Prioritize factual accuracy, meaningful storytelling, and audience understanding.
+
+2. INTELLIGENT LAYOUT SELECTION
+Choose the most suitable layout independently for each slide based on its actual content and communication goal.
+
+Available layouts:
+- hero: Cover slide or visually striking introduction.
+- title_image_right: Image-led storytelling with meaningful supporting content.
+- timeline: Historical chronology, sequences, rituals, milestones, or phased plans.
+- flowchart: Processes, workflows, lifecycles, and connected stages.
+- 2col: Comparisons, paired concepts, or two related categories.
+- 3col: Three meaningful pillars, categories, or complementary ideas.
+- title_content: Structured explanations, detailed concepts, and readable bullet points.
+- statement: A meaningful quotation, philosophy, key insight, or central message.
+- stats: Important numerical facts, verified metrics, or meaningful milestones.
+- chart_slide: A chart that communicates valid numerical data.
+
+LAYOUT DECISION RULES:
+- Treat the layouts above as available choices, not mandatory assignments.
+- Do not force every slide to use a different layout.
+- Avoid repeating the same layout on consecutive slides when another layout communicates the content equally well.
+- Reuse a layout whenever it is the clearest and most appropriate choice.
+- Use different layouts when the content genuinely benefits from visual variety.
+- Do not choose a layout merely to satisfy a diversity quota.
+- Do not add meaningless content just to fill a layout.
+- If no specialized layout fits, use title_content.
+- Preserve readability and logical flow across the entire presentation.
+
+3. PRESENTATION STRUCTURE
+- For a single-slide request, create one complete, standalone slide that directly answers the user's request. Do not force separate cover and conclusion sections.
+- For multi-slide presentations, use an appropriate introduction, a logically ordered main section, and a meaningful ending.
+- Use a hero cover when appropriate for the first slide.
+- Use a conclusion, key takeaway, roadmap, or final reflection when appropriate for the last slide.
+- Follow the user's requested structure if one is explicitly provided.
+- Make each slide contribute a distinct idea to the overall narrative.
+
+4. CHARTS AND NUMERICAL ACCURACY
+- Use chart_slide only when valid numerical data is available and a chart would improve understanding.
+- Numerical data may come from the user's input or a reliable, explicitly supplied source.
+- Never invent statistics, financial figures, dates, quarterly values, percentages, or chart datasets.
+- Do not create a chart simply because the presentation needs visual variety.
+- If suitable numerical data is unavailable, choose a non-chart layout.
+- Preserve legitimate zero values.
+- Ensure chart categories and numerical series are valid and consistent.
+- Reject invalid chart values, including booleans, NaN, Infinity, and invalid negative values for pie or donut charts.
+- If chart data is invalid, use an appropriate non-chart layout without fabricating replacement data.
+- Never treat a historical date, slide number, or section count alone as sufficient reason to create a chart.
+
+5. TOPIC-AWARE IMAGE QUERIES
+- Generate image_query from the actual subject and purpose of each slide.
+- Prefer 2–4 concrete, visually searchable words or a short descriptive photographic phrase.
+- Describe real objects, locations, people, materials, activities, or environments relevant to the topic.
+- For cultural or spiritual topics, use respectful and contextually accurate visual descriptions (e.g. 'ancient temple sanctum', 'brass diya oil lamp').
+- For technology, show relevant real-world devices, robotics systems, laboratories, or hardware when appropriate.
+- For nature and history, describe the actual landscape, monument, artifact, or scene.
+- Avoid vague buzzwords and generic queries unrelated to the slide's message.
+- Do not force an image onto a slide when a statement or text-focused layout communicates the idea better.
+
+6. CLEAR AND NATURAL WRITING
+- Write informative, natural sentences appropriate for the audience and topic.
+- Use concise wording without removing important meaning.
+- Keep titles specific and meaningful.
+- Use short labels for metrics and diagram nodes, with sufficient explanation where needed.
+- Adapt content length to the chosen layout rather than forcing one word limit on every content type.
+- Avoid repetitive bullet points, generic filler, unnecessary jargon, and unsupported claims.
+- Do not use Markdown bold or italic markers inside generated slide text.
+- Follow the exact output schema required by the application.
+
+7. THEME SELECTION
+Choose a theme based on the topic, visual mood, and user preferences:
+- blush
+- midnight
+- clean
+- aurora
+- emerald
+- amber
+- crimson
+Use the theme that best supports the content. Do not select a theme based on topic keywords alone when the user has explicitly requested a different theme.
+
+8. STRICT OUTPUT AND DATA INTEGRITY
+- Return strictly valid JSON matching the application's existing schema.
+- Do not add explanations or Markdown outside the JSON.
+- Include only supported fields and valid layout identifiers.
+- Do not invent missing information to fill required fields.
+- Preserve user-provided facts and numerical data accurately.
+- If information is insufficient, choose a suitable non-chart layout and communicate only what is supported.
+- Maintain consistency between the presentation outline, slide content, theme, layout, and image query.
+
+OUTPUT FORMAT & CONTENT ARRAY RULES (CRITICAL FOR PARSING):
+Return ONLY a valid JSON object matching this schema:
 {
-  "recommended_theme": "<blush | midnight | clean | aurora | emerald>",
+  "recommended_theme": "<blush | midnight | clean | aurora | emerald | amber | crimson>",
   "slides": [
     {
-      "l": "<hero | statement | 2col | 3col | flowchart | timeline | stats | title_image_right | chart_slide | title_content>",
-      "t": "<Compelling, Professional Slide Title>",
-      "c": [<content array>],
+      "l": "<hero | title_image_right | 2col | 3col | flowchart | timeline | stats | title_content | statement>",
+      "t": "<Slide Title>",
+      "c": [<content array formatted per layout rules below>],
       "theme_mode": "<optional 'dark' | 'light_canvas' | 'light_cards'>",
-      "chart_type": "<optional 'bar' | 'line' | 'donut' for chart_slide>",
-      "chart_data": {
-        "title": "<Specific Metric Title>",
-        "categories": ["<Category 1>", "<Category 2>", "<Category 3>"],
-        "series": [
-          { "name": "<Series 1 Name>", "values": [65, 80, 110] },
-          { "name": "<Series 2 Name>", "values": [55, 75, 95] }
-        ]
-      },
       "image_query": "<optional 2-4 concrete photographic search words>",
       "attached_image_id": "<optional ID of user uploaded image>"
     }
   ]
 }
 
-CONTENT ARRAY RULES:
-- For 'hero': "c" is [ "<Subtitle explaining presentation thesis (10-15 words)>", "<Presenter / Organization • 2026>" ].
-- For 'statement': "c" is [ "<Single impactful sentence between 12 and 16 words>" ].
-- For 'stats': "c" is [ ["<Metric, e.g. 98.5% or $14M>", "<Label>", "<Context sentence explaining driver (10-14 words)>"], ... ] (3 or 4 items).
-- For 'timeline': "c" is [ ["<Phase Title>", "<Actionable deliverables and milestones (10-14 words)>"], ... ] (3 or 4 items).
-- For 'chart_slide': "c" is an array of 3-4 strategic takeaway sentences (10 to 16 words each) explaining data trends and impact.
-- For 'flowchart': "c" is [ ["<Step Name>", "<Tech/Pillar>", "<Architectural explanation (10-14 words)>"], ... ] (3 or 4 items).
-- For 'title_content' and 'title_image_right': "c" is an array of 3-4 complete insight sentences (10 to 16 words each).
-- For '2col' or '3col': "c" is an array of column arrays (e.g. [["Pillar A", "Complete point 1 (10-15 words)", "Complete point 2 (10-15 words)"], ["Pillar B", ...]]).
-
-CRITICAL IMAGE QUERY RULES (FOR UNSPLASH 4K STOCK PHOTOGRAPHY):
-- When choosing 'image_query', ALWAYS select a concrete, real-world physical subject that a professional camera can photograph.
-- NEVER output abstract buzzwords like 'architecture', 'stack', 'overview', 'framework', 'layer', 'enablers', or 'pipeline'.
-- ALWAYS translate conceptual topics into tangible visual scenes:
-  * For AI Architecture / Autonomous Agents / Infrastructure -> use: "modern cloud server datacenter", "datacenter blue cable network", or "server rack glowing"
-  * For Compute / Silicon / Hardware -> use: "microprocessor circuit board", "silicon chip wafer"
-  * For Strategy / Management / ROI / Business -> use: "corporate executive boardroom meeting", "business team collaboration"
-  * For Healthcare / BioTech / Life Sciences -> use: "medical laboratory scientist", "doctor tablet healthcare"
-  * For Robotics / Manufacturing / Supply Chain -> use: "industrial robotic arm factory", "automated warehouse robotics"
-  * For Security / Governance / Privacy -> use: "cybersecurity network operations center", "digital data matrix"
-- Strictly 2 to 4 concrete photographic search words.
-- UNIQUE IMAGES: Every slide using an image MUST have a strictly distinct, non-repeating image_query for its specific sub-topic.
-- If the user provided uploaded images (e.g. USER_IMG_1), assign "attached_image_id": "USER_IMG_1" to the most contextually relevant slide.
-- Generate between 1 and 10 slides as requested.
+CONTENT ARRAY FORMATTING SPECIFICATIONS:
+- For 'hero': "c" is [ "<Subtitle explaining deck mandate>", "<Presenter or Year>" ]
+- For 'statement': "c" is [ "<Single profound insight, philosophy, or vision sentence>" ]
+- For 'title_content' & 'title_image_right': "c" is an array of 3 to 4 complete, readable insight sentences.
+- For '2col' or '3col': "c" is an array of column arrays: [ ["Column Title", "Point 1", "Point 2"], ... ]
+- For 'timeline': "c" is an array of phase arrays: [ ["Milestone / Era / Ritual", "Description"], ... ]
+- For 'flowchart': "c" is an array of step arrays: [ ["Step Name", "Pillar / Action", "Explanation"], ... ]
+- For 'stats': "c" is an array of stat arrays: [ ["Stat Value (e.g. 500+ or $10M)", "Label", "Context"], ... ]
+- For 'chart_slide': "c" is an array of 3 to 4 analytical takeaways interpreting the data trends.
 """
 
 
@@ -552,6 +568,84 @@ def normalize_slide_dict(item: dict) -> dict:
         if not isinstance(d.get("c"), list) or not d.get("c"):
             d["c"] = [str(d.get("t") or "Leading the transformation through intelligence and purposeful execution.")]
 
+    # 5. Auto-bridge alternative chart representations (e.g. from AI copilot or external formats)
+    if "chart" in d and isinstance(d["chart"], dict):
+        chart_obj = d.pop("chart")
+        if "type" in chart_obj and not d.get("chart_type"):
+            d["chart_type"] = chart_obj["type"]
+        if "title" in chart_obj and not d.get("t"):
+            d["t"] = chart_obj["title"]
+        if "data" in chart_obj:
+            raw_data = chart_obj["data"]
+            if isinstance(raw_data, list) and raw_data and isinstance(raw_data[0], dict):
+                first_row = raw_data[0]
+                cat_key = next((k for k in first_row.keys() if any(c in k.lower() for c in ['year', 'cat', 'date', 'label', 'name', 'x', 'period', 'month', 'phase'])), list(first_row.keys())[0])
+                metric_keys = [k for k in first_row.keys() if k != cat_key]
+                if not metric_keys:
+                    metric_keys = [cat_key]
+                cats = [str(row.get(cat_key, '')) for row in raw_data]
+                series = []
+                for mk in metric_keys:
+                    vals = []
+                    for row in raw_data:
+                        val = row.get(mk, 0)
+                        try:
+                            vals.append(float(re.search(r'[-+]?\d*\.?\d+', str(val)).group(0)))
+                        except Exception:
+                            vals.append(0.0)
+                    series.append({'name': mk.replace('_', ' ').title(), 'values': vals})
+                d["chart_data"] = {'title': chart_obj.get('title') or d.get('t'), 'categories': cats, 'series': series}
+                d["l"] = "chart_slide"
+            elif isinstance(raw_data, dict):
+                d["chart_data"] = raw_data
+                d["l"] = "chart_slide"
+        elif "categories" in chart_obj and "series" in chart_obj:
+            d["chart_data"] = chart_obj
+            d["l"] = "chart_slide"
+        elif "categories" in chart_obj and ("data" in chart_obj or "values" in chart_obj):
+            cats = [str(c) for c in chart_obj["categories"]]
+            raw_vals = chart_obj.get("data") or chart_obj.get("values") or []
+            clean_vals = []
+            for v in raw_vals:
+                try:
+                    clean_vals.append(float(re.search(r'[-+]?\d*\.?\d+', str(v)).group(0)))
+                except Exception:
+                    clean_vals.append(0.0)
+            d["chart_data"] = {
+                "title": chart_obj.get("title") or d.get("t"),
+                "categories": cats,
+                "series": [{"name": chart_obj.get("metric_name") or "Metric", "values": clean_vals}]
+            }
+            d["l"] = "chart_slide"
+
+    # Also handle if chart_data was provided with flat values/data instead of series
+    if "chart_data" in d and isinstance(d["chart_data"], dict):
+        cd = d["chart_data"]
+        if "categories" in cd and not cd.get("series") and ("values" in cd or "data" in cd):
+            raw_vals = cd.get("values") or cd.get("data") or []
+            clean_vals = []
+            for v in raw_vals:
+                try:
+                    clean_vals.append(float(re.search(r'[-+]?\d*\.?\d+', str(v)).group(0)))
+                except Exception:
+                    clean_vals.append(0.0)
+            cd["series"] = [{"name": cd.get("title") or "Metric", "values": clean_vals}]
+            d["l"] = "chart_slide"
+
+    # If valid chart_data is already populated, promote to chart_slide
+    if d.get("chart_data") and isinstance(d["chart_data"], dict) and d["chart_data"].get("categories") and d["chart_data"].get("series"):
+        d["l"] = "chart_slide"
+
+    # If chart_slide, normalize content array into flat string takeaways
+    if d.get("l") == "chart_slide" and isinstance(d.get("c"), list):
+        clean_c = []
+        for item in d.get("c", []):
+            if isinstance(item, list):
+                clean_c.append(" - ".join(str(x) for x in item if str(x).strip()))
+            elif str(item).strip():
+                clean_c.append(str(item).strip())
+        d["c"] = clean_c
+
     # 5. Chart defaults & normalization for chart_slide
     if d.get("l") == "chart_slide":
         c_type = str(d.get("chart_type") or "bar").lower()
@@ -570,10 +664,9 @@ def normalize_slide_dict(item: dict) -> dict:
 
         # 1. Categories normalization
         raw_cats = cd.get("categories")
-        if not isinstance(raw_cats, list) or not raw_cats:
-            raw_cats = ["Q1 2025", "Q2 2025", "Q3 2025", "Q4 2025"]
-        categories = [str(c) for c in raw_cats]
-        cd["categories"] = categories
+        categories = []
+        if isinstance(raw_cats, list):
+            categories = [str(c).strip() for c in raw_cats if str(c).strip()]
 
         # 2. Series normalization (handles objects with values, data, points, flat numbers, single dict, units)
         raw_series = cd.get("series")
@@ -581,13 +674,13 @@ def normalize_slide_dict(item: dict) -> dict:
             raw_series = [raw_series]
         elif isinstance(raw_series, list) and raw_series and isinstance(raw_series[0], (int, float, str)) and not isinstance(raw_series[0], dict):
             # Flat numbers list: [2.5, 70, 0.3] or ["2.5", "70%", "0.3"]
-            raw_series = [{"name": cd.get("title") or "Actual", "values": raw_series}]
+            raw_series = [{"name": cd.get("title") or "Metric", "values": raw_series}]
 
         clean_series = []
         if isinstance(raw_series, list) and raw_series:
             for item in raw_series:
                 if isinstance(item, dict):
-                    name = str(item.get("name") or item.get("label") or item.get("title") or "Metric")
+                    name = str(item.get("name") or item.get("label") or item.get("title") or "Metric").strip()
                     raw_v = item.get("values")
                     if raw_v is None:
                         raw_v = item.get("data")
@@ -600,50 +693,61 @@ def normalize_slide_dict(item: dict) -> dict:
 
                     clean_v = []
                     for v in raw_v:
+                        if isinstance(v, bool):
+                            continue
                         if isinstance(v, (int, float)):
                             clean_v.append(float(v))
                         else:
                             # Extract numeric float from string with units like "2.5 lb/ft2" or "70%"
                             m = re.search(r"[-+]?\d*\.?\d+", str(v).replace(",", ""))
-                            clean_v.append(float(m.group(0)) if m else 0.0)
+                            if m:
+                                clean_v.append(float(m.group(0)))
 
-                    while len(clean_v) < len(categories):
-                        clean_v.append(0.0)
-                    clean_v = clean_v[:len(categories)]
-                    clean_series.append({"name": name, "values": clean_v})
-                elif isinstance(item, (int, float)):
+                    if clean_v:
+                        if categories:
+                            while len(clean_v) < len(categories):
+                                clean_v.append(0.0)
+                            clean_v = clean_v[:len(categories)]
+                        clean_series.append({"name": name, "values": clean_v})
+                elif isinstance(item, (int, float)) and not isinstance(item, bool):
                     clean_series.append({"name": "Metric", "values": [float(item)]})
 
-        # Fallback if no valid series could be parsed
-        if not clean_series:
-            if d["chart_type"] == "donut":
-                cd["categories"] = ["Core Platform", "Cloud Ops", "R&D", "Ecosystem"]
-                clean_series = [{"name": "Allocation (%)", "values": [40.0, 25.0, 20.0, 15.0]}]
-            elif d["chart_type"] == "line":
-                cd["categories"] = ["Phase 1", "Phase 2", "Phase 3", "Phase 4"]
-                clean_series = [
-                    {"name": "Optimization Scale", "values": [24.0, 48.0, 85.0, 140.0]},
-                    {"name": "Baseline", "values": [20.0, 32.0, 45.0, 60.0]}
-                ]
-            else:
-                clean_series = [
-                    {"name": "Actual", "values": [35.0, 65.0, 105.0, 160.0][:len(categories)]},
-                    {"name": "Target", "values": [30.0, 50.0, 80.0, 120.0][:len(categories)]}
-                ]
+        # CRITICAL DATA VALIDITY CHECK:
+        # Donut/pie charts cannot have negative values
+        c_type = str(d.get("chart_type") or "bar").lower()
+        if "donut" in c_type or "pie" in c_type:
+            for s in clean_series:
+                s["values"] = [max(0.0, v) for v in s["values"]]
 
-        cd["series"] = clean_series
-        cd["title"] = str(cd.get("title") or slide_t)
-        d["chart_data"] = cd
+        has_valid_data = (
+            bool(categories) and
+            bool(clean_series) and
+            any(any(v != 0.0 for v in s.get("values", [])) for s in clean_series)
+        )
+
+        if not has_valid_data:
+            # NO VALID NUMERICAL DATA: Demote to clean non-chart layout instead of fabricating fake Q1-Q4 data!
+            if d.get("image_query") or d.get("image_data"):
+                d["l"] = "title_image_right"
+            elif isinstance(d.get("c"), list) and len(d.get("c")) == 2 and all(isinstance(x, list) for x in d.get("c")):
+                d["l"] = "2col"
+            elif isinstance(d.get("c"), list) and len(d.get("c")) >= 3 and all(isinstance(x, list) for x in d.get("c")):
+                d["l"] = "3col"
+            else:
+                d["l"] = "title_content"
+            d.pop("chart_data", None)
+            d.pop("chart_type", None)
+        else:
+            cd["categories"] = categories
+            cd["series"] = clean_series
+            cd["title"] = str(cd.get("title") or slide_t)
+            d["chart_data"] = cd
 
     # 6. Flowchart defaults & normalization
     if d.get("l") == "flowchart":
         if not isinstance(d.get("c"), list) or len(d.get("c")) < 2:
-            d["c"] = [
-                ["01. Data Ingestion", "Kafka & Stream Ingestion", "Real-time streaming telemetry and raw multi-source vectorization."],
-                ["02. Agent Orchestration", "ReAct Engine", "Multi-model reasoning, autonomous planning, and memory synthesis."],
-                ["03. Execution Runtime", "Sandboxed Microservices", "Safe, deterministic execution with automated fault handling."],
-                ["04. Delivery & Evals", "Guardrail Verification", "Continuous benchmark assertions and SLA output delivery."]
-            ]
+            # Demote to title_content instead of injecting fake Kafka/ReAct strings!
+            d["l"] = "title_content"
 
     return strip_markdown_stars(d)
 
@@ -730,10 +834,118 @@ def extract_json_from_text(text: str) -> Union[dict, list]:
         try:
             return json.loads(candidate_substr)
         except Exception:
+            # Try cleaning trailing commas
+            cleaned = re.sub(r",\s*([\}\]])", r"\1", candidate_substr)
+            try:
+                return json.loads(cleaned)
+            except Exception:
+                pass
+
+    # 7. Try repairing unclosed JSON (e.g. truncated by max_tokens)
+    if s_idx != -1:
+        truncated_cand = raw[s_idx:]
+        cleaned = re.sub(r",\s*$", "", truncated_cand.strip())
+        open_braces = max(0, cleaned.count("{") - cleaned.count("}"))
+        open_brackets = max(0, cleaned.count("[") - cleaned.count("]"))
+        repaired = cleaned + ("]" * open_brackets) + ("}" * open_braces)
+        repaired = re.sub(r",\s*([\}\]])", r"\1", repaired)
+        try:
+            return json.loads(repaired)
+        except Exception:
             pass
 
-    # Final attempt that raises the raw exception if completely unparseable
-    return json.loads(raw)
+    # Final attempt: safely parse or return empty dict
+    try:
+        return json.loads(raw)
+    except Exception as e:
+        print(f"[JSON Parse Warning] Unable to parse raw LLM output into JSON: {e}")
+        return {}
+
+
+def call_groq_with_fallback(
+    messages: List[Dict[str, str]],
+    preferred_model: str = DEFAULT_MODEL,
+    temperature: float = 0.5,
+    max_tokens: int = 2000,
+    top_p: Optional[float] = None,
+    json_mode: bool = True,
+    timeout: int = 45
+) -> Tuple[Dict[str, Any], str]:
+    """
+    Executes a Groq chat completion request with Smart Model Fallback.
+    If the preferred model (e.g. qwen/qwen3.8-27b) hits HTTP 429 (Rate Limit) or 503,
+    it automatically cascades to alternative production models:
+    1. preferred_model (e.g. qwen/qwen3.8-27b)
+    2. llama-3.3-70b-versatile (Has separate 30,000+ TPM limit pool)
+    3. llama-3.1-8b-instant (Ultra-fast fallback)
+    This completely eliminates 429 Client Errors for the end-user.
+    """
+    if not GROQ_API_KEY:
+        raise RuntimeError("GROQ_API_KEY is not configured in .env file.")
+
+    pref = preferred_model if (preferred_model and not str(preferred_model).startswith("local:")) else DEFAULT_MODEL
+    if not any(k in pref.lower() for k in ["qwen"]):
+        pref = "qwen/qwen3.8-27b"
+
+    candidate_models = [pref]
+    for fallback in ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "allam-2-7b", "llama-3.3-70b-versatile", "llama-3.1-8b-instant"]:
+        if fallback not in candidate_models:
+            candidate_models.append(fallback)
+
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    last_error = None
+    for model_candidate in candidate_models:
+        payload = {
+            "model": model_candidate,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens
+        }
+        if top_p is not None:
+            payload["top_p"] = top_p
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+
+        for attempt in range(2):
+            try:
+                resp = requests.post(
+                    f"{GROQ_API_URL}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=timeout
+                )
+                if resp.status_code == 429:
+                    retry_after = resp.headers.get("retry-after")
+                    sleep_sec = min(float(retry_after), 3.0) if retry_after else 1.5
+                    if attempt == 0:
+                        print(f"[Groq 429 Rate Limit on {model_candidate}] Rate limit reached. Backing off {sleep_sec}s...")
+                        time.sleep(sleep_sec)
+                        continue
+                    else:
+                        print(f"[Groq Smart Fallback] Model {model_candidate} rate-limited. Cascading to next candidate...")
+                        break
+
+                resp.raise_for_status()
+                data = resp.json()
+                return data, model_candidate
+            except Exception as e:
+                last_error = e
+                if isinstance(e, requests.exceptions.HTTPError) and getattr(e, "response", None) is not None:
+                    if e.response.status_code == 429:
+                        print(f"[Groq Smart Fallback] Model {model_candidate} returned 429. Switching candidate...")
+                        break
+                if attempt == 0:
+                    time.sleep(1.0)
+                    continue
+                break
+
+    if last_error:
+        raise last_error
+    raise RuntimeError("All Groq model candidates failed.")
 
 
 def generate_from_groq(
@@ -745,18 +957,13 @@ def generate_from_groq(
 ) -> Tuple[str, Dict[str, Any]]:
     """
     Sends chat completion request to Groq Cloud API with native JSON mode.
-    Blazing fast LPU inference with comprehensive content.
+    Blazing fast LPU inference with comprehensive content & Smart Model Fallback.
     """
-    if not GROQ_API_KEY:
-        raise RuntimeError("GROQ_API_KEY is not configured in .env file.")
-
-    target_model = model_name if (model_name and model_name != "local-model" and not model_name.startswith("local:")) else DEFAULT_MODEL
-    # Default to Qwen 2.5 27B
+    target_model = model_name if (model_name and not (model_name or "").startswith("local:")) else DEFAULT_MODEL
     if not any(k in target_model.lower() for k in ["qwen"]):
         target_model = "qwen/qwen3.8-27b"
 
     num_slides = max(1, min(int(num_slides or 1), 10))
-    url = f"{GROQ_API_URL}/chat/completions"
 
     uploaded_info = ""
     if uploaded_images:
@@ -784,140 +991,30 @@ def generate_from_groq(
         theme_directive = f"\n\nSTRICT COLOR THEME DIRECTIVE: The presentation MUST be designed for the '{req_theme}' theme (seed hex: {req_seed}). Set \"recommended_theme\": \"{req_theme}\" in your JSON response."
 
     user_instruction = (
-        f"Create an authoritative, high-value {num_slides}-slide presentation deck (maximum 10 slides) on the following requirement:\n{prompt}"
+        f"Create an engaging, authentic, and well-structured {num_slides}-slide presentation deck (maximum 10 slides) on the following requirement:\n{prompt}"
         f"{uploaded_info}"
         f"{outline_info}"
         f"{theme_directive}\n\n"
         f'Output MUST be a valid JSON object with a "slides" array containing exactly {num_slides} slide item(s). '
-        f'CRITICAL: Write complete, informative 10-to-16-word bullet points that clearly explain the business or operational insight so the audience understands the full context. '
-        f'If generating a chart_slide, ensure "chart_data" has exact "title", "categories", and "series" with numeric "values" matching categories, and ensure unique 4K "image_query" per visual slide.'
+        f'Write informative, natural sentences that clearly convey the essence and depth of the topic. '
+        f'Respect the domain: NEVER force charts, business KPIs, or corporate metrics onto cultural, spiritual, or general topics. Prioritize natural visual layouts ("title_image_right", "timeline", "3col", "2col", "title_content", "flowchart").'
     )
 
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "model": target_model,
-        "messages": [
+    start_time = time.perf_counter()
+    data, used_model = call_groq_with_fallback(
+        messages=[
             {"role": "system", "content": SLIDE_PLANNER_SYSTEM_PROMPT},
             {"role": "user", "content": user_instruction}
         ],
-        "response_format": {"type": "json_object"},
-        "temperature": 0.25,
-        "max_tokens": 4000
-    }
-
-    start_time = time.perf_counter()
-    response = requests.post(url, headers=headers, json=payload, timeout=60)
-    response.raise_for_status()
-    data = response.json()
-
-    end_time = time.perf_counter()
-    latency_ms = int((end_time - start_time) * 1000)
-
-    usage = data.get("usage", {})
-    metrics = {
-        "input_tokens": usage.get("prompt_tokens", 0),
-        "output_tokens": usage.get("completion_tokens", 0),
-        "total_tokens": usage.get("total_tokens", 0),
-        "latency_ms": latency_ms
-    }
-
-    choice_msg = data.get("choices", [{}])[0].get("message", {})
-    content = choice_msg.get("content") or ""
-
-    print(f"[Groq Cloud] Model={target_model} | Latency={latency_ms}ms | Tokens={metrics['total_tokens']}")
-    return content, metrics
-
-
-def generate_from_lmstudio(
-    prompt: str,
-    model_name: str,
-    num_slides: int = 1,
-    uploaded_images: Optional[List[UploadedImageItem]] = None,
-    outline: Optional[List[Dict[str, Any]]] = None
-) -> Tuple[str, Dict[str, Any]]:
-    """
-    Sends chat completion request to local LM Studio server.
-    Measures latency and extracts token usage metrics.
-    """
-    if not model_name or model_name == "local-model" or model_name.startswith("local:"):
-        model_name = model_name.replace("local:", "") if model_name else ""
-        try:
-            resp = requests.get(f"{LM_STUDIO_URL}/models", timeout=3)
-            if resp.ok:
-                candidates = [m["id"] for m in resp.json().get("data", []) if "embed" not in m.get("id", "").lower()]
-                if candidates:
-                    model_name = candidates[0]
-        except Exception:
-            model_name = "qwen3.5-4b"
-
-    num_slides = max(1, min(int(num_slides or 1), 10))
-    url = f"{LM_STUDIO_URL}/chat/completions"
-
-    uploaded_info = ""
-    if uploaded_images:
-        uploaded_info = "\n\nUSER UPLOADED IMAGES AVAILABLE:\n"
-        for img in uploaded_images:
-            desc = describe_user_image(filename=img.filename, user_hint=img.user_hint)
-            uploaded_info += f"- Image ID: [{img.id}] | Filename: '{img.filename}' | Description: {desc}\n"
-        uploaded_info += "Assign any uploaded image to its most relevant slide using 'attached_image_id' and 'title_image_right' layout.\n"
-
-    outline_info = ""
-    if outline:
-        outline_info = "\n\nAPPROVED PRESENTATION OUTLINE & AGENDA:\n"
-        for idx, item in enumerate(outline, start=1):
-            t = item.get("title") or item.get("t") or f"Slide {idx}"
-            lh = item.get("suggested_layout") or item.get("layout_hint") or "title_content"
-            subs = item.get("subtopics") or []
-            outline_info += f"- Slide {idx}: Title='{t}' | Layout='{lh}' | Topics: {subs}\n"
-
-    theme_directive = ""
-    req_theme, req_seed, is_exp = extract_prompt_color_and_theme(prompt)
-    if is_exp:
-        theme_directive = f"\n\nSTRICT COLOR THEME DIRECTIVE: The presentation MUST be designed for the '{req_theme}' theme (seed hex: {req_seed}). Set \"recommended_theme\": \"{req_theme}\" in your JSON response."
-
-    user_instruction = (
-        f"Create a professional {num_slides}-slide presentation deck (maximum 10 slides) on the following requirement:\n{prompt}"
-        f"{uploaded_info}"
-        f"{outline_info}"
-        f"{theme_directive}\n\n"
-        f'Output MUST be a valid JSON object with a "slides" array containing {num_slides} slide item(s). '
-        f'CRITICAL: Write complete, informative 10-to-16-word bullet points that clearly explain the business or operational insight so the audience understands the full context. '
-        f'If generating a chart_slide, ensure "chart_data" has exact "title", "categories", and "series" with numeric "values" matching categories, and ensure unique 4K "image_query" per visual slide.'
+        preferred_model=target_model,
+        temperature=0.7,
+        top_p=0.9,
+        max_tokens=4000,
+        json_mode=True,
+        timeout=60
     )
 
-    messages = [
-        {"role": "system", "content": SLIDE_PLANNER_SYSTEM_PROMPT},
-        {"role": "user", "content": user_instruction}
-    ]
-
-    is_reasoning_model = any(k in model_name.lower() for k in ["qwen3.5", "qwq", "r1", "reasoner"])
-    if is_reasoning_model:
-        messages.append({"role": "assistant", "content": "</think>"})
-
-    payload = {
-        "model": model_name,
-        "messages": messages,
-        "temperature": 0.2,
-        "max_tokens": 4000
-    }
-
-    start_time = time.perf_counter()
-    try:
-        response = requests.post(url, json=payload, timeout=300)
-        response.raise_for_status()
-        data = response.json()
-    except requests.exceptions.RequestException as e:
-        raise RuntimeError(
-            f"LM Studio Connection Error: Ensure LM Studio is running on {LM_STUDIO_URL}. Error: {str(e)}"
-        )
-
-    end_time = time.perf_counter()
-    latency_ms = int((end_time - start_time) * 1000)
-
+    latency_ms = int((time.perf_counter() - start_time) * 1000)
     usage = data.get("usage", {})
     metrics = {
         "input_tokens": usage.get("prompt_tokens", 0),
@@ -928,11 +1025,11 @@ def generate_from_lmstudio(
 
     choice_msg = data.get("choices", [{}])[0].get("message", {})
     content = choice_msg.get("content") or ""
-    if not content and choice_msg.get("reasoning_content"):
-        content = choice_msg["reasoning_content"]
 
-    print(f"[LM Studio] Model={model_name} | Latency={latency_ms}ms | Tokens={metrics['total_tokens']}")
+    print(f"[Groq Cloud] Model={used_model} | Latency={latency_ms}ms | Tokens={metrics['total_tokens']}")
     return content, metrics
+
+
 
 
 def generate_outline(
@@ -944,117 +1041,125 @@ def generate_outline(
     Blazing fast outline planner (300-500ms on Groq LPU).
     Generates structured agenda items, purpose, and subtopics for user pre-approval.
     """
-    target_model = model_name if (model_name and model_name != "local-model" and not model_name.startswith("local:")) else DEFAULT_MODEL
+    target_model = model_name if (model_name and not (model_name or "").startswith("local:")) else DEFAULT_MODEL
     if not any(k in target_model.lower() for k in ["qwen"]):
         target_model = "qwen/qwen3.8-27b"
 
     num_slides = max(1, min(int(num_slides or 3), 10))
+    if num_slides == 1:
+        layout_rules = (
+            "Create exactly 1 comprehensive, standalone slide outline that directly addresses the user's requirement. "
+            "Select the single best layout suited to the topic (e.g. 'hero', 'title_image_right', '3col', 'timeline', 'statement', or 'title_content'). "
+            "Do NOT force separate cover or conclusion sections."
+        )
+    else:
+        layout_rules = (
+            "Recommend a mood theme and provide distinct layouts across slides. Keep subtopics short and impactful.\n"
+            "Slide 1 MUST be layout 'hero' with a clean 3-to-6-word presentation title. Final slide MUST be a strategic conclusion ('statement' or 'title_content')."
+        )
+
     user_instruction = (
         f"Generate a strategic, highly structured slide outline with exactly {num_slides} slide(s) for the following requirement:\n{prompt}\n\n"
-        f"Recommend a mood theme and provide distinct layouts across slides. Keep subtopics short and impactful.\n"
-        f"Slide 1 MUST be layout 'hero' with a clean 3-to-6-word presentation title. Final slide MUST be a strategic conclusion ('statement' or 'title_content').\n"
+        f"{layout_rules}\n"
         f"Output MUST be a valid JSON object matching the requested schema."
     )
 
-    url = f"{GROQ_API_URL}/chat/completions"
-    headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-    payload = {
-        "model": target_model,
-        "messages": [
-            {"role": "system", "content": OUTLINE_PLANNER_SYSTEM_PROMPT},
-            {"role": "user", "content": user_instruction}
-        ],
-        "response_format": {"type": "json_object"},
-        "temperature": 0.25,
-        "max_tokens": 3500
-    }
-
     start_time = time.perf_counter()
-    raw_str = ""
     metrics = GenerationMetrics()
     try:
-        if GROQ_API_KEY:
-            resp = requests.post(url, headers=headers, json=payload, timeout=25)
-            resp.raise_for_status()
-            res_json = resp.json()
-            latency_ms = int((time.perf_counter() - start_time) * 1000)
-            usage = res_json.get("usage", {})
-            metrics = GenerationMetrics(
-                input_tokens=usage.get("prompt_tokens", 0),
-                output_tokens=usage.get("completion_tokens", 0),
-                total_tokens=usage.get("total_tokens", 0),
-                latency_ms=latency_ms
-            )
-            raw_str = res_json.get("choices", [{}])[0].get("message", {}).get("content", "")
+        res_json, used_model = call_groq_with_fallback(
+            messages=[
+                {"role": "system", "content": OUTLINE_PLANNER_SYSTEM_PROMPT},
+                {"role": "user", "content": user_instruction}
+            ],
+            preferred_model=target_model,
+            temperature=0.65,
+            top_p=0.9,
+            max_tokens=3500,
+            json_mode=True,
+            timeout=30
+        )
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+        usage = res_json.get("usage", {})
+        metrics = GenerationMetrics(
+            input_tokens=usage.get("prompt_tokens", 0),
+            output_tokens=usage.get("completion_tokens", 0),
+            total_tokens=usage.get("total_tokens", 0),
+            latency_ms=latency_ms
+        )
+        raw_str = res_json.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+        parsed = extract_json_from_text(raw_str)
+        parsed = strip_markdown_stars(parsed)
+
+        inferred_theme, inferred_seed, is_explicit = extract_prompt_color_and_theme(prompt)
+        if is_explicit:
+            theme = inferred_theme
+        elif isinstance(parsed, dict) and parsed.get("recommended_theme") in ["blush", "emerald", "clean", "aurora", "midnight", "amber", "crimson"]:
+            theme = parsed.get("recommended_theme")
         else:
-            raise RuntimeError("No Groq key available")
+            theme = inferred_theme
+
+        raw_list = []
+        if isinstance(parsed, dict):
+            raw_list = parsed.get("slides") or []
+        elif isinstance(parsed, list):
+            raw_list = parsed
+
+        items = []
+        for idx, item in enumerate(raw_list, start=1):
+            if isinstance(item, dict):
+                title = item.get("title") or item.get("t") or f"Slide {idx}"
+                layout = item.get("suggested_layout") or item.get("layout_hint") or item.get("layout") or "title_content"
+                items.append(OutlineItem(
+                    slide_index=item.get("slide_index") or item.get("slide_num") or idx,
+                    title=title,
+                    suggested_layout=layout,
+                    purpose=item.get("purpose") or item.get("role") or "",
+                    subtopics=item.get("subtopics") or item.get("points") or []
+                ))
+
+        if not items:
+            raise ValueError("No outline items parsed from LLM")
+
+        return OutlineResponse(
+            prompt=prompt,
+            recommended_theme=theme,
+            theme_seed_hex=inferred_seed,
+            slides=items,
+            metrics=metrics
+        )
     except Exception as e:
         print(f"[Outline Planner] Falling back to structured heuristic: {e}")
         inferred = infer_topic_theme(prompt)
+        inferred_theme, inferred_seed, _ = extract_prompt_color_and_theme(prompt)
         clean_title = clean_presentation_title(prompt)
         default_items = []
-        for i in range(1, num_slides + 1):
-            if i == 1:
-                default_items.append(OutlineItem(slide_index=1, title=clean_title, purpose="Cover & Strategic Vision", suggested_layout="hero", subtopics=[]))
-            elif i == num_slides and num_slides > 1:
-                default_items.append(OutlineItem(slide_index=i, title="Strategic Takeaways & Action Roadmap", purpose="Executive Conclusion & Next Milestones", suggested_layout="statement", subtopics=["Key Strategic Takeaways", "Execution Priorities"]))
-            elif i == 2:
-                default_items.append(OutlineItem(slide_index=2, title="Core Objectives & Market Context", purpose="Problem Analysis & Scope", suggested_layout="2col", subtopics=["Market Opportunity & Landscape", "Key Operational Bottlenecks"]))
-            elif i == 3:
-                default_items.append(OutlineItem(slide_index=3, title="Architectural Pillars & Solution Framework", purpose="Core Solution", suggested_layout="3col", subtopics=["Foundational Architecture", "Scalable Operational Pipeline", "Enterprise Governance"]))
-            elif i == 4:
-                default_items.append(OutlineItem(slide_index=4, title="Key Performance Metrics & KPI Impact", purpose="Measurable Benchmarks", suggested_layout="stats", subtopics=["Efficiency Metrics", "Yield Optimization"]))
-            elif i == 5:
-                default_items.append(OutlineItem(slide_index=5, title="Phased Deployment & Execution Roadmap", purpose="Milestones & Timeline", suggested_layout="timeline", subtopics=["Phase 1 Initiation", "Phase 2 Production Scale"]))
-            else:
-                default_items.append(OutlineItem(slide_index=i, title=f"Operational Excellence & Enablers #{i-3}", purpose="System Deep Dive", suggested_layout="title_content", subtopics=["System Resilience", "Risk Governance"]))
+        if num_slides == 1:
+            default_items.append(OutlineItem(slide_index=1, title=clean_title, purpose="Overview & Core Insights", suggested_layout="hero", subtopics=[]))
+        else:
+            for i in range(1, num_slides + 1):
+                if i == 1:
+                    default_items.append(OutlineItem(slide_index=1, title=clean_title, purpose="Cover & Strategic Vision", suggested_layout="hero", subtopics=[]))
+                elif i == num_slides and num_slides > 1:
+                    default_items.append(OutlineItem(slide_index=i, title="Strategic Takeaways & Action Roadmap", purpose="Executive Conclusion & Next Milestones", suggested_layout="statement", subtopics=["Key Strategic Takeaways", "Execution Priorities"]))
+                elif i == 2:
+                    default_items.append(OutlineItem(slide_index=2, title="Core Objectives & Landscape Context", purpose="Context Analysis & Scope", suggested_layout="title_image_right", subtopics=["Strategic Context & Landscape", "Key Operational Challenges"]))
+                elif i == 3:
+                    default_items.append(OutlineItem(slide_index=3, title="Core Pillars & Framework", purpose="Core Solution Architecture", suggested_layout="3col", subtopics=["Foundational Pillar", "Scalable Operational Pipeline", "Enterprise Governance"]))
+                elif i == 4:
+                    default_items.append(OutlineItem(slide_index=4, title="Strategic Capabilities & Methodologies", purpose="Execution Framework", suggested_layout="2col", subtopics=["Core Implementation", "Quality Optimization"]))
+                elif i == 5:
+                    default_items.append(OutlineItem(slide_index=5, title="Phased Deployment & Execution Roadmap", purpose="Milestones & Timeline", suggested_layout="timeline", subtopics=["Phase 1 Initiation", "Phase 2 Production Scale"]))
+                else:
+                    default_items.append(OutlineItem(slide_index=i, title=f"Operational Excellence & Enablers #{i-3}", purpose="System Deep Dive", suggested_layout="title_content", subtopics=["System Resilience", "Risk Governance"]))
         return OutlineResponse(
             prompt=prompt,
-            recommended_theme=inferred,
+            recommended_theme=inferred_theme or inferred,
+            theme_seed_hex=inferred_seed,
             slides=default_items,
             metrics=metrics
         )
-
-    parsed = extract_json_from_text(raw_str)
-    parsed = strip_markdown_stars(parsed)
-
-    inferred_theme, inferred_seed, is_explicit = extract_prompt_color_and_theme(prompt)
-    if is_explicit:
-        theme = inferred_theme
-    elif isinstance(parsed, dict) and parsed.get("recommended_theme") in ["blush", "emerald", "clean", "aurora", "midnight", "amber", "crimson"]:
-        theme = parsed.get("recommended_theme")
-    else:
-        theme = inferred_theme
-
-    raw_list = []
-    if isinstance(parsed, dict):
-        raw_list = parsed.get("slides") or []
-    elif isinstance(parsed, list):
-        raw_list = parsed
-
-    items = []
-    for idx, item in enumerate(raw_list, start=1):
-        if isinstance(item, dict):
-            title = item.get("title") or item.get("t") or f"Slide {idx}"
-            layout = item.get("suggested_layout") or item.get("layout_hint") or item.get("layout") or "title_content"
-            items.append(OutlineItem(
-                slide_index=item.get("slide_index") or item.get("slide_num") or idx,
-                title=title,
-                suggested_layout=layout,
-                purpose=item.get("purpose") or item.get("role") or "",
-                subtopics=item.get("subtopics") or item.get("points") or []
-            ))
-
-    if not items:
-        items = [OutlineItem(slide_index=1, title=prompt[:50], purpose="Overview", suggested_layout="hero", subtopics=[])]
-
-    return OutlineResponse(
-        prompt=prompt,
-        recommended_theme=theme,
-        theme_seed_hex=inferred_seed,
-        slides=items,
-        metrics=metrics
-    )
 
 
 def plan_slide(
@@ -1067,23 +1172,11 @@ def plan_slide(
     theme_seed_hex: Optional[str] = None
 ) -> GenerateResponse:
     
-    use_groq = bool(GROQ_API_KEY) and (model_name != "local-model" and not (model_name or "").startswith("local:"))
-
     raw_json_str = ""
     metrics_dict = {}
 
     try:
-        if use_groq:
-            try:
-                raw_json_str, metrics_dict = generate_from_groq(prompt, model_name, num_slides, uploaded_images, outline)
-            except Exception as groq_err:
-                print(f"[Groq Warning - Trying LM Studio fallback] {groq_err}")
-                if LM_STUDIO_URL:
-                    raw_json_str, metrics_dict = generate_from_lmstudio(prompt, model_name, num_slides, uploaded_images, outline)
-                else:
-                    raise groq_err
-        else:
-            raw_json_str, metrics_dict = generate_from_lmstudio(prompt, model_name, num_slides, uploaded_images, outline)
+        raw_json_str, metrics_dict = generate_from_groq(prompt, model_name, num_slides, uploaded_images, outline)
     except Exception as e:
         inferred_theme, inferred_seed, _ = extract_prompt_color_and_theme(prompt)
         return GenerateResponse(
@@ -1226,42 +1319,31 @@ def regenerate_single_slide(
     slide_index: int,
     total_slides: int = 1,
     current_title: str = "",
+    current_layout: Optional[str] = None,
     model_name: str = DEFAULT_MODEL,
     used_images: Optional[Set[str]] = None
 ) -> SlideDSL:
     """
     Regenerates or re-plans a single slide in an existing presentation deck.
     Keeps context of global topic and re-creates points, layout, and image.
+    Supports all 10 layouts and gracefully handles failures without server crashes.
     """
-    use_groq = bool(GROQ_API_KEY) and (model_name != "local-model" and not (model_name or "").startswith("local:"))
+    target_model = model_name if (model_name and not (model_name or "").startswith("local:")) else DEFAULT_MODEL
+    if not any(k in target_model.lower() for k in ["qwen"]):
+        target_model = "qwen/qwen3.8-27b"
 
-    if use_groq:
-        target_model = model_name if (model_name and model_name != "local-model") else DEFAULT_MODEL
-        if not any(k in target_model.lower() for k in ["qwen"]):
-            target_model = "qwen/qwen3.8-27b"
-    else:
-        if not model_name or model_name == "local-model" or (model_name or "").startswith("local:"):
-            target_model = model_name.replace("local:", "") if model_name else ""
-            try:
-                resp = requests.get(f"{LM_STUDIO_URL}/models", timeout=3)
-                if resp.ok:
-                    candidates = [m["id"] for m in resp.json().get("data", []) if "embed" not in m.get("id", "").lower()]
-                    if candidates:
-                        target_model = candidates[0]
-            except Exception:
-                target_model = "qwen3.5-4b"
-        else:
-            target_model = model_name
+    layout_hint_str = f"Current Layout: '{current_layout}'. Retain this layout if appropriate, or select the best layout from all 10 layouts.\n" if current_layout else ""
 
     instruction = (
         f"The user is refining slide #{slide_index + 1} of {total_slides} in a presentation deck.\n"
         f"Global Presentation Requirement: {prompt}\n"
-        f"Current Slide Focus / Title: {current_title or 'Sub-topic of presentation'}\n\n"
+        f"Current Slide Focus / Title: {current_title or 'Sub-topic of presentation'}\n"
+        f"{layout_hint_str}\n"
         f"Regenerate a fresh, professional, and refined version of this single slide.\n"
         f"Provide comprehensive, substantive content for all points.\n"
         f"Return ONLY valid raw JSON for this single slide matching this format:\n"
         f"{{\n"
-        f'  "l": "<title_content | 2col | 3col | title_image_right>",\n'
+        f'  "l": "<hero | title_image_right | timeline | flowchart | 2col | 3col | title_content | statement | stats | chart_slide>",\n'
         f'  "t": "<slide_title>",\n'
         f'  "c": [<content array>],\n'
         f'  "image_query": "<optional 1-3 generic encyclopedia words for image>"\n'
@@ -1273,39 +1355,45 @@ def regenerate_single_slide(
         {"role": "user", "content": instruction}
     ]
 
-    if not use_groq:
-        is_reasoning_model = any(k in target_model.lower() for k in ["qwen3.5", "qwq", "r1", "reasoner"])
-        if is_reasoning_model:
-            messages.append({"role": "assistant", "content": "</think>"})
+    try:
+        data, used_model = call_groq_with_fallback(
+            messages=messages,
+            preferred_model=target_model,
+            temperature=0.5,
+            max_tokens=1500,
+            json_mode=True,
+            timeout=40
+        )
+        choice_msg = data.get("choices", [{}])[0].get("message", {})
+        content = choice_msg.get("content") or choice_msg.get("reasoning_content") or ""
 
-    payload = {
-        "model": target_model,
-        "messages": messages,
-        "temperature": 0.25,
-        "max_tokens": 1500
-    }
-    if use_groq:
-        payload["response_format"] = {"type": "json_object"}
+        parsed = extract_json_from_text(content)
+        if isinstance(parsed, list) and len(parsed) > 0:
+            parsed = parsed[0]
+        elif isinstance(parsed, dict) and "slides" in parsed and len(parsed["slides"]) > 0:
+            parsed = parsed["slides"][0]
+        elif isinstance(parsed, dict) and "slide" in parsed and isinstance(parsed["slide"], dict):
+            parsed = parsed["slide"]
 
-    if use_groq:
-        headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-        resp = requests.post(f"{GROQ_API_URL}/chat/completions", headers=headers, json=payload, timeout=60)
-    else:
-        resp = requests.post(f"{LM_STUDIO_URL}/chat/completions", json=payload, timeout=60)
-    resp.raise_for_status()
-    data = resp.json()
+        if not isinstance(parsed, dict) or not parsed:
+            raise ValueError("Parsed slide data is empty")
 
-    choice_msg = data.get("choices", [{}])[0].get("message", {})
-    content = choice_msg.get("content") or choice_msg.get("reasoning_content") or ""
-
-    parsed = extract_json_from_text(content)
-    if isinstance(parsed, list) and len(parsed) > 0:
-        parsed = parsed[0]
-    elif isinstance(parsed, dict) and "slides" in parsed and len(parsed["slides"]) > 0:
-        parsed = parsed["slides"][0]
-
-    normalized = normalize_slide_dict(parsed)
-    slide_obj = SlideDSL.model_validate(normalized)
+        normalized = normalize_slide_dict(parsed)
+        slide_obj = SlideDSL.model_validate(normalized)
+    except Exception as err:
+        print(f"[Regenerate Slide Safe Fallback] {err}")
+        fallback_layout = current_layout if current_layout in [
+            "hero", "title_image_right", "timeline", "flowchart", "2col", "3col", "title_content", "statement", "stats", "chart_slide"
+        ] else "title_content"
+        fallback_dict = {
+            "l": fallback_layout,
+            "t": current_title or clean_presentation_title(prompt),
+            "c": [
+                f"Core strategic context and key concepts for {current_title or prompt[:40]}.",
+                f"Execution insights and essential domain principles tailored to the presentation theme."
+            ]
+        }
+        slide_obj = SlideDSL.model_validate(normalize_slide_dict(fallback_dict))
 
     # Bind new visual if layout or image_query calls for one
     non_img_layouts = [
@@ -1356,7 +1444,7 @@ def restyle_text_with_ai(
     if not clean_text:
         return ""
 
-    target_model = model_name if (model_name and model_name != "local-model" and not (model_name or "").startswith("local:")) else DEFAULT_MODEL
+    target_model = model_name if (model_name and not (model_name or "").startswith("local:")) else DEFAULT_MODEL
     if not any(k in target_model.lower() for k in ["qwen"]):
         target_model = "qwen/qwen3.8-27b"
 
@@ -1367,25 +1455,18 @@ def restyle_text_with_ai(
         f"Rewritten Sentence:"
     )
 
-    use_groq = bool(GROQ_API_KEY) and (model_name != "local-model" and not (model_name or "").startswith("local:"))
-    headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-    payload = {
-        "model": target_model,
-        "messages": [
-            {"role": "system", "content": RESTYLE_SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt}
-        ],
-        "temperature": 0.2,
-        "max_tokens": 200
-    }
-
     try:
-        if use_groq:
-            resp = requests.post(f"{GROQ_API_URL}/chat/completions", headers=headers, json=payload, timeout=20)
-        else:
-            resp = requests.post(f"{LM_STUDIO_URL}/chat/completions", json=payload, timeout=20)
-        resp.raise_for_status()
-        data = resp.json()
+        data, used_model = call_groq_with_fallback(
+            messages=[
+                {"role": "system", "content": RESTYLE_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt}
+            ],
+            preferred_model=target_model,
+            temperature=0.2,
+            max_tokens=200,
+            json_mode=False,
+            timeout=20
+        )
         raw = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
         cleaned = strip_markdown_stars(raw).strip('"\';:- ')
         lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
@@ -1423,29 +1504,22 @@ def suggest_slide_point(
         f"One New High-Impact Bullet Point (10 to 15 words):"
     )
 
-    target_model = model_name if (model_name and model_name != "local-model" and not (model_name or "").startswith("local:")) else DEFAULT_MODEL
+    target_model = model_name if (model_name and not (model_name or "").startswith("local:")) else DEFAULT_MODEL
     if not any(k in target_model.lower() for k in ["qwen"]):
         target_model = "qwen/qwen3.8-27b"
 
-    use_groq = bool(GROQ_API_KEY) and (model_name != "local-model" and not (model_name or "").startswith("local:"))
-    headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-    payload = {
-        "model": target_model,
-        "messages": [
-            {"role": "system", "content": SUGGEST_POINT_SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt}
-        ],
-        "temperature": 0.3,
-        "max_tokens": 150
-    }
-
     try:
-        if use_groq:
-            resp = requests.post(f"{GROQ_API_URL}/chat/completions", headers=headers, json=payload, timeout=20)
-        else:
-            resp = requests.post(f"{LM_STUDIO_URL}/chat/completions", json=payload, timeout=20)
-        resp.raise_for_status()
-        data = resp.json()
+        data, used_model = call_groq_with_fallback(
+            messages=[
+                {"role": "system", "content": SUGGEST_POINT_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt}
+            ],
+            preferred_model=target_model,
+            temperature=0.3,
+            max_tokens=150,
+            json_mode=False,
+            timeout=20
+        )
         raw = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
         cleaned = strip_markdown_stars(raw).strip('"\';:- ')
         lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
@@ -1470,29 +1544,46 @@ Commands could be:
 - 'Make this slide dark / change theme to dark mode' -> set "theme_mode": "dark"
 - 'Use pink color / baby pink theme' -> set "seed_color": "#F472B6", "theme": "blush"
 - 'Change color to emerald green' -> set "seed_color": "#10B981", "theme": "emerald"
+- 'Use golden amber theme' -> set "seed_color": "#F59E0B", "theme": "amber"
+- 'Change color to crimson red' -> set "seed_color": "#EF4444", "theme": "crimson"
+- 'Add a bar chart / line chart / donut / visualize growth / trend':
+  Set "l": "chart_slide",
+  "chart_type": "bar" | "line" | "donut",
+  "chart_data": {
+    "title": "<Chart Title>",
+    "categories": ["2024", "2025", "2026"],
+    "series": [{"name": "Growth (%)", "values": [12.5, 18.3, 25.0]}]
+  },
+  "c": ["<Strategic takeaway 1>", "<Strategic takeaway 2>"]
 
 CRITICAL RULES:
 1. Modify the slide JSON strictly according to the user's instruction.
-2. Keep all unchanged elements preserved.
+2. Keep all unchanged elements strictly preserved (do NOT delete bullets, images, or layouts unless explicitly told).
 3. Every bullet point must be meaningful and between 10 and 16 words (unless requested shorter).
 4. ABSOLUTELY NO MARKDOWN ASTERISKS (** or *).
 5. If the user asks for light or dark mode/theme for the slide, set "theme_mode": "light_canvas", "light_cards", or "dark".
-6. If the user asks for color or aesthetic theme, set "theme": "blush" | "midnight" | "clean" | "aurora" | "emerald" and "seed_color": "#hex".
+6. If the user asks for color or aesthetic theme, set "theme": "blush" | "midnight" | "clean" | "aurora" | "emerald" | "amber" | "crimson" and "seed_color": "#hex".
 7. Output MUST be a valid JSON object matching the SlideDSL schema:
    {
      "summary": "<1-line summary of changes made, e.g. 'Updated slide to Baby Pink theme with pastel cards'>",
      "slide": {
        "l": "<hero | statement | 2col | 3col | flowchart | timeline | stats | title_image_right | chart_slide | title_content>",
        "t": "<Slide Title>",
-       "c": [<content array>],
+       "c": [<content array: flat list of strings for chart_slide>],
        "theme_mode": "<optional: 'dark' | 'light_canvas' | 'light_cards'>",
-       "theme": "<optional: 'blush' | 'midnight' | 'clean' | 'aurora' | 'emerald'>",
+       "theme": "<optional: 'blush' | 'midnight' | 'clean' | 'aurora' | 'emerald' | 'amber' | 'crimson'>",
        "seed_color": "<optional hex code>",
        "chart_type": "<optional bar | line | donut>",
-       "chart_data": { ... },
+       "chart_data": {
+         "title": "<Chart Title>",
+         "categories": ["Cat1", "Cat2", ...],
+         "series": [{"name": "Metric", "values": [10.0, 20.0, ...]}]
+       },
        "image_query": "<optional photo search query>"
      }
    }
+8. CRITICAL: When the user asks to add or switch to a chart/graph (bar chart, line chart, donut, growth/trend visualization):
+   You MUST set "l": "chart_slide", select the appropriate "chart_type" ("bar", "line", or "donut"), and provide realistic numerical data in "chart_data" with "categories" and "series". For "c", convert existing points or provide 2-3 concise strategic takeaway strings (flat strings, NOT nested lists). Do NOT leave "l" as "timeline", "flowchart", or "hero".
 """
 
 def copilot_edit_slide(
@@ -1508,8 +1599,20 @@ def copilot_edit_slide(
     if original_image_data:
         clean_slide["has_image"] = True
 
-    # 2. Fast local path for quick theme/color modifications to avoid unnecessary latency
     inst_lower = (instruction or "").strip().lower()
+
+    # Fast path 1: Explicit title rename (e.g. "change title to Strategic Roadmap", "rename slide to Intro")
+    m_title = re.match(r"^(?:change|update|set|rename)\s+(?:the\s+)?(?:slide\s+)?title\s+(?:to|as|:)\s*[\"']?([^\"']+)[\"']?$", instruction.strip(), re.IGNORECASE)
+    if m_title:
+        new_title = m_title.group(1).strip()
+        if new_title:
+            slide_copy = copy.deepcopy(slide_dict)
+            slide_copy["t"] = new_title
+            if original_image_data and not slide_copy.get("image_data"):
+                slide_copy["image_data"] = original_image_data
+            return slide_copy, f"Updated slide title to '{new_title}'"
+
+    # Fast path 2: Fast local path for quick theme/color modifications to avoid unnecessary latency
     color_map = {
         "baby pink": ("blush", "#F472B6"),
         "pastel pink": ("blush", "#F472B6"),
@@ -1523,9 +1626,19 @@ def copilot_edit_slide(
         "blue": ("midnight", "#0EA5E9"),
         "clean": ("clean", "#2563EB"),
         "dark": ("midnight", "#0EA5E9"),
+        "amber": ("amber", "#F59E0B"),
+        "gold": ("amber", "#F59E0B"),
+        "golden": ("amber", "#F59E0B"),
+        "yellow": ("amber", "#F59E0B"),
+        "solar": ("amber", "#F59E0B"),
+        "crimson": ("crimson", "#EF4444"),
+        "red": ("crimson", "#EF4444"),
+        "ruby": ("crimson", "#EF4444"),
     }
     
-    is_simple_theme = any(k in inst_lower for k in ["theme", "color", "mode", "light", "dark", "pink", "rose", "blush", "purple", "green", "blue"]) and not any(
+    is_simple_theme = any(k in inst_lower for k in [
+        "theme", "color", "mode", "light", "dark", "pink", "rose", "blush", "purple", "green", "blue", "amber", "gold", "golden", "yellow", "crimson", "red"
+    ]) and not any(
         k in inst_lower for k in ["add", "remove", "delete", "rewrite", "replace", "expand", "summarize", "metric", "chart", "bullet", "title", "layout", "column"]
     )
     if is_simple_theme:
@@ -1548,48 +1661,87 @@ def copilot_edit_slide(
             summary_parts.append("Switched mode to Obsidian Dark")
             
         if summary_parts:
+            if original_image_data and not slide_copy.get("image_data"):
+                slide_copy["image_data"] = original_image_data
             return slide_copy, " & ".join(summary_parts)
 
-    target_model = model_name if (model_name and model_name != "local-model" and not (model_name or "").startswith("local:")) else DEFAULT_MODEL
+    target_model = model_name if (model_name and not (model_name or "").startswith("local:")) else DEFAULT_MODEL
     if not any(k in target_model.lower() for k in ["qwen"]):
         target_model = "qwen/qwen3.8-27b"
+
+    chart_keywords = ["chart", "graph", "bar chart", "line chart", "donut", "pie chart", "trend", "growth", "visualize"]
+    user_wants_chart = any(kw in inst_lower for kw in chart_keywords)
+    extra_hint = ""
+    if user_wants_chart:
+        extra_hint = "\nNote: User wants a chart. Set 'l': 'chart_slide', specify 'chart_type' ('bar'|'line'|'donut'), provide realistic 'chart_data' with 'categories' and 'series', and provide 2-3 concise takeaway strings in 'c'."
 
     user_prompt = (
         f"Deck Topic: {deck_topic}\n"
         f"Current Slide State (JSON):\n{json.dumps(clean_slide, indent=2)}\n\n"
-        f"User Modification Command: {instruction}\n\n"
+        f"User Modification Command: {instruction}{extra_hint}\n\n"
         f"Apply the modification and return the JSON object with 'summary' and updated 'slide'."
     )
 
-    use_groq = bool(GROQ_API_KEY) and (model_name != "local-model" and not (model_name or "").startswith("local:"))
-    headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-    payload = {
-        "model": target_model,
-        "messages": [
-            {"role": "system", "content": COPILOT_SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt}
-        ],
-        "response_format": {"type": "json_object"},
-        "temperature": 0.2,
-        "max_tokens": 1500
-    }
-
     try:
-        if use_groq:
-            resp = requests.post(f"{GROQ_API_URL}/chat/completions", headers=headers, json=payload, timeout=30)
-        else:
-            resp = requests.post(f"{LM_STUDIO_URL}/chat/completions", json=payload, timeout=30)
-        resp.raise_for_status()
-        data = resp.json()
+        data, used_model = call_groq_with_fallback(
+            messages=[
+                {"role": "system", "content": COPILOT_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt}
+            ],
+            preferred_model=target_model,
+            temperature=0.2,
+            max_tokens=1500,
+            json_mode=True,
+            timeout=30
+        )
         raw = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
         parsed = extract_json_from_text(raw)
         summary = "Slide updated successfully"
-        new_slide = slide_dict
+        new_slide = copy.deepcopy(slide_dict)
         if isinstance(parsed, dict):
             summary = parsed.get("summary") or "Slide updated successfully"
             new_slide = parsed.get("slide") or parsed
+
+        # Programmatic field preservation safeguards to prevent whole-slide overwriting:
+        # 1. Did the user ask for a chart or layout change?
+        has_chart_in_new = (
+            "chart" in new_slide or
+            "chart_data" in new_slide or
+            str(new_slide.get("l")) == "chart_slide" or
+            bool(str(new_slide.get("chart_type") or "").strip())
+        )
+        if user_wants_chart or has_chart_in_new:
+            new_slide["l"] = "chart_slide"
+        else:
+            layout_keywords = ["layout", "columns", "col", "timeline", "flowchart", "hero", "stats", "statement", "grid"]
+            user_wants_layout_change = any(kw in inst_lower for kw in layout_keywords)
+            if not user_wants_layout_change and "l" in slide_dict:
+                new_slide["l"] = slide_dict["l"]
+
+        # 2. Did the user ask to change or delete bullet points/content?
+        content_keywords = ["bullet", "point", "content", "text", "rewrite", "replace", "add", "delete", "remove", "summarize", "expand", "shorten", "paragraph", "word"]
+        user_wants_content_change = any(kw in inst_lower for kw in content_keywords)
+        if not user_wants_content_change and not user_wants_chart and "c" in slide_dict:
+            orig_c = slide_dict.get("c")
+            new_c = new_slide.get("c")
+            if not new_c or (isinstance(orig_c, list) and isinstance(new_c, list) and len(new_c) < len(orig_c)):
+                new_slide["c"] = copy.deepcopy(orig_c)
+
+        # 3. Did the user ask to change title?
+        title_keywords = ["title", "heading", "name of slide", "rename"]
+        user_wants_title_change = any(kw in inst_lower for kw in title_keywords)
+        if not user_wants_title_change and slide_dict.get("t"):
+            if not new_slide.get("t") or new_slide.get("t") == "Slide":
+                new_slide["t"] = slide_dict["t"]
+
+        # 4. Preserve image if user did not ask to delete it
+        image_delete_keywords = ["remove image", "delete image", "no image", "remove photo", "delete photo", "without image"]
+        user_deletes_image = any(kw in inst_lower for kw in image_delete_keywords)
+        if not user_deletes_image and original_image_data and not new_slide.get("image_data"):
+            new_slide["image_data"] = original_image_data
+
         normalized = normalize_slide_dict(new_slide)
-        if original_image_data and not normalized.get("image_data"):
+        if not user_deletes_image and original_image_data and not normalized.get("image_data"):
             normalized["image_data"] = original_image_data
         return normalized, summary
     except Exception as e:

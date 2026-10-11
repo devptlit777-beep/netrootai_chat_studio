@@ -14,7 +14,6 @@ from dotenv import load_dotenv
 from llm_planner import (
     GROQ_API_KEY,
     GROQ_API_URL,
-    LM_STUDIO_URL,
     DEFAULT_MODEL,
     SlideDSL,
     GenerateRequest,
@@ -64,7 +63,7 @@ async def index():
 
 @app.get("/api/models")
 async def api_get_models():
-    """Fetches list of available models from Groq Cloud and/or local LM Studio."""
+    """Fetches list of available models from Groq Cloud."""
     groq_models = []
     if GROQ_API_KEY:
         try:
@@ -85,27 +84,12 @@ async def api_get_models():
         except Exception as e:
             print(f"[Models Fetch Warning] Groq: {e}")
 
-    local_models = []
-    try:
-        resp = requests.get(f"{LM_STUDIO_URL}/models", timeout=2)
-        if resp.ok:
-            data = resp.json()
-            local_models = [
-                m["id"]
-                for m in data.get("data", [])
-                if "embed" not in m.get("id", "").lower()
-            ]
-    except Exception:
-        pass
-
-    all_models = groq_models + [f"local:{m}" for m in local_models]
-    if not all_models:
-        all_models = [DEFAULT_MODEL]
+    all_models = groq_models if groq_models else [DEFAULT_MODEL]
 
     return {
         "models": all_models,
         "default": DEFAULT_MODEL,
-        "active_provider": "groq" if groq_models else "local"
+        "active_provider": "groq"
     }
 
 
@@ -139,6 +123,7 @@ class RegenerateSlideRequest(BaseModel):
     slide_index: int = 0
     total_slides: int = 1
     current_title: str = ""
+    current_layout: Optional[str] = None
     model: str = DEFAULT_MODEL
     used_images: Optional[List[str]] = None
 
@@ -152,7 +137,7 @@ class SearchImageRequest(BaseModel):
 
 @app.post("/api/regenerate-slide")
 async def api_regenerate_slide(req: RegenerateSlideRequest):
-    """Regenerates a single slide's content and visual using the local LLM."""
+    """Regenerates a single slide's content and visual using Groq LLM."""
     used_set = set(req.used_images or [])
     try:
         new_slide = regenerate_single_slide(
@@ -160,6 +145,7 @@ async def api_regenerate_slide(req: RegenerateSlideRequest):
             slide_index=req.slide_index,
             total_slides=req.total_slides,
             current_title=req.current_title,
+            current_layout=req.current_layout,
             model_name=req.model,
             used_images=used_set
         )
@@ -307,7 +293,7 @@ if __name__ == "__main__":
     if GROQ_API_KEY:
         print(f"Connected to Groq Cloud (Default Model: {DEFAULT_MODEL})")
     else:
-        print(f"Connected to LM Studio on: {LM_STUDIO_URL}")
+        print("Warning: GROQ_API_KEY is not configured in .env file.")
     print("=" * 60)
     uvicorn.run("app:app", host=host, port=port, reload=True)
 

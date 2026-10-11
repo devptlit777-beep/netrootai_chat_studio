@@ -14,11 +14,20 @@ export default function ChartLayout({
   onPushHistory,
   isGeneratingAI,
 }) {
-  const cd = slide.chart_data || {
-    title: slide.t || 'Performance Benchmarks',
-    categories: ['Q1', 'Q2', 'Q3', 'Q4'],
-    series: [{ name: 'Actual', values: [35, 65, 105, 160] }],
-  };
+  const hasValidChartData =
+    slide.chart_data &&
+    Array.isArray(slide.chart_data.categories) &&
+    slide.chart_data.categories.length > 0 &&
+    Array.isArray(slide.chart_data.series) &&
+    slide.chart_data.series.length > 0;
+
+  const cd = hasValidChartData
+    ? slide.chart_data
+    : {
+        title: slide.t || 'Data Insights',
+        categories: [],
+        series: [],
+      };
   const currentType = slide.chart_type || 'bar';
 
   const handleChartTypeChange = (type) => {
@@ -121,7 +130,17 @@ export default function ChartLayout({
 
           {/* SVG Visual */}
           <div className="flex-1 w-full flex items-center justify-center relative overflow-hidden">
-            <SvgChart chartData={cd} chartType={currentType} />
+            {hasValidChartData ? (
+              <SvgChart chartData={cd} chartType={currentType} />
+            ) : (
+              <div className="flex flex-col items-center justify-center p-6 text-center text-slate-400">
+                <BarChart3 className="w-10 h-10 mb-2 opacity-40 text-sky-400" />
+                <p className="text-xs font-medium text-slate-300">No Numerical Data Provided</p>
+                <p className="text-[11px] text-slate-500 mt-1 max-w-[200px]">
+                  Focus is on qualitative strategic takeaways.
+                </p>
+              </div>
+            )}
           </div>
         </div>
 

@@ -919,34 +919,38 @@ def render_single_slide(
 
     # ------------------ LAYOUT 8: CHART SLIDE (NATIVE EXCEL CHART) ------------------
     if layout_key == "chart_slide":
-        chart_w = Inches(6.8)
-        takeaways_w = Inches(4.65)
-        gap = Inches(0.283)
-
-        chart_x = Inches(0.8)
-        takeaways_x = chart_x + chart_w + gap
-
-        # Left Container Card for Chart
-        card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, chart_x, top, chart_w, card_h)
-        card.fill.solid()
-        card.fill.fore_color.rgb = theme["card_bg"]
-        card.line.color.rgb = theme["card_border"]
-        card.line.width = Pt(1.0)
-
-        # Build python-pptx ChartData
         cd = dsl.chart_data if isinstance(dsl.chart_data, dict) else {}
-        chart_title = cd.get("title") or dsl.t
-        raw_cats = cd.get("categories") or ["Q1", "Q2", "Q3", "Q4"]
-        categories = [str(c) for c in raw_cats]
+        raw_cats = cd.get("categories") or []
+        series_list = cd.get("series") or []
 
-        chart_data_obj = CategoryChartData()
-        chart_data_obj.categories = categories
+        # If no genuine categories or series exist, do not generate a phantom Q1-Q4 chart!
+        # Fall through to default clean layout.
+        if raw_cats and series_list:
+            chart_w = Inches(6.8)
+            takeaways_w = Inches(4.65)
+            gap = Inches(0.283)
 
-        series_list = cd.get("series") or [{"name": "Metric", "values": [25, 45, 75, 95]}]
-        if isinstance(series_list, dict):
-            series_list = [series_list]
-        elif isinstance(series_list, list) and series_list and isinstance(series_list[0], (int, float, str)) and not isinstance(series_list[0], dict):
-            series_list = [{"name": chart_title, "values": series_list}]
+            chart_x = Inches(0.8)
+            takeaways_x = chart_x + chart_w + gap
+
+            # Left Container Card for Chart
+            card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, chart_x, top, chart_w, card_h)
+            card.fill.solid()
+            card.fill.fore_color.rgb = theme["card_bg"]
+            card.line.color.rgb = theme["card_border"]
+            card.line.width = Pt(1.0)
+
+            # Build python-pptx ChartData
+            chart_title = cd.get("title") or dsl.t
+            categories = [str(c) for c in raw_cats]
+
+            chart_data_obj = CategoryChartData()
+            chart_data_obj.categories = categories
+
+            if isinstance(series_list, dict):
+                series_list = [series_list]
+            elif isinstance(series_list, list) and series_list and isinstance(series_list[0], (int, float, str)) and not isinstance(series_list[0], dict):
+                series_list = [{"name": chart_title, "values": series_list}]
 
         for s in series_list:
             if isinstance(s, dict):

@@ -25,13 +25,6 @@ import {
   Check,
 } from 'lucide-react';
 
-const STARTER_PROMPTS = [
-  { label: '🚀 SaaS Pitch Deck', prompt: 'Series A investor pitch deck for an autonomous enterprise AI platform showcasing market opportunity, unit economics, product demo, and growth roadmap.' },
-  { label: '🏥 AI in Healthcare', prompt: 'Comprehensive briefing on AI-driven diagnostics, clinical efficiency, data privacy compliance, and real-world hospital deployment case studies.' },
-  { label: '📊 Q3 Financial Review', prompt: 'Quarterly financial performance review covering ARR growth, gross margin expansion, churn metrics, and capital allocation strategy.' },
-  { label: '🔐 Zero-Trust Security', prompt: 'Enterprise cybersecurity architecture outlining zero-trust network access, continuous identity validation, and proactive threat mitigation.' },
-  { label: '🌱 Renewable Energy ESG', prompt: 'Sustainability and ESG transformation strategy highlighting clean energy adoption, carbon offset targets, and regulatory reporting milestones.' },
-];
 
 export default function PptStudioHub({
   onGenerateDeck,
@@ -98,10 +91,6 @@ export default function PptStudioHub({
     loadSavedDecks();
   }, [user?.id]);
 
-  const handleQuickPromptClick = (starterPrompt) => {
-    setPrompt(starterPrompt);
-    setInlineOutline(null);
-  };
 
   // Direct generation or outline-aware submit
   const handleDirectGenerateSubmit = (e) => {
@@ -353,28 +342,6 @@ export default function PptStudioHub({
                 />
               </div>
 
-              {/* Starter Prompt Chips */}
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-                <span className={`text-[11px] font-mono font-bold shrink-0 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                  Quick Starters:
-                </span>
-                {STARTER_PROMPTS.map((starter, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => handleQuickPromptClick(starter.prompt)}
-                    className={`text-xs px-2.5 py-1 rounded-lg border shrink-0 transition font-medium ${
-                      prompt === starter.prompt
-                        ? 'bg-sky-500 text-white border-sky-400 shadow-sm'
-                        : darkMode
-                        ? 'bg-[#1b1b1f] border-white/10 text-slate-300 hover:border-slate-500 hover:text-white'
-                        : 'bg-slate-100 border-slate-200 text-slate-700 hover:border-slate-400 hover:text-slate-900'
-                    }`}
-                  >
-                    {starter.label}
-                  </button>
-                ))}
-              </div>
 
               {/* Control Options & Primary Action Bar */}
               <div
