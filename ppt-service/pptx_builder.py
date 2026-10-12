@@ -304,7 +304,7 @@ def generate_dynamic_theme(seed_hex: str, mood: str = "dark", secondary_hex: Opt
             "bg": float_to_rgb_color(bg_r, bg_g, bg_b),
             "card_bg": float_to_rgb_color(card_r, card_g, card_b),
             "card_border": float_to_rgb_color(bdr_r, bdr_g, bdr_b),
-            "title": RGBColor(15, 23, 42),
+            "title": float_to_rgb_color(hd_r, hd_g, hd_b),
             "heading": float_to_rgb_color(hd_r, hd_g, hd_b),
             "body": RGBColor(51, 65, 85),
             "accent": float_to_rgb_color(acc_r, acc_g, acc_b),
@@ -601,7 +601,19 @@ def render_single_slide(
     Supports per-slide theme_mode: 'dark', 'light_canvas', or 'light_cards'.
     """
     slide_mode = getattr(dsl, "theme_mode", None)
-    effective_theme = getattr(dsl, "seed_color", None) or getattr(dsl, "theme", None) or theme_name
+    slide_seed = getattr(dsl, "seed_color", None)
+    slide_th = getattr(dsl, "theme", None)
+    # Prefer explicit deck theme/seed over stale default midnight or #0EA5E9
+    if theme_name and str(theme_name).lower() != "midnight":
+        if slide_seed and str(slide_seed).lower() not in ("#0ea5e9", "0ea5e9"):
+            effective_theme = slide_seed
+        elif slide_th and str(slide_th).lower() != "midnight":
+            effective_theme = slide_th
+        else:
+            effective_theme = theme_name
+    else:
+        effective_theme = slide_seed or slide_th or theme_name
+
     theme = resolve_theme_palette(effective_theme, slide_mode or "dark")
 
     blank_layout = prs.slide_layouts[6]
