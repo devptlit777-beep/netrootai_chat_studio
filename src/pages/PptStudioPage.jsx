@@ -632,7 +632,15 @@ export default function PptStudioPage() {
         throw new Error('AI could not produce slides for this topic. Please try again.');
       }
 
-      const cleanSlides = generatedSlides.map((s) => stripMarkdown(s));
+      const resTheme = data.theme || theme || currentTheme;
+      const resSeed =
+        data.theme_seed_hex || (resTheme ? THEME_SEEDS[resTheme] : null) || currentSeed;
+
+      const cleanSlides = generatedSlides.map((s) => ({
+        ...stripMarkdown(s),
+        theme: s.theme || resTheme,
+        seed_color: s.seed_color || resSeed,
+      }));
       setSlides(cleanSlides);
       setCurrentIndex(0);
       const autoTitle =
@@ -641,9 +649,6 @@ export default function PptStudioPage() {
         cleanSlides[0]?.t ||
         'Untitled Presentation';
       setDeckTitle(autoTitle);
-      const resTheme = data.theme || theme || currentTheme;
-      const resSeed =
-        data.theme_seed_hex || (resTheme ? THEME_SEEDS[resTheme] : null) || currentSeed;
       setCurrentTheme(resTheme);
       setCurrentSeed(resSeed);
       pushHistory(cleanSlides);
@@ -780,12 +785,20 @@ export default function PptStudioPage() {
     if (isExportingPptx) return;
     setIsExportingPptx(true);
     showToast('Compiling presentation into PowerPoint .pptx...', 'info');
-
     try {
+      // Ensure all exported slides carry explicit active theme & seed
+      const exportSlides = slides.map((s) => ({
+        ...s,
+        theme: s.theme || currentTheme,
+        seed_color: s.seed_color || currentSeed,
+      }));
+
       const payload = {
         theme: currentTheme,
+        theme_seed_hex: currentSeed,
+        seed_color: currentSeed,
         deck_title: deckTitle,
-        slides,
+        slides: exportSlides,
       };
 
       const res = await fetch(`${PPT_API_BASE}/api/render`, {
