@@ -42,6 +42,7 @@ export default function PricingPage() {
         `${proLimit.toLocaleString()} tokens / day`,
         `${proModelsCount} model${proModelsCount === 1 ? '' : 's'} available`,
         `FLUX image generation: ${fluxImageLimit} images / month`,
+        'Unlimited AI presentations & edits',
         'All plugins + priority queue',
         'Email support',
         'Usage analytics',
@@ -49,6 +50,7 @@ export default function PricingPage() {
     const freeFeatures = [
         `${freeLimit.toLocaleString()} tokens / day`,
         `${freeModelsCount} model${freeModelsCount === 1 ? '' : 's'} available`,
+        '2 AI presentations lifetime',
         'Basic plugins',
         'Community support',
     ];

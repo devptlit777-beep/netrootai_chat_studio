@@ -44,6 +44,7 @@ export default function MySlidesModal({
   const loadUserDecks = async () => {
     setLoading(true);
     setActionError('');
+    let cloudDecks = [];
     try {
       if (user?.id) {
         const { data, error } = await supabase
@@ -52,34 +53,43 @@ export default function MySlidesModal({
           .eq('user_id', user.id)
           .order('updated_at', { ascending: false });
 
-        if (error) {
-          console.warn('[MySlidesModal] Supabase query notice:', error.message);
-          // Fallback to local storage
-          loadLocalFallback();
-        } else {
-          setDecks(data || []);
+        if (!error && Array.isArray(data)) {
+          cloudDecks = data;
         }
-      } else {
-        loadLocalFallback();
       }
     } catch (err) {
-      console.warn('[MySlidesModal] Fetch error:', err);
-      loadLocalFallback();
+      console.warn('[MySlidesModal] Supabase notice:', err);
+    }
+
+    try {
+      const local = JSON.parse(localStorage.getItem('netroot_saved_slides') || '[]');
+      let activeDeck = null;
+      try {
+        const act = JSON.parse(localStorage.getItem('netroot_active_working_deck') || '{}');
+        if (act.id && Array.isArray(act.slides) && act.slides.length > 0) {
+          activeDeck = {
+            id: act.id,
+            title: act.deckTitle || 'Untitled Presentation',
+            slides: act.slides,
+            theme: act.currentTheme || 'midnight',
+            seed_color: act.currentSeed || '#0EA5E9',
+            updated_at: new Date().toISOString(),
+          };
+        }
+      } catch {}
+
+      const combinedMap = new Map();
+      cloudDecks.forEach((d) => d.id && combinedMap.set(d.id, d));
+      local.forEach((d) => d.id && !combinedMap.has(d.id) && combinedMap.set(d.id, d));
+      if (activeDeck && !combinedMap.has(activeDeck.id)) {
+        combinedMap.set(activeDeck.id, activeDeck);
+      }
+
+      setDecks(Array.from(combinedMap.values()));
+    } catch {
+      setDecks(cloudDecks || []);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadLocalFallback = () => {
-    try {
-      const local = localStorage.getItem('netroot_saved_slides');
-      if (local) {
-        setDecks(JSON.parse(local));
-      } else {
-        setDecks([]);
-      }
-    } catch {
-      setDecks([]);
     }
   };
 

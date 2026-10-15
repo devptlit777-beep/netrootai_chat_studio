@@ -9,6 +9,7 @@ from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
+from pptx.oxml import parse_xml
 
 import colorsys
 from llm_planner import SlideDSL, LayoutType, strip_markdown_stars
@@ -529,6 +530,25 @@ def render_bullet_runs(paragraph, text: str, theme: Dict[str, RGBColor], font_si
         r.font.color.rgb = theme["body"]
 
 
+def apply_clean_card_styling(shape, theme: Dict[str, RGBColor]):
+    """
+    Styles a card shape with solid background, crisp border, and removes
+    PowerPoint's muddy default gray drop-shadow.
+    """
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = theme["card_bg"]
+    shape.line.color.rgb = theme["card_border"]
+    shape.line.width = Pt(1)
+    try:
+        spPr = shape.element.spPr
+        for c in list(spPr):
+            if c.tag.endswith('effectLst'):
+                spPr.remove(c)
+        spPr.append(parse_xml("<a:effectLst xmlns:a='http://schemas.openxmlformats.org/drawingml/2006/main'/>"))
+    except Exception:
+        pass
+
+
 def parse_stat_item(item) -> Tuple[str, str, str]:
     """Extracts (stat_number, stat_label, stat_description) from list, dict, or string."""
     def clean(s):
@@ -657,10 +677,7 @@ def render_single_slide(
 
             # Left Content Card
             card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left_x, top_y, left_w, card_h)
-            card.fill.solid()
-            card.fill.fore_color.rgb = theme["card_bg"]
-            card.line.color.rgb = theme["card_border"]
-            card.line.width = Pt(1.0)
+            apply_clean_card_styling(card, theme)
 
             tb = slide.shapes.add_textbox(left_x + Inches(0.5), top_y + Inches(0.5), left_w - Inches(1.0), card_h - Inches(1.0))
             ctf = tb.text_frame
@@ -694,10 +711,7 @@ def render_single_slide(
             right_x = Inches(8.3)
             right_w = Inches(4.233)
             img_card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, right_x, top_y, right_w, card_h)
-            img_card.fill.solid()
-            img_card.fill.fore_color.rgb = theme["card_bg"]
-            img_card.line.color.rgb = theme["card_border"]
-            img_card.line.width = Pt(1.0)
+            apply_clean_card_styling(img_card, theme)
 
             img_stream = get_image_stream(dsl.image_data)
             if img_stream:
@@ -712,10 +726,7 @@ def render_single_slide(
             hero_h = Inches(5.3)
 
             card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, hero_x, hero_y, hero_w, hero_h)
-            card.fill.solid()
-            card.fill.fore_color.rgb = theme["card_bg"]
-            card.line.color.rgb = theme["card_border"]
-            card.line.width = Pt(1.0)
+            apply_clean_card_styling(card, theme)
 
             tb = slide.shapes.add_textbox(hero_x + Inches(0.8), hero_y + Inches(0.8), hero_w - Inches(1.6), hero_h - Inches(1.6))
             ctf = tb.text_frame
@@ -802,10 +813,7 @@ def render_single_slide(
         for i, item in enumerate(items):
             left_pos = Inches(0.8) + i * (card_w + gap)
             card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left_pos, top, card_w, card_h)
-            card.fill.solid()
-            card.fill.fore_color.rgb = theme["card_bg"]
-            card.line.color.rgb = theme["card_border"]
-            card.line.width = Pt(1.0)
+            apply_clean_card_styling(card, theme)
 
             tb = slide.shapes.add_textbox(left_pos + Inches(0.35), top + Inches(0.4), card_w - Inches(0.7), card_h - Inches(0.8))
             ctf = tb.text_frame
@@ -875,10 +883,7 @@ def render_single_slide(
         for i, step_item in enumerate(steps):
             left_pos = Inches(0.8) + i * (card_w + gap)
             card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left_pos, top, card_w, card_h)
-            card.fill.solid()
-            card.fill.fore_color.rgb = theme["card_bg"]
-            card.line.color.rgb = theme["card_border"]
-            card.line.width = Pt(1.0)
+            apply_clean_card_styling(card, theme)
 
             tb = slide.shapes.add_textbox(left_pos + Inches(0.35), top + Inches(0.35), card_w - Inches(0.7), card_h - Inches(0.7))
             ctf = tb.text_frame
@@ -911,10 +916,14 @@ def render_single_slide(
 
             # Step Deliverables / Description
             if step_desc:
-                p_desc = ctf.add_paragraph()
-                p_desc.space_after = Pt(8)
-                p_desc.line_spacing = 1.15
-                render_bullet_runs(p_desc, step_desc, theme, font_size=13)
+                for line in step_desc.split("\n"):
+                    line_clean = line.strip()
+                    if not line_clean:
+                        continue
+                    p_desc = ctf.add_paragraph()
+                    p_desc.space_after = Pt(6)
+                    p_desc.line_spacing = 1.15
+                    render_bullet_runs(p_desc, line_clean, theme, font_size=12)
 
             # Render connecting directional arrow between timeline phase cards
             if i < num_steps - 1:
@@ -947,10 +956,7 @@ def render_single_slide(
 
             # Left Container Card for Chart
             card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, chart_x, top, chart_w, card_h)
-            card.fill.solid()
-            card.fill.fore_color.rgb = theme["card_bg"]
-            card.line.color.rgb = theme["card_border"]
-            card.line.width = Pt(1.0)
+            apply_clean_card_styling(card, theme)
 
             # Build python-pptx ChartData
             chart_title = cd.get("title") or dsl.t
@@ -1029,10 +1035,7 @@ def render_single_slide(
 
         # Right Container Card for Key Insights / Takeaways
         t_card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, takeaways_x, top, takeaways_w, card_h)
-        t_card.fill.solid()
-        t_card.fill.fore_color.rgb = theme["card_bg"]
-        t_card.line.color.rgb = theme["card_border"]
-        t_card.line.width = Pt(1.0)
+        apply_clean_card_styling(t_card, theme)
 
         tb = slide.shapes.add_textbox(takeaways_x + Inches(0.4), top + Inches(0.4), takeaways_w - Inches(0.8), card_h - Inches(0.8))
         ctf = tb.text_frame
@@ -1083,10 +1086,7 @@ def render_single_slide(
 
             # Node Box
             card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, node_x, top, card_w, card_h)
-            card.fill.solid()
-            card.fill.fore_color.rgb = theme["card_bg"]
-            card.line.color.rgb = theme["card_border"]
-            card.line.width = Pt(1.0)
+            apply_clean_card_styling(card, theme)
 
             step_num = f"STEP {i+1:02d}"
             title = "Process Node"
@@ -1179,10 +1179,7 @@ def render_single_slide(
             left = Inches(0.8) + i * (card_w + gap)
 
             card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, top, card_w, card_h)
-            card.fill.solid()
-            card.fill.fore_color.rgb = theme["card_bg"]
-            card.line.color.rgb = theme["card_border"]
-            card.line.width = Pt(1.0)
+            apply_clean_card_styling(card, theme)
 
             tb = slide.shapes.add_textbox(left + Inches(0.35), top + Inches(0.35), card_w - Inches(0.7), card_h - Inches(0.7))
             ctf = tb.text_frame
@@ -1232,10 +1229,7 @@ def render_single_slide(
             left = Inches(0.8) + i * (card_w + gap)
 
             card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, top, card_w, card_h)
-            card.fill.solid()
-            card.fill.fore_color.rgb = theme["card_bg"]
-            card.line.color.rgb = theme["card_border"]
-            card.line.width = Pt(1.0)
+            apply_clean_card_styling(card, theme)
 
             tb = slide.shapes.add_textbox(left + Inches(0.3), top + Inches(0.3), card_w - Inches(0.6), card_h - Inches(0.6))
             ctf = tb.text_frame
@@ -1290,10 +1284,7 @@ def render_single_slide(
             left_card_x = Inches(0.8)
 
             card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left_card_x, top, left_card_w, card_h)
-            card.fill.solid()
-            card.fill.fore_color.rgb = theme["card_bg"]
-            card.line.color.rgb = theme["card_border"]
-            card.line.width = Pt(1.0)
+            apply_clean_card_styling(card, theme)
 
             tb = slide.shapes.add_textbox(left_card_x + Inches(0.5), top + Inches(0.4), left_card_w - Inches(1.0), card_h - Inches(0.8))
             ctf = tb.text_frame
@@ -1322,10 +1313,7 @@ def render_single_slide(
             right_card_w = Inches(4.633)
 
             img_card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, right_card_x, top, right_card_w, card_h)
-            img_card.fill.solid()
-            img_card.fill.fore_color.rgb = theme["card_bg"]
-            img_card.line.color.rgb = theme["card_border"]
-            img_card.line.width = Pt(1.0)
+            apply_clean_card_styling(img_card, theme)
 
             img_stream = get_image_stream(dsl.image_data)
             if img_stream:
@@ -1339,10 +1327,7 @@ def render_single_slide(
             left = Inches(0.8)
 
             card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, top, card_w, card_h)
-            card.fill.solid()
-            card.fill.fore_color.rgb = theme["card_bg"]
-            card.line.color.rgb = theme["card_border"]
-            card.line.width = Pt(1.0)
+            apply_clean_card_styling(card, theme)
 
             tb = slide.shapes.add_textbox(left + Inches(0.8), top + Inches(0.6), card_w - Inches(1.6), card_h - Inches(1.2))
             ctf = tb.text_frame
@@ -1375,10 +1360,7 @@ def render_single_slide(
         left_card_x = Inches(0.8)
 
         card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left_card_x, top, left_card_w, card_h)
-        card.fill.solid()
-        card.fill.fore_color.rgb = theme["card_bg"]
-        card.line.color.rgb = theme["card_border"]
-        card.line.width = Pt(1.0)
+        apply_clean_card_styling(card, theme)
 
         tb = slide.shapes.add_textbox(left_card_x + Inches(0.4), top + Inches(0.35), left_card_w - Inches(0.8), card_h - Inches(0.7))
         ctf = tb.text_frame
@@ -1397,10 +1379,7 @@ def render_single_slide(
         right_card_w = Inches(4.633)
 
         img_card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, right_card_x, top, right_card_w, card_h)
-        img_card.fill.solid()
-        img_card.fill.fore_color.rgb = theme["card_bg"]
-        img_card.line.color.rgb = theme["card_border"]
-        img_card.line.width = Pt(1.0)
+        apply_clean_card_styling(img_card, theme)
 
         img_stream = get_image_stream(dsl.image_data)
         if img_stream:
@@ -1414,10 +1393,7 @@ def render_single_slide(
     left = Inches(0.8)
 
     card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, top, card_w, card_h)
-    card.fill.solid()
-    card.fill.fore_color.rgb = theme["card_bg"]
-    card.line.color.rgb = theme["card_border"]
-    card.line.width = Pt(1.0)
+    apply_clean_card_styling(card, theme)
 
     tb = slide.shapes.add_textbox(left + Inches(0.5), top + Inches(0.4), card_w - Inches(1.0), card_h - Inches(0.8))
     ctf = tb.text_frame

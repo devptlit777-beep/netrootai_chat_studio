@@ -24,7 +24,7 @@ const navItems = [
   { icon: Share2, path: "/shared", label: "Shared" },
   { icon: Database, path: "/plugins", label: "Plugins" },
   { icon: Sparkles, path: "/image-studio", label: "Image Studio" },
-  { icon: Presentation, path: "/ppt-studio", label: "PPT Studio" },
+  { icon: Presentation, path: "/ppt-studio", label: "NetRoot AI PPT Studio" },
 ];
 
 function getFallbackAvatar(email) {
@@ -37,8 +37,13 @@ function getFallbackAvatar(email) {
 export default function Sidebar() {
   const { profile, user } = useAuth();
   const { theme } = useTheme();
-  const { accessExpired, featureAccess } = usePlan();
-  const canUse = feature => !accessExpired || Boolean(featureAccess?.[feature]);
+  const { accessExpired, featureAccess, plan } = usePlan();
+  const canUse = feature => {
+    if (feature === 'ppt-studio') {
+      return true; // Keep visible so user can click to upgrade via FeatureGate
+    }
+    return !accessExpired || Boolean(featureAccess?.[feature]);
+  };
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -78,7 +83,7 @@ export default function Sidebar() {
               key={path}
               onClick={() => navigate(path)}
               title={label}
-              className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${active
+              className={`w-10 h-10 relative flex items-center justify-center rounded-xl transition-all ${active
                 ? darkMode
                   ? "bg-white/10 text-white"
                   : "bg-blue-50 text-blue-600"
@@ -88,6 +93,9 @@ export default function Sidebar() {
                 }`}
             >
               <Icon className="w-5 h-5" />
+              {path === "/ppt-studio" && plan === 'free' && !featureAccess?.['ppt-studio'] && (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-400 shadow-sm" title="Pro Feature" />
+              )}
             </button>
           );
         })}

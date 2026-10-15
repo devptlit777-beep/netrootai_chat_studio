@@ -22,7 +22,8 @@ export default function TitleContentLayout({
       <div className="flex justify-between items-start w-full shrink-0 border-b border-slate-700/60 pb-3 mb-4">
         <EditableText
           tag="h1"
-          value={slide.t || 'Strategic Overview'}
+          value={slide.t || ''}
+          placeholder="Click to add title..."
           onChange={(val) => onUpdateSlide({ t: val })}
           onBlur={onPushHistory}
           singleLine={true}
