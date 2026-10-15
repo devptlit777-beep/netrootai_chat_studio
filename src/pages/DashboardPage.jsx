@@ -1172,7 +1172,9 @@ function getFallbackAvatar(email) {
 }
 
 export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
-  const { plan, accessExpired } = usePlan();
+  const { plan, accessExpired, lifetimePptCount = 0 } = usePlan();
+  const isPro = plan === 'pro' || plan === 'enterprise';
+  const isFreeLimitReached = !isPro && lifetimePptCount >= 2;
   const { profile, user, session } = useAuth();
   const [threads, setThreads] = useState([]);
   const [activeThread, setActiveThread] = useState(null);
@@ -1604,7 +1606,20 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
       const data = await response.json();
       console.log("API DATA", data);
 
-      let aiContent = data.answer || "No response from AI.";
+      let aiContent = data.answer;
+      if (!aiContent) {
+        if (typeof data.error === 'string') {
+          aiContent = data.error;
+        } else if (data.error?.message) {
+          aiContent = data.error.message;
+        } else if (response.status === 403) {
+          aiContent = "This feature requires a Pro subscription. Please upgrade to NetRoot AI Pro to continue.";
+        } else if (response.status === 429) {
+          aiContent = "You have reached your daily token limit. Upgrade to Pro or try again tomorrow.";
+        } else {
+          aiContent = "No response from AI.";
+        }
+      }
       if (data.imageUrl) {
         aiContent = `__IMAGE__${data.imageUrl}`;
       }
@@ -1755,11 +1770,35 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
 
     const pptMatch = text.match(/__PPT_DECK__([\s\S]*?)__PPT_DECK__/);
     if (pptMatch) {
-      try { pptDeck = JSON.parse(pptMatch[1]); } catch {}
-      text = text.replace(/__PPT_DECK__[\s\S]*?__PPT_DECK__/, '').trim();
+      try {
+        pptDeck = JSON.parse(pptMatch[1]);
+        if (pptDeck?.deckId && Array.isArray(pptDeck?.slides) && pptDeck.slides.length > 0) {
+          const saved = JSON.parse(localStorage.getItem('netroot_saved_slides') || '[]');
+          if (!saved.some((d) => d.id === pptDeck.deckId)) {
+            saved.unshift({
+              id: pptDeck.deckId,
+              title: pptDeck.title || 'Untitled Presentation',
+              slides: pptDeck.slides,
+              theme: pptDeck.theme || 'midnight',
+              seed_color: pptDeck.seed_color || '#0EA5E9',
+              updated_at: new Date().toISOString(),
+            });
+            localStorage.setItem('netroot_saved_slides', JSON.stringify(saved));
+          }
+        }
+      } catch {}
     }
 
-    return { images, pptDeck, text };
+    let pptUpgradeNotice = null;
+    const pptUpgradeMatch = text.match(/__PPT_PRO_UPGRADE__([\s\S]*?)__PPT_PRO_UPGRADE__/);
+    if (pptUpgradeMatch) {
+      try {
+        pptUpgradeNotice = JSON.parse(pptUpgradeMatch[1]);
+      } catch {}
+      text = text.replace(/__PPT_PRO_UPGRADE__[\s\S]*?__PPT_PRO_UPGRADE__/, '').trim();
+    }
+
+    return { images, pptDeck, pptUpgradeNotice, text };
   }
 
   return (
@@ -1925,7 +1964,7 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
           {activeThread ? (
             <div className={`flex-1 overflow-y-auto px-6 py-6 space-y-6 ${darkMode ? '' : 'bg-gray-50'}`}>
               {messages.map(msg => {
-                const { images, pptDeck, text } = parseMessageContent(msg.content);
+                const { images, pptDeck, pptUpgradeNotice, text } = parseMessageContent(msg.content);
                 return (
                   <div key={msg.id} className={`flex gap-3 items-end ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     {msg.role === 'assistant' && (
@@ -2043,6 +2082,52 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
                       {pptDeck && (
                         <PptChatDeckCard pptDeck={pptDeck} darkMode={darkMode} />
                       )}
+
+                      {/* Render PPT Pro Upgrade Card if present */}
+                      {pptUpgradeNotice && (
+                        <div className={`mt-3 p-4 rounded-2xl border transition-all ${
+                          darkMode ? 'bg-[#151518] border-amber-500/40 shadow-lg shadow-amber-500/5' : 'bg-amber-50/60 border-amber-300'
+                        }`}>
+                          <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-indigo-600 flex items-center justify-center text-white shrink-0 shadow-md">
+                              <Sparkles className="w-5 h-5 text-amber-200" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold font-mono text-amber-400 uppercase tracking-wider">
+                                  NetRoot AI PPT Studio
+                                </span>
+                                <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                  PRO FEATURE
+                                </span>
+                              </div>
+                              <h4 className={`text-sm font-bold mt-0.5 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                                Free Trial Limit Reached (2/2 Presentations)
+                              </h4>
+                              <p className={`text-xs mt-1 leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                                You have used both of your lifetime free AI presentations. Upgrade to NetRoot AI Pro to generate unlimited executive slide decks, PowerPoint (.pptx) downloads, and AI copilot edits directly from this chat.
+                              </p>
+                              <div className="mt-3 flex items-center gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => navigate('/pricing')}
+                                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-white shadow-md shadow-amber-500/25 transition cursor-pointer"
+                                >
+                                  <Zap className="w-3.5 h-3.5 text-amber-200 fill-current" />
+                                  <span>Upgrade to Pro — $19/mo</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => navigate('/ppt-studio')}
+                                  className={`text-xs font-semibold hover:underline ${darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-600'}`}
+                                >
+                                  View Past Presentations &rarr;
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Quick action button for assistant messages to convert discussion to PPT */}
@@ -2050,6 +2135,10 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
                       <div className="flex items-center gap-2 mt-1 px-1">
                         <button
                           onClick={() => {
+                            if (isFreeLimitReached) {
+                              navigate('/pricing');
+                              return;
+                            }
                             setInput("Create a 5-slide presentation from this discussion");
                             textareaRef.current?.focus();
                           }}
@@ -2058,10 +2147,19 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
                               ? 'bg-blue-500/10 border-blue-500/25 text-blue-400 hover:bg-blue-500/20 hover:border-blue-500/40'
                               : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100'
                           }`}
-                          title="Convert this discussion to an AI presentation"
+                          title={
+                            isFreeLimitReached
+                              ? "Free limit reached (3/3). Upgrade to Pro to create more presentations"
+                              : "Convert this discussion to an AI presentation"
+                          }
                         >
                           <Presentation className="w-3.5 h-3.5" />
                           <span>📽️ Make PPT from this</span>
+                          {!isPro && (
+                            <span className="ml-0.5 px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                              {isFreeLimitReached ? "PRO" : `${lifetimePptCount}/2 Free`}
+                            </span>
+                          )}
                         </button>
                       </div>
                     )}

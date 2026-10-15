@@ -484,9 +484,9 @@ CONTENT ARRAY FORMATTING SPECIFICATIONS:
 - For 'statement': "c" is [ "<Single profound insight, philosophy, or vision sentence>" ]
 - For 'title_content' & 'title_image_right': "c" is an array of 3 to 4 complete, readable insight sentences.
 - For '2col' or '3col': "c" is an array of column arrays: [ ["Column Title", "Point 1", "Point 2"], ... ]
-- For 'timeline': "c" is an array of phase arrays: [ ["Milestone / Era / Ritual", "Description"], ... ]
+- For 'timeline': "c" is an array of phase arrays with 2 to 3 key deliverables or milestones: [ ["Phase 01: Milestone / Phase Name", "Strategic objective summary.\n• Key Milestone or Deliverable 1\n• Key Milestone or Deliverable 2"], ... ]
 - For 'flowchart': "c" is an array of step arrays: [ ["Step Name", "Pillar / Action", "Explanation"], ... ]
-- For 'stats': "c" is an array of stat arrays: [ ["Stat Value (e.g. 500+ or $10M)", "Label", "Context"], ... ]
+- For 'stats': "c" is an array of stat arrays with two key takeaway points: [ ["Stat Value (e.g. 500+ or $10M)", "Metric Label", "• Key driver or metric breakdown\n• Strategic impact or takeaway"], ... ]
 - For 'chart_slide': "c" is an array of 3 to 4 analytical takeaways interpreting the data trends.
 """
 
@@ -1529,7 +1529,7 @@ def suggest_slide_point(
         return "Automated sensory telemetry continuously optimizes operational throughput across delivery channels."
 
 
-COPILOT_SYSTEM_PROMPT = """You are an elite, executive-level AI Slide Copilot.
+COPILOT_SYSTEM_PROMPT = """You are an elite, executive-level NetRoot AI Assistant for presentations.
 The user wants to edit or modify their active presentation slide using a natural language command.
 You are given the current slide's JSON object and the user's editing command.
 Commands could be:

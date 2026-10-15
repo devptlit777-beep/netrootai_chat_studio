@@ -9,6 +9,7 @@ const PlanContext = createContext({
   planEndDate: null,
   autoRenew: false,
   featureAccess: {},
+  lifetimePptCount: 0,
   loading: true,
   refresh: async () => { },
 });
@@ -27,6 +28,7 @@ export function PlanProvider({ children }) {
   const [planEndDate, setPlanEndDate] = useState(null);
   const [autoRenew, setAutoRenew] = useState(false);
   const [featureAccess, setFeatureAccess] = useState({});
+  const [lifetimePptCount, setLifetimePptCount] = useState(0);
 
   async function fetchPlan() {
     if (!user?.email) {
@@ -35,6 +37,7 @@ export function PlanProvider({ children }) {
       setPlanEndDate(null);
       setAutoRenew(false);
       setFeatureAccess({});
+      setLifetimePptCount(0);
       setLoading(false);
       return;
     }
@@ -46,12 +49,14 @@ export function PlanProvider({ children }) {
       setPlanEndDate(data.current_period_end || null);
       setAutoRenew(Boolean(data.auto_renew));
       setFeatureAccess(data.feature_access || {});
+      setLifetimePptCount(Number(data.lifetime_ppt_count || 0));
     } catch {
       setPlan('free');
       setAccessExpired(false);
       setPlanEndDate(null);
       setAutoRenew(false);
       setFeatureAccess({});
+      setLifetimePptCount(0);
     } finally {
       setLoading(false);
     }
@@ -67,7 +72,7 @@ export function PlanProvider({ children }) {
         'Free';
 
   return (
-    <PlanContext.Provider value={{ plan, planName, loading, accessExpired, planEndDate, autoRenew, featureAccess, refresh: fetchPlan }}>
+    <PlanContext.Provider value={{ plan, planName, loading, accessExpired, planEndDate, autoRenew, featureAccess, lifetimePptCount, refresh: fetchPlan }}>
       {children}
     </PlanContext.Provider>
   );

@@ -48,11 +48,28 @@ export default function HeroLayout({
 
   return (
     <div className="flex flex-col w-full h-full p-8 select-none relative">
-      {/* Top Slide Counter */}
-      <div className="flex justify-end items-center w-full shrink-0 mb-3 z-20">
-        <span className="text-xs font-mono font-semibold text-slate-500">
-          {slideIndex + 1} / {totalSlides}
-        </span>
+      {/* Slide 1 Header Bar */}
+      <div className="flex justify-between items-center w-full shrink-0 border-b border-slate-700/60 pb-2.5 mb-3.5 z-20">
+        <div className="flex items-center gap-2">
+          <span
+            className="text-[10px] font-bold uppercase tracking-wider font-mono px-2 py-0.5 rounded shadow-sm"
+            style={{
+              backgroundColor: 'var(--slide-badge-bg)',
+              color: 'var(--slide-badge-text)',
+              border: '1px solid var(--slide-accent)',
+            }}
+          >
+            ★ Title Slide
+          </span>
+          <span className="text-xs font-semibold text-slate-400 truncate max-w-[280px]">
+            {slide.t || 'Executive Briefing'}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[11px] font-mono font-semibold text-slate-500">
+            {slideIndex + 1} / {totalSlides}
+          </span>
+        </div>
       </div>
 
       {/* Hero Main Body: Landscape 2-Column (Left: Text, Right: Visual) */}

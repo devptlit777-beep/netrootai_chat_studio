@@ -13,17 +13,17 @@ const MODEL_IMAGE_LIMITS = {
 const DEFAULT_PLAN_LIMITS = {
     free: {
         dailyTokenLimit: 10000,
-        allowedModels: ['openai/gpt-oss-20b', 'allam-2-7b', 'qwen/qwen3.8-27b'],
-        allowedPlugins: ['web-search', 'calculator', 'pdf-search', 'ppt-generator'],
+        allowedModels: ['openai/gpt-oss-20b', 'allam-2-7b', 'qwen/qwen3.8-27b', 'ppt-studio'],
+        allowedPlugins: ['web-search', 'calculator', 'pdf-search'],
     },
     pro: {
         dailyTokenLimit: 100000,
-        allowedModels: ['openai/gpt-oss-20b', 'allam-2-7b', 'qwen/qwen3.8-27b', 'groq/compound-mini', 'openai/gpt-oss-120b', 'black-forest-labs/FLUX.1-schnell'],
+        allowedModels: ['openai/gpt-oss-20b', 'allam-2-7b', 'qwen/qwen3.8-27b', 'groq/compound-mini', 'openai/gpt-oss-120b', 'black-forest-labs/FLUX.1-schnell', 'ppt-studio'],
         allowedPlugins: ['web-search', 'calculator', 'pdf-search', 'arxiv', 'code-runner', 'github', 'notion', 'ppt-generator'],
     },
     enterprise: {
         dailyTokenLimit: null,
-        allowedModels: ['openai/gpt-oss-20b', 'allam-2-7b', 'qwen/qwen3.8-27b', 'groq/compound-mini', 'openai/gpt-oss-120b', 'black-forest-labs/FLUX.1-schnell'],
+        allowedModels: ['openai/gpt-oss-20b', 'allam-2-7b', 'qwen/qwen3.8-27b', 'groq/compound-mini', 'openai/gpt-oss-120b', 'black-forest-labs/FLUX.1-schnell', 'ppt-studio'],
         allowedPlugins: ['web-search', 'calculator', 'pdf-search', 'arxiv', 'code-runner', 'github', 'notion', 'jira', 'slack', 'linear', 'ppt-generator'],
     },
 };

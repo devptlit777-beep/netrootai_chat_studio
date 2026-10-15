@@ -59,7 +59,7 @@ export default function TimelineLayout({
     const nextIdx = steps.length + 1;
     const next = [
       ...steps,
-      [`Phase ${String(nextIdx).padStart(2, '0')}`, 'Scale & Expansion', 'Deploy enterprise automation pipelines and optimize latency.'],
+      [`Phase ${String(nextIdx).padStart(2, '0')}`, 'Scale & Expansion', 'Deploy enterprise automation pipelines and optimize latency.\n• Streamline production rollout\n• Target 99.9% availability SLAs'],
     ];
     onUpdateSlide({ c: next });
     onPushHistory();
@@ -97,9 +97,9 @@ export default function TimelineLayout({
 
           return (
             <React.Fragment key={idx}>
-              <div className="flex-1 min-w-[180px] flex flex-col justify-between slide-card-block rounded-xl p-4 relative overflow-hidden group hover:border-sky-500/50 transition">
+              <div className="flex-1 min-w-[180px] flex flex-col slide-card-block rounded-xl p-4 relative overflow-hidden group hover:border-sky-500/50 transition gap-2.5">
                 <div>
-                  <div className="flex items-center justify-between mb-2.5">
+                  <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <span
                         className="w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs font-mono shrink-0 shadow-sm"
@@ -141,20 +141,22 @@ export default function TimelineLayout({
                   />
                 </div>
 
-                <EditableText
-                  tag="div"
-                  value={desc}
-                  onChange={(val) => handleUpdateStep(idx, 'desc', val)}
-                  onBlur={onPushHistory}
-                  singleLine={false}
-                  className="flex-1 text-xs leading-relaxed rounded px-1 transition mt-1"
-                  style={{ color: 'var(--slide-text)' }}
-                />
+                <div className="flex-1 flex flex-col min-h-0 overflow-y-auto pr-0.5">
+                  <EditableText
+                    tag="div"
+                    value={desc}
+                    onChange={(val) => handleUpdateStep(idx, 'desc', val)}
+                    onBlur={onPushHistory}
+                    singleLine={false}
+                    className="text-xs leading-relaxed rounded px-1 transition whitespace-pre-line"
+                    style={{ color: 'var(--slide-text)' }}
+                  />
+                </div>
               </div>
 
               {/* Connector Arrow */}
               {idx < steps.length - 1 && (
-                <div className="flex items-start justify-center shrink-0 pt-6 text-sky-400">
+                <div className="flex items-start justify-center shrink-0 pt-7 text-sky-400">
                   <div className="w-6 h-6 rounded-full flex items-center justify-center bg-slate-900 border border-slate-700 shadow-sm text-sky-400">
                     <ArrowRight className="w-3.5 h-3.5" />
                   </div>

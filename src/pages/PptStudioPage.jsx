@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { usePlan } from '../contexts/PlanContext';
 import { supabase } from '../lib/supabase';
 import PptTopBar from '../components/ppt/PptTopBar';
 import FloatingSlidesIsland from '../components/ppt/FloatingSlidesIsland';
@@ -16,6 +17,7 @@ import {
   createBlankSlide,
   stripMarkdown,
   THEME_SEEDS,
+  PPT_API_BASE,
 } from '../components/ppt/pptConstants';
 import {
   ChevronLeft,
@@ -29,7 +31,14 @@ import {
   Layers,
 } from 'lucide-react';
 
-const PPT_API_BASE = import.meta.env.VITE_PPT_API_URL || 'http://127.0.0.1:8001';
+function cleanPromptTitle(rawPrompt) {
+  if (!rawPrompt) return '';
+  return rawPrompt
+    .replace(/^(create|make|generate|build|design|give me|produce)\s+(a|an|the)?\s*(presentation|pitch deck|deck|slides|slide deck|ppt|powerpoint)?\s*(on|about|for)?\s*/i, '')
+    .trim()
+    .slice(0, 60)
+    .replace(/^./, (c) => c.toUpperCase());
+}
 
 const INITIAL_DECK = [
   {
@@ -71,9 +80,45 @@ const INITIAL_DECK = [
 ];
 
 export default function PptStudioPage() {
+  const navigate = useNavigate();
   const { theme } = useTheme();
   const { user } = useAuth();
+  const { plan, lifetimePptCount = 0, featureAccess } = usePlan();
   const darkMode = theme === 'dark';
+
+  const isPro = plan === 'pro' || plan === 'enterprise' || Boolean(featureAccess?.['ppt-studio']);
+  const maxFreePpt = 2;
+  const maxDeckAiEdits = 5;
+  const isFreeLimitReached = !isPro && lifetimePptCount >= maxFreePpt;
+
+  const [currentDeckAiEdits, setCurrentDeckAiEdits] = useState(() => {
+    try {
+      const active = localStorage.getItem('netroot_active_working_deck');
+      if (active) {
+        const parsed = JSON.parse(active);
+        return Number(parsed.ai_edits_count || 0);
+      }
+    } catch {}
+    return 0;
+  });
+  const isViewOnly = isFreeLimitReached || (!isPro && currentDeckAiEdits >= maxDeckAiEdits);
+
+  const [hasActiveSession, setHasActiveSession] = useState(() => {
+    try {
+      const active = localStorage.getItem('netroot_active_working_deck');
+      if (active) {
+        const parsed = JSON.parse(active);
+        return Boolean(
+          parsed &&
+          Array.isArray(parsed.slides) &&
+          parsed.slides.length > 0 &&
+          (parsed.id || (parsed.deckTitle && parsed.deckTitle !== 'Untitled Presentation') || parsed.slides.some(s => s.c && s.c.some(p => typeof p === 'string' && p.trim().length > 0)))
+        );
+      }
+    } catch {}
+    return false;
+  });
+  const [isDirty, setIsDirty] = useState(false);
 
   const [slides, setSlides] = useState(() => {
     try {
@@ -201,8 +246,9 @@ export default function PptStudioPage() {
     }
   }, [historyIndex, history]);
 
-  // Sync active working draft immediately to localStorage so refresh never resets
+  // Sync active working draft immediately to localStorage only if there is an active session
   useEffect(() => {
+    if (!hasActiveSession || slides.length === 0) return;
     try {
       localStorage.setItem(
         'netroot_active_working_deck',
@@ -212,10 +258,11 @@ export default function PptStudioPage() {
           deckTitle,
           currentTheme,
           currentSeed,
+          ai_edits_count: currentDeckAiEdits,
         })
       );
     } catch (e) {}
-  }, [slides, deckTitle, currentTheme, currentSeed, currentDeckId]);
+  }, [hasActiveSession, slides, deckTitle, currentTheme, currentSeed, currentDeckId, currentDeckAiEdits]);
 
   // Restore user's latest cloud presentation only if no active draft is loaded
   useEffect(() => {
@@ -266,6 +313,7 @@ export default function PptStudioPage() {
           slides: slidesToSave,
           theme: themeToSave || 'midnight',
           seed_color: seedToSave || '#0EA5E9',
+          ai_edits_count: currentDeckAiEdits,
           updated_at: new Date().toISOString(),
         };
 
@@ -309,34 +357,38 @@ export default function PptStudioPage() {
         setSaveStatus('error');
       }
     },
-    [user?.id]
+    [user?.id, currentDeckAiEdits]
   );
 
-  // Debounced Auto-Save on slide / title / theme changes (Only while actively in editor!)
+  // Debounced Auto-Save on slide / title / theme changes (Only while actively in editor & modified!)
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
       return;
     }
     if (viewMode !== 'editor') return;
+    if (!isDirty && !currentDeckId) return; // Do not auto-save untouched brand new blank deck to My Slides!
 
     const timer = setTimeout(() => {
       saveDeckToCloud(slides, deckTitle, currentTheme, currentSeed, currentDeckId);
     }, 1500);
     return () => clearTimeout(timer);
-  }, [slides, deckTitle, currentTheme, currentSeed, currentDeckId, saveDeckToCloud, viewMode]);
+  }, [slides, deckTitle, currentTheme, currentSeed, currentDeckId, saveDeckToCloud, viewMode, isDirty]);
 
   // Handle deck deletion from Hub or MySlides without ghost re-saves
   const handleDeleteDeckFromStorage = useCallback(
     (deckId) => {
-      if (currentDeckId === deckId) {
+      if (currentDeckId === deckId || !currentDeckId) {
         setCurrentDeckId(null);
         setDeckTitle('Untitled Presentation');
-        const blank = [createBlankSlide('hero')];
+        const blank = [createBlankSlide(1)];
         setSlides(blank);
         setCurrentIndex(0);
+        setCurrentDeckAiEdits(0);
         setHistory([blank]);
         setHistoryIndex(0);
+        setIsDirty(false);
+        setHasActiveSession(false);
         try {
           localStorage.removeItem('netroot_active_working_deck');
         } catch {}
@@ -346,6 +398,12 @@ export default function PptStudioPage() {
         const local = JSON.parse(localStorage.getItem('netroot_saved_slides') || '[]');
         const filtered = local.filter((d) => d.id !== deckId);
         localStorage.setItem('netroot_saved_slides', JSON.stringify(filtered));
+        if (filtered.length === 0 && (!currentDeckId || currentDeckId === deckId)) {
+          setHasActiveSession(false);
+          try {
+            localStorage.removeItem('netroot_active_working_deck');
+          } catch {}
+        }
       } catch {}
 
       showToast('Presentation deleted successfully', 'info');
@@ -358,6 +416,7 @@ export default function PptStudioPage() {
     const clean = Array.isArray(deck.slides) && deck.slides.length > 0 ? deck.slides : INITIAL_DECK;
     setSlides(clean);
     setDeckTitle(deck.title || 'Untitled Presentation');
+    setCurrentDeckAiEdits(Number(deck.ai_edits_count || 0));
     const th = deck.theme || currentTheme;
     const sd = deck.seed_color || currentSeed;
     if (deck.theme) setCurrentTheme(deck.theme);
@@ -366,6 +425,8 @@ export default function PptStudioPage() {
     setCurrentDeckId(deck.id);
     setHistory([clean]);
     setHistoryIndex(0);
+    setIsDirty(true);
+    setHasActiveSession(true);
     setViewMode('editor');
     try {
       localStorage.setItem(
@@ -376,6 +437,7 @@ export default function PptStudioPage() {
           deckTitle: deck.title || 'Untitled Presentation',
           currentTheme: th,
           currentSeed: sd,
+          ai_edits_count: Number(deck.ai_edits_count || 0),
         })
       );
     } catch (e) {}
@@ -431,26 +493,21 @@ export default function PptStudioPage() {
   }, [queryDeckId]);
 
   const handleStartNewSlides = () => {
-    const blank = [createBlankSlide('hero')];
+    if (isFreeLimitReached) {
+      navigate('/pricing');
+      return;
+    }
+    const blank = [createBlankSlide(1)];
     setCurrentDeckId(null);
     setDeckTitle('Untitled Presentation');
     setSlides(blank);
     setCurrentIndex(0);
+    setCurrentDeckAiEdits(0);
     setHistory([blank]);
     setHistoryIndex(0);
+    setIsDirty(false); // Clean untouched blank deck
+    setHasActiveSession(false);
     setViewMode('editor');
-    try {
-      localStorage.setItem(
-        'netroot_active_working_deck',
-        JSON.stringify({
-          id: null,
-          slides: blank,
-          deckTitle: 'Untitled Presentation',
-          currentTheme,
-          currentSeed,
-        })
-      );
-    } catch (e) {}
     showToast('Started new blank presentation', 'info');
   };
 
@@ -497,6 +554,8 @@ export default function PptStudioPage() {
 
   // Update current active slide
   const handleUpdateCurrentSlide = (updates) => {
+    setIsDirty(true);
+    setHasActiveSession(true);
     setSlides((prev) => {
       const next = [...prev];
       next[currentIndex] = {
@@ -505,6 +564,9 @@ export default function PptStudioPage() {
       };
       return next;
     });
+    if (currentIndex === 0 && updates.t && typeof updates.t === 'string' && updates.t.trim()) {
+      setDeckTitle(updates.t.trim());
+    }
   };
 
   // Theme application
@@ -579,6 +641,8 @@ export default function PptStudioPage() {
     setSlides(next);
     setCurrentIndex(next.length - 1);
     pushHistory(next);
+    setIsDirty(true);
+    setHasActiveSession(true);
     showToast('Added new blank slide', 'success');
   };
 
@@ -605,13 +669,17 @@ export default function PptStudioPage() {
     try {
       const res = await fetch(`${PPT_API_BASE}/api/generate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-email': user?.email || '',
+        },
         body: JSON.stringify({
           prompt,
           num_slides: numSlides,
           theme: theme || null,
           theme_seed_hex: theme ? currentSeed : null,
           outline: outline || null,
+          userEmail: user?.email || '',
         }),
       });
 
@@ -643,15 +711,18 @@ export default function PptStudioPage() {
       }));
       setSlides(cleanSlides);
       setCurrentIndex(0);
+      setCurrentDeckAiEdits(0);
       const autoTitle =
-        data.topic ||
-        (prompt ? prompt.slice(0, 60).trim() : null) ||
         cleanSlides[0]?.t ||
+        data.topic ||
+        (prompt ? cleanPromptTitle(prompt) : null) ||
         'Untitled Presentation';
       setDeckTitle(autoTitle);
       setCurrentTheme(resTheme);
       setCurrentSeed(resSeed);
       pushHistory(cleanSlides);
+      setIsDirty(true);
+      setHasActiveSession(true);
       setViewMode('editor');
       showToast(
         `Successfully generated ${cleanSlides.length} slides!`,
@@ -666,6 +737,10 @@ export default function PptStudioPage() {
 
   // Quick single slide regenerate
   const handleQuickRegenerateCurrent = async () => {
+    if (isViewOnly) {
+      navigate('/pricing');
+      return;
+    }
     const activeSlide = slides[currentIndex];
     if (!activeSlide || isRegeneratingSlide) return;
 
@@ -673,22 +748,31 @@ export default function PptStudioPage() {
     try {
       const res = await fetch(`${PPT_API_BASE}/api/regenerate-slide`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-email': user?.email || '',
+        },
         body: JSON.stringify({
           prompt: deckTitle || activeSlide.t,
           slide_index: currentIndex,
           total_slides: slides.length,
           current_title: activeSlide.t,
           current_layout: activeSlide.l,
+          deckId: currentDeckId || undefined,
+          userEmail: user?.email || '',
         }),
       });
 
-      if (!res.ok) throw new Error('Failed to regenerate slide');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to regenerate slide');
+      }
 
       const data = await res.json();
       if (data.slide) {
         const clean = stripMarkdown(data.slide);
         handleUpdateCurrentSlide(clean);
+        setCurrentDeckAiEdits((prev) => prev + 1);
         pushHistory();
         showToast(`Regenerated slide #${currentIndex + 1}`, 'success');
       }
@@ -701,6 +785,12 @@ export default function PptStudioPage() {
 
   // Auto-generate point with AI
   const handleGeneratePointWithAI = async (isColumn = false, colIdx = 0) => {
+    if (!isPro && currentDeckAiEdits >= maxDeckAiEdits) {
+      showToast(`Free AI edit limit reached (${maxDeckAiEdits}/${maxDeckAiEdits}). Upgrade to Pro for unlimited AI edits.`, 'info');
+      navigate('/pricing');
+      return;
+    }
+
     const activeSlide = slides[currentIndex];
     if (!activeSlide || isGeneratingAI) return;
 
@@ -715,11 +805,16 @@ export default function PptStudioPage() {
 
       const res = await fetch(`${PPT_API_BASE}/api/suggest-point`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-email': user?.email || '',
+        },
         body: JSON.stringify({
           slide_title: activeSlide.t,
           existing_points: existingPoints,
           topic: deckTitle,
+          deckId: currentDeckId || undefined,
+          userEmail: user?.email || '',
         }),
       });
 
@@ -738,6 +833,7 @@ export default function PptStudioPage() {
         }
 
         setSlides(next);
+        setCurrentDeckAiEdits((prev) => prev + 1);
         pushHistory(next);
         showToast('AI added a strategic takeaway point!', 'success');
       }
@@ -765,6 +861,7 @@ export default function PptStudioPage() {
     }
 
     setSlides(next);
+    setCurrentDeckAiEdits((prev) => prev + 1);
     pushHistory(next);
     showToast('Applied AI text restyle', 'success');
   };
@@ -803,7 +900,10 @@ export default function PptStudioPage() {
 
       const res = await fetch(`${PPT_API_BASE}/api/render`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-email': user?.email || '',
+        },
         body: JSON.stringify(payload),
       });
 
@@ -841,10 +941,16 @@ export default function PptStudioPage() {
           onGenerateDeck={handleGenerateDeck}
           onStartBlankDeck={handleStartNewSlides}
           onSelectDeck={handleSelectDeck}
-          onResumeActiveDeck={() => setViewMode('editor')}
+          onResumeActiveDeck={() => {
+            if (isFreeLimitReached) {
+              navigate('/pricing');
+              return;
+            }
+            setViewMode('editor');
+          }}
           onDeleteDeck={handleDeleteDeckFromStorage}
           activeDeckTitle={deckTitle}
-          activeSlidesCount={slides.length}
+          activeSlidesCount={hasActiveSession ? slides.length : 0}
           isGeneratingDeck={isGeneratingDeck}
         />
 
@@ -927,6 +1033,8 @@ export default function PptStudioPage() {
         saveStatus={saveStatus}
         slidesCount={slides.length}
         onBackToHub={() => setViewMode('hub')}
+        isViewOnly={isViewOnly}
+        isFreeLimitReached={isFreeLimitReached}
       />
 
       {/* Main Workspace Body */}
@@ -993,10 +1101,15 @@ export default function PptStudioPage() {
           activeSlide={activeSlide}
           slideIndex={currentIndex}
           deckTopic={deckTitle}
+          deckId={currentDeckId}
+          isViewOnly={isViewOnly}
+          aiEditsCount={currentDeckAiEdits}
+          maxAiEdits={maxDeckAiEdits}
           onApplySlideUpdate={(newSlide) => {
             handleUpdateCurrentSlide(newSlide);
+            setCurrentDeckAiEdits((prev) => prev + 1);
             pushHistory();
-            showToast('Slide AI updated active slide!', 'success');
+            showToast('NetRoot AI Assistant updated active slide!', 'success');
           }}
           onQuickRegenerateCurrent={handleQuickRegenerateCurrent}
           isRegenerating={isRegeneratingSlide}
@@ -1020,7 +1133,12 @@ export default function PptStudioPage() {
       <UnsplashModal
         isOpen={isPhotoModalOpen}
         onClose={() => setIsPhotoModalOpen(false)}
-        initialQuery={activeSlide?.image_query || activeSlide?.t || ''}
+        initialQuery={
+          activeSlide?.image_query ||
+          (activeSlide?.t
+            ? activeSlide.t.replace(/[^\w\s]/g, '').trim().split(/\s+/).slice(0, 3).join(' ')
+            : 'technology')
+        }
         onSelectImage={handleSelectPhoto}
       />
 
@@ -1034,6 +1152,8 @@ export default function PptStudioPage() {
         targetInfo={restyleTargetInfo}
         slideTitle={activeSlide?.t || ''}
         onApplyRestyle={handleApplyRestyle}
+        deckId={currentDeckId}
+        isEditLimitReached={!isPro && currentDeckAiEdits >= maxDeckAiEdits}
       />
 
       {/* My Slides Modal (Cloud Presentation Library) */}
