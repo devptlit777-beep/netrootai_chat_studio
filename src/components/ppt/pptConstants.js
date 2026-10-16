@@ -1,6 +1,8 @@
-// NetRoot AI Slide Studio - Constants & Domain Utilities
+// NetRoot AI PPT Studio - Constants & Domain Utilities
 
-export const PPT_API_BASE = import.meta.env.VITE_PPT_API_URL || 'http://127.0.0.1:8001';
+import API_BASE from '../../lib/api';
+
+export const PPT_API_BASE = import.meta.env.VITE_PPT_API_URL || API_BASE || '';
 
 export const THEME_OPTIONS = [
   { id: 'auto', label: 'Auto (AI Dynamic)', icon: '✨', seed: '#0EA5E9' },
@@ -70,13 +72,11 @@ export function getSemanticIcon(str) {
 }
 
 export function createBlankSlide(idx = 1) {
+  const isCover = idx === 1 || idx === 'hero';
   return {
     l: 'title_content',
-    t: `Key Strategic Insight #${idx}`,
-    c: [
-      'Operational Insight: Structured architectural framework delivering high SLA standards.',
-      'Strategic Pillar: Autonomous execution layer scaling enterprise productivity.',
-    ],
+    t: isCover ? 'Untitled Presentation' : `Slide ${idx}`,
+    c: [''],
     theme: 'midnight',
     theme_mode: 'light_canvas',
     seed_color: '#0EA5E9',

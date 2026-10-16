@@ -28,17 +28,14 @@ export default function BulletList({
   };
 
   const handleAddItem = () => {
-    const next = [
-      ...items,
-      'New Strategic Point: Enter detailed operational insight here.',
-    ];
+    const next = [...items, ''];
     onChangeItems(next);
     onPushHistory();
   };
 
   const handleInsertAfter = (idx) => {
     const next = [...items];
-    next.splice(idx + 1, 0, 'New Strategic Point: Enter insight details.');
+    next.splice(idx + 1, 0, '');
     onChangeItems(next);
     onPushHistory();
   };
@@ -58,7 +55,7 @@ export default function BulletList({
       <ul className={`w-full overflow-y-auto pr-1 ${isColumn ? 'space-y-2' : 'space-y-3'}`}>
         {items.map((rawItem, idx) => {
           const itemStr = stripMarkdown(
-            Array.isArray(rawItem) ? rawItem.join(' - ') : String(rawItem || '')
+            Array.isArray(rawItem) ? rawItem.join(' - ') : String(rawItem ?? '')
           );
 
           // Check if there is a colon for leading bold styling
@@ -67,7 +64,7 @@ export default function BulletList({
           const lead = hasLead ? itemStr.slice(0, colonIdx + 1) : null;
           const body = hasLead ? itemStr.slice(colonIdx + 1) : itemStr;
 
-          const icon = getSemanticIcon(itemStr);
+          const icon = itemStr.trim() ? getSemanticIcon(itemStr) : '•';
 
           return (
             <li
@@ -80,7 +77,11 @@ export default function BulletList({
               </span>
 
               {/* Semantic Icon */}
+<<<<<<< HEAD
               <span className="text-sm select-none shrink-0 py-0.5" title={t('ppt.semanticIcon')}>
+=======
+              <span className="text-sm select-none shrink-0 py-0.5" title="Point bullet">
+>>>>>>> 806306b7a37e545d96f582656b0a5eb47c8d972a
                 {icon}
               </span>
 
@@ -104,6 +105,7 @@ export default function BulletList({
                 <EditableText
                   tag="span"
                   value={body}
+                  placeholder="Click to add text or point..."
                   onChange={(val) => {
                     const full = hasLead ? `${lead}${val}` : val;
                     handleItemChange(idx, full);

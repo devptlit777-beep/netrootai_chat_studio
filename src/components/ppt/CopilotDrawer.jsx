@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { usePlan } from '../../contexts/PlanContext';
+import { PPT_API_BASE } from './pptConstants';
 import {
   Bot,
   X,
@@ -8,6 +10,7 @@ import {
   Loader2,
   RefreshCw,
   CheckCircle2,
+  Sparkles,
 } from 'lucide-react';
 
 export default function CopilotDrawer({
@@ -16,13 +19,22 @@ export default function CopilotDrawer({
   activeSlide,
   slideIndex = 0,
   deckTopic = '',
+  deckId = null,
+  isViewOnly = false,
+  aiEditsCount = 0,
+  maxAiEdits = 5,
   onApplySlideUpdate,
   onQuickRegenerateCurrent,
   isRegenerating = false,
 }) {
-  const { t } = useTranslation();
   const { theme } = useTheme();
+  const { user } = useAuth();
+  const { plan, lifetimePptCount = 0, featureAccess } = usePlan();
   const darkMode = theme === 'dark';
+
+  const isPro = plan === 'pro' || plan === 'enterprise' || Boolean(featureAccess?.['ppt-studio']);
+  const isFreeLimitReached = !isPro && lifetimePptCount >= 2;
+  const isEditLimitReached = !isPro && (isFreeLimitReached || isViewOnly || aiEditsCount >= maxAiEdits);
 
   const [instruction, setInstruction] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -33,6 +45,10 @@ export default function CopilotDrawer({
 
   const handleSubmit = async (e) => {
     e?.preventDefault();
+    if (isEditLimitReached) {
+      navigate('/pricing');
+      return;
+    }
     if (!instruction.trim() || isLoading || !activeSlide) return;
 
     setIsLoading(true);
@@ -40,20 +56,24 @@ export default function CopilotDrawer({
     setLastSummary(null);
 
     try {
-      const PPT_API_BASE = import.meta.env.VITE_PPT_API_URL || 'http://127.0.0.1:8001';
       const res = await fetch(`${PPT_API_BASE}/api/copilot-edit-slide`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-email': user?.email || '',
+        },
         body: JSON.stringify({
           slide: activeSlide,
           instruction: instruction.trim(),
           deck_topic: deckTopic || activeSlide.t || '',
+          deckId: deckId || undefined,
+          userEmail: user?.email || '',
         }),
       });
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || 'Failed to edit slide with Slide AI');
+        throw new Error(err.error || err.detail || 'Failed to edit slide with NetRoot AI Assistant');
       }
 
       const data = await res.json();
@@ -63,7 +83,7 @@ export default function CopilotDrawer({
         setInstruction('');
       }
     } catch (err) {
-      setErrorMsg(err.message || 'Error executing Slide AI instruction');
+      setErrorMsg(err.message || 'Error executing NetRoot AI Assistant instruction');
     } finally {
       setIsLoading(false);
     }
@@ -94,7 +114,7 @@ export default function CopilotDrawer({
                 darkMode ? 'text-white' : 'text-slate-900'
               }`}
             >
-              Slide AI
+              NetRoot AI Assistant
             </h2>
             <p className={`text-[11px] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
               {t('ppt.assistant', { index: slideIndex + 1 })}
@@ -109,7 +129,7 @@ export default function CopilotDrawer({
               ? 'text-slate-400 hover:text-white hover:bg-white/5'
               : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
           }`}
-          title={t('ppt.closeSlideAI')}
+          title="Close Slide AI"
         >
           <X className="w-4 h-4" />
         </button>
@@ -117,6 +137,24 @@ export default function CopilotDrawer({
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Free Tier AI Edits Quota Indicator */}
+        {!isPro && (
+          <div
+            className={`p-2.5 rounded-xl border flex items-center justify-between text-xs font-medium ${
+              isEditLimitReached
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                : darkMode
+                ? 'bg-white/5 border-white/10 text-slate-300'
+                : 'bg-slate-100 border-slate-200 text-slate-700'
+            }`}
+          >
+            <span>Free AI Edits for Deck:</span>
+            <span className="font-bold font-mono">
+              {aiEditsCount} / {maxAiEdits} {isEditLimitReached && '(Limit reached)'}
+            </span>
+          </div>
+        )}
+
         {/* Quick Slide Regenerate */}
         <div
           className={`p-3 rounded-xl border flex items-center justify-between ${
@@ -137,12 +175,18 @@ export default function CopilotDrawer({
           </div>
           <button
             type="button"
-            onClick={onQuickRegenerateCurrent}
+            onClick={() => {
+              if (isEditLimitReached) {
+                navigate('/pricing');
+                return;
+              }
+              onQuickRegenerateCurrent();
+            }}
             disabled={isRegenerating}
             className="px-2.5 py-1 rounded-lg bg-purple-600 text-white hover:bg-purple-500 text-xs font-semibold flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer shadow-sm"
           >
             <RefreshCw className={`w-3 h-3 ${isRegenerating ? 'animate-spin' : ''}`} />
-            <span>{t('ppt.regenerate')}</span>
+            <span>Regen</span>
           </button>
         </div>
 
@@ -185,8 +229,9 @@ export default function CopilotDrawer({
           <textarea
             rows={3}
             value={instruction}
+            disabled={isEditLimitReached || isLoading}
             onChange={(e) => setInstruction(e.target.value)}
-            placeholder={t('ppt.slideCommand')}
+            placeholder="Type your command or instruction for this slide..."
             className={`w-full border focus:border-purple-500 rounded-xl p-3 text-xs outline-none resize-none transition ${
               darkMode
                 ? 'bg-[#18181b] border-[#2b2b30] text-white placeholder-slate-500'
@@ -209,7 +254,7 @@ export default function CopilotDrawer({
             ) : (
               <Send className="w-3.5 h-3.5" />
             )}
-            <span>{t('ppt.apply')}</span>
+            <span>Apply</span>
           </button>
         </div>
       </form>

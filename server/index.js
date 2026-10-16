@@ -60,7 +60,7 @@ function sendJson(res, statusCode, payload, req) {
         'Expires': '0',
         'Access-Control-Allow-Origin': corsOrigin,
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-user-email, stripe-signature',
     });
     res.end(JSON.stringify(payload));
 }
@@ -167,29 +167,100 @@ async function getCurrentMonthImageUsageAsync(userEmail, modelName) {
     return entries.filter(e => e.model === modelName).length;
 }
 
+async function getUserLifetimePptCount(sb, userId, userEmail) {
+    if (!sb) return 0;
+    try {
+        if (userId) {
+            const { data } = await sb.from('profiles').select('lifetime_ppt_count').eq('id', userId).maybeSingle();
+            if (data && typeof data.lifetime_ppt_count === 'number') {
+                return data.lifetime_ppt_count;
+            }
+        }
+    } catch {}
+    try {
+        if (userEmail) {
+            const { count } = await sb.from('usage_logs').select('id', { count: 'exact', head: true })
+                .eq('user_email', String(userEmail).toLowerCase())
+                .in('model', ['ppt-generator', 'ppt-studio']);
+            if (typeof count === 'number') return count;
+        }
+    } catch {}
+    return 0;
+}
+
+async function incrementUserLifetimePptCount(sb, userId, currentCount = 0) {
+    if (!sb || !userId) return;
+    try {
+        await sb.from('profiles').update({ lifetime_ppt_count: currentCount + 1 }).eq('id', userId);
+    } catch (e) {
+        console.warn('[ppt] failed to increment lifetime_ppt_count:', e.message);
+    }
+}
+
+const memoryDeckAiEdits = new Map();
+
+async function getDeckAiEditsCount(sb, deckId) {
+    if (!deckId) return 0;
+    let count = memoryDeckAiEdits.get(String(deckId)) || 0;
+    if (sb) {
+        try {
+            const { data } = await sb.from('user_decks').select('ai_edits_count').eq('id', deckId).maybeSingle();
+            if (data && typeof data.ai_edits_count === 'number') {
+                count = Math.max(count, data.ai_edits_count);
+            }
+        } catch {}
+    }
+    return count;
+}
+
+async function incrementDeckAiEditsCount(sb, deckId, currentCount = 0) {
+    if (!deckId) return;
+    const nextCount = currentCount + 1;
+    memoryDeckAiEdits.set(String(deckId), nextCount);
+    if (sb) {
+        try {
+            await sb.from('user_decks').update({ ai_edits_count: nextCount }).eq('id', deckId);
+        } catch (e) {
+            console.warn('[ppt] notice on user_decks ai_edits_count update:', e.message);
+        }
+    }
+}
+
 async function resolveUserPlan(req, body = {}) {
-    const email = body.email || body.user?.email || body.userEmail || req.headers['x-user-email'] || '';
-    if (!email) return { plan: 'free', email: null };
+    let email = body.email || body.user?.email || body.userEmail || req.headers['x-user-email'] || '';
+    const authHeader = req.headers['authorization'] || '';
+    if (!email && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.slice(7);
+        const sb = getSupabaseClient();
+        if (sb) {
+            try {
+                const { data: { user: authUser } } = await sb.auth.getUser(token);
+                if (authUser?.email) email = authUser.email;
+            } catch {}
+        }
+    }
+    if (!email) return { plan: 'free', email: null, lifetimePptCount: 0 };
 
     const supabaseUrl = process.env.VITE_SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!supabaseUrl || !serviceRoleKey) return { plan: 'free', email: String(email).toLowerCase() };
+    if (!supabaseUrl || !serviceRoleKey) return { plan: 'free', email: String(email).toLowerCase(), lifetimePptCount: 0 };
 
     try {
         const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
         const { data: { users } } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
         const found = users?.find(u => u.email?.toLowerCase() === String(email).toLowerCase());
-        if (!found) return { plan: 'free', email: String(email).toLowerCase() };
+        if (!found) return { plan: 'free', email: String(email).toLowerCase(), lifetimePptCount: 0 };
 
         const [{ data: profile }, { data: subscription }] = await Promise.all([
-            supabase.from('profiles').select('plan, free_trial_ends_at').eq('id', found.id).single(),
+            supabase.from('profiles').select('plan, free_trial_ends_at, feature_access').eq('id', found.id).single(),
             supabase.from('subscriptions').select('plan, status, current_period_end, cancel_at_period_end, interval_months').eq('user_id', found.id).maybeSingle(),
         ]);
         const summary = subscriptionSummary(subscription, profile?.plan || 'free', profile?.free_trial_ends_at);
-        return { plan: summary.effective_plan, email: String(email).toLowerCase(), userId: found.id, accessExpired: summary.access_expired, featureAccess: profile?.feature_access || {} };
+        const lifetimePptCount = await getUserLifetimePptCount(supabase, found.id, email);
+        return { plan: summary.effective_plan, email: String(email).toLowerCase(), userId: found.id, accessExpired: summary.access_expired, featureAccess: profile?.feature_access || {}, lifetimePptCount };
     } catch (err) {
         console.warn('[plan] failed to resolve user plan:', err.message);
-        return { plan: 'free', email: String(email).toLowerCase() };
+        return { plan: 'free', email: String(email).toLowerCase(), lifetimePptCount: 0 };
     }
 }
 
@@ -250,6 +321,8 @@ async function handleUsage(req, res, userEmail = null) {
         'groq/compound': { dailyLimit: null, contextWindow: 131072, displayName: 'Compound' },
         'groq/compound-mini': { dailyLimit: null, contextWindow: 131072, displayName: 'Compound Mini' },
         'black-forest-labs/FLUX.1-schnell': { dailyLimit: 100000, contextWindow: 0, displayName: 'FLUX.1 Schnell' },
+        'ppt-studio': { dailyLimit: 100000, contextWindow: 131072, displayName: 'NetRoot AI PPT Studio' },
+        'ppt-generator': { dailyLimit: 100000, contextWindow: 131072, displayName: 'NetRoot AI PPT Generator' },
     };
     const modelInfo = MODEL_LIMITS[modelId] || { dailyLimit: 200000, contextWindow: 131072, displayName: modelId };
     const todayEntries = entries.filter(e => e.ts >= Date.now() - 86400000);
@@ -258,13 +331,15 @@ async function handleUsage(req, res, userEmail = null) {
     // Per-model token usage for today
     const perModelTokens = {};
     for (const e of todayEntries) {
-        const m = e.model || modelId;
+        let m = e.model || modelId;
+        if (m === 'ppt-generator') m = 'ppt-studio';
         perModelTokens[m] = (perModelTokens[m] || 0) + e.inputTokens + e.outputTokens;
     }
 
     const perModel = {};
     for (const entry of entries30d) {
-        const model = entry.model || modelId;
+        let model = entry.model || modelId;
+        if (model === 'ppt-generator') model = 'ppt-studio';
         if (!perModel[model]) perModel[model] = { tokens: 0, requests: 0 };
         perModel[model].tokens += entry.inputTokens + entry.outputTokens;
         perModel[model].requests += 1;
@@ -721,18 +796,166 @@ async function handleVideoGeneration(req, res) {
     }
 }
 
-async function handlePptGeneration(req, res) {
-    const body = await readJson(req);
-    const pptServiceUrl = process.env.PPT_SERVICE_URL || 'http://127.0.0.1:8001/api/generate';
+const PPT_ROUTES = new Set([
+    '/api/generate',
+    '/api/generate-outline',
+    '/api/regenerate-slide',
+    '/api/copilot-edit-slide',
+    '/api/suggest-point',
+    '/api/restyle-text',
+    '/api/render',
+    '/api/search-image-candidates',
+    '/api/fetch-candidate-image',
+]);
+
+async function handlePptProxy(req, res) {
+    const startTime = Date.now();
+    const urlObj = new URL(req.url, 'http://127.0.0.1');
+    const cleanPath = urlObj.pathname.replace(/^\/api\/ppt/, '/api');
+    const pptServiceBase = process.env.PPT_SERVICE_BASE || 'http://127.0.0.1:8001';
+    const targetUrl = `${pptServiceBase}${cleanPath}${urlObj.search}`;
+
+    let body = {};
+    if (req.method === 'POST') {
+        body = await readJson(req);
+    }
+
+    const { plan, email, featureAccess, userId } = await resolveUserPlan(req, body);
+    const sb = getSupabaseClient();
+
+    // 1. Lifetime & Per-Deck Quota Check for Free Tier
+    const isPro = plan === 'pro' || plan === 'enterprise';
+    const hasOverride = Boolean(featureAccess?.['ppt-studio']);
+    let lifetimeCount = 0;
+
+    if (!isPro && !hasOverride) {
+        lifetimeCount = await getUserLifetimePptCount(sb, userId, email);
+        const isDeckCreation = cleanPath === '/api/generate' || cleanPath === '/api/generate-outline';
+        if (isDeckCreation && lifetimeCount >= 2) {
+            sendJson(res, 403, {
+                error: 'Free lifetime limit reached (2/2 presentations). Upgrade to NetRoot AI Pro to create more presentations.',
+            }, req);
+            return;
+        }
+
+        const isEditAction = ['/api/regenerate-slide', '/api/copilot-edit-slide', '/api/suggest-point', '/api/restyle-text'].includes(cleanPath);
+        if (isEditAction) {
+            if (lifetimeCount >= 2) {
+                sendJson(res, 403, {
+                    error: 'Free AI editing is disabled in View-Only mode. Please upgrade to Pro for unlimited AI edits.',
+                }, req);
+                return;
+            }
+            const deckId = body.deckId || body.deck_id;
+            if (deckId) {
+                const edits = await getDeckAiEditsCount(sb, deckId);
+                if (edits >= 5) {
+                    sendJson(res, 403, {
+                        error: 'Free AI edit limit reached (5/5 edits) for this presentation. Upgrade to Pro for unlimited AI edits.',
+                    }, req);
+                    return;
+                }
+            }
+        }
+    }
+
+    // 2. Daily Token Limit Check for AI Generation Actions
+    const isAiAction = ['/api/generate', '/api/generate-outline', '/api/regenerate-slide', '/api/copilot-edit-slide', '/api/restyle-text', '/api/suggest-point'].includes(cleanPath);
+
+    if (isAiAction && email) {
+        let estimatedTokens = 350;
+        if (cleanPath === '/api/generate') {
+            const count = Number(body.num_slides || 5);
+            estimatedTokens = Math.max(500, count * 250);
+        } else if (cleanPath === '/api/generate-outline') {
+            estimatedTokens = 400;
+        } else if (cleanPath === '/api/copilot-edit-slide' || cleanPath === '/api/regenerate-slide') {
+            estimatedTokens = 350;
+        }
+
+        const alreadyUsedToday = await getTodayUserUsageAsync(email);
+        if (!canUseTokens(plan, alreadyUsedToday, estimatedTokens)) {
+            sendJson(res, 429, {
+                error: `You have reached your daily token limit for the ${plan} plan. Your limits reset tomorrow.`,
+            }, req);
+            return;
+        }
+    }
+
+    // 3. Proxy to Python ppt-service
     try {
-        const response = await fetch(pptServiceUrl, {
-            method: 'POST',
+        const fetchOptions = {
+            method: req.method,
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        });
-        const data = await response.json();
-        sendJson(res, response.status, data, req);
+        };
+        if (req.method === 'POST') {
+            fetchOptions.body = JSON.stringify(body);
+        }
+
+        const pythonRes = await fetch(targetUrl, fetchOptions);
+
+        // Check if response is binary (e.g. .pptx file download from /api/render)
+        const contentType = pythonRes.headers.get('content-type') || '';
+        if (contentType.includes('presentationml') || contentType.includes('octet-stream') || cleanPath === '/api/render') {
+            const buffer = await pythonRes.arrayBuffer();
+            const origin = req.headers?.origin || '';
+            const allowed = ['http://127.0.0.1:5173', 'http://localhost:5173', 'https://netrootai.tech'];
+            const corsOrigin = allowed.includes(origin) ? origin : '*';
+            res.writeHead(pythonRes.status, {
+                'Content-Type': contentType || 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                'Content-Disposition': pythonRes.headers.get('content-disposition') || 'attachment; filename="presentation.pptx"',
+                'Access-Control-Allow-Origin': corsOrigin,
+            });
+            res.end(Buffer.from(buffer));
+            return;
+        }
+
+        const data = await pythonRes.json().catch(() => ({}));
+
+        // 4. Update Lifetime and Edit Counts on Success for Free Tier
+        if (pythonRes.ok && !isPro && !hasOverride) {
+            if (cleanPath === '/api/generate' && userId) {
+                await incrementUserLifetimePptCount(sb, userId, lifetimeCount);
+            } else if (['/api/regenerate-slide', '/api/copilot-edit-slide', '/api/suggest-point', '/api/restyle-text'].includes(cleanPath)) {
+                const deckId = body.deckId || body.deck_id;
+                if (deckId) {
+                    const edits = await getDeckAiEditsCount(sb, deckId);
+                    await incrementDeckAiEditsCount(sb, deckId, edits);
+                }
+            }
+        }
+
+        // 4. Record Token Usage on Success
+        if (pythonRes.ok && isAiAction && email) {
+            let inputTokens = estimateRequestTokens(body.prompt || body.instruction || body.text || '');
+            let outputTokens = 200;
+            if (cleanPath === '/api/generate') {
+                const slidesCount = Array.isArray(data.slides) ? data.slides.length : Number(body.num_slides || 5);
+                outputTokens = slidesCount * 200;
+            } else if (cleanPath === '/api/generate-outline') {
+                outputTokens = 250;
+            } else if (cleanPath === '/api/copilot-edit-slide' || cleanPath === '/api/regenerate-slide') {
+                outputTokens = 250;
+            } else if (cleanPath === '/api/restyle-text' || cleanPath === '/api/suggest-point') {
+                outputTokens = 100;
+            }
+
+            await recordUsage({
+                inputTokens,
+                outputTokens,
+                cachedTokens: 0,
+                latencyMs: Date.now() - startTime,
+                model: 'ppt-studio',
+                userEmail: email,
+                plan,
+                prompt: body.prompt || body.instruction || body.text || `PPT ${cleanPath}`,
+            });
+            console.log(`[ppt-studio] Recorded ${inputTokens + outputTokens} tokens for ${email} (${cleanPath})`);
+        }
+
+        sendJson(res, pythonRes.status, data, req);
     } catch (err) {
+        console.error('[ppt-proxy] Forward failed:', err.message);
         sendJson(res, 502, { error: `PPT service unavailable: ${err.message}` }, req);
     }
 }
@@ -743,6 +966,11 @@ function isPptGenerationRequest(text) {
     if (!text || typeof text !== 'string') return false;
     const t = text.toLowerCase().trim();
 
+    // 0. Direct command shortcuts like /ppt, pptgen, ppt on...
+    if (/^(?:\/ppt\b|pptgen\b|generate-ppt\b)/i.test(t)) return true;
+    if (/^slides\s+on\b/i.test(t)) return true;
+    if (/^make\s+(?:a\s+)?ppt\b/i.test(t)) return true;
+
     // 1. Negative filter: If the user is asking for suggestions, topics, ideas, or explanations, do not trigger PPT generation
     const isInformationalQuery = /(?:suggest|ideas?|topics?|list\b|recommend|what\s+is|what\s+are|how\s+to|explain)/i.test(t);
     if (isInformationalQuery) return false;
@@ -752,7 +980,7 @@ function isPptGenerationRequest(text) {
     if (!hasPptNoun) return false;
 
     // 3. Must contain an explicit creation action verb
-    const hasCreationVerb = /(?:create|make|generate|build|prepare|design|convert)/i.test(t);
+    const hasCreationVerb = /(?:create|make|generate|build|prepare|design|convert|pptgen)/i.test(t);
     if (!hasCreationVerb) return false;
 
     return true;
@@ -827,89 +1055,133 @@ async function distillTopicFromConversation(history, userPrompt, groqApiKey) {
 }
 
 async function handleChatToPpt({ prompt, history, userEmail, userId, res, req, requestStart, plan }) {
-    const slideCount = extractSlideCount(prompt);
-    const groqApiKey = process.env.GROQ_API_KEY;
-    console.log(`[ppt-flow] Triggered natural PPT flow: ${slideCount} slides requested. User: ${userEmail || 'anon'}`);
-
-    const distilledTopic = await distillTopicFromConversation(history, prompt, groqApiKey);
-    const pptServiceBase = process.env.PPT_SERVICE_BASE || 'http://127.0.0.1:8001';
-
-    // 1. Generate slides via PPT service
-    let pptGenData;
     try {
-        const genRes = await fetch(`${pptServiceBase}/api/generate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                prompt: distilledTopic,
-                num_slides: slideCount,
-                theme: 'midnight'
-            }),
-            signal: AbortSignal.timeout(60000)
-        });
-        if (!genRes.ok) {
-            const errText = await genRes.text();
-            throw new Error(`PPT generator returned ${genRes.status}: ${errText}`);
+        const sb = getSupabaseClient();
+        const isPro = plan === 'pro' || plan === 'enterprise';
+        let lifetimeCount = 0;
+
+        if (!isPro) {
+            lifetimeCount = await getUserLifetimePptCount(sb, userId, userEmail);
+            if (lifetimeCount >= 2) {
+                const upgradeNotice = {
+                    title: "NetRoot AI PPT Studio",
+                    lifetimeCount,
+                    maxFree: 2,
+                    isLocked: true,
+                    upgradeUrl: "/pricing",
+                    message: "You have reached your lifetime limit of 2 free presentations. Upgrade to NetRoot AI Pro to generate unlimited presentations."
+                };
+                const answer = `You have reached your lifetime limit of 2 free presentations.\n\n__PPT_PRO_UPGRADE__${JSON.stringify(upgradeNotice)}__PPT_PRO_UPGRADE__`;
+                sendJson(res, 200, {
+                    answer,
+                    pptLocked: true,
+                    upgradeNotice
+                }, req);
+                return;
+            }
         }
-        pptGenData = await genRes.json();
-    } catch (err) {
-        console.error('[ppt-flow] Generation failed:', err.message);
-        sendJson(res, 502, { error: `PPT Service Error: ${err.message}` }, req);
-        return;
-    }
 
-    const slides = pptGenData.slides || (pptGenData.slide ? [pptGenData.slide] : []);
-    const title = pptGenData.title || (slides[0]?.t ? slides[0].t.slice(0, 50) : 'AI Pitch Deck');
-    const theme = pptGenData.theme || 'midnight';
-    const seedColor = pptGenData.theme_seed_hex || '#0EA5E9';
+        const slideCount = extractSlideCount(prompt);
+        const estimatedTokens = estimateRequestTokens(prompt) + slideCount * 200;
+        const alreadyUsedToday = await getTodayUserUsageAsync(userEmail);
+        if (!canUseTokens(plan, alreadyUsedToday, estimatedTokens)) {
+            sendJson(res, 429, {
+                error: `You have reached your daily token limit for the ${plan} plan. Upgrade to Pro or wait until your limit resets tomorrow.`,
+            }, req);
+            return;
+        }
 
-    const filename = `${title.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '_')}.pptx`;
-    const deckId = crypto.randomUUID();
+        const groqApiKey = process.env.GROQ_API_KEY;
+        console.log(`[ppt-flow] Triggered natural PPT flow: ${slideCount} slides requested. User: ${userEmail || 'anon'}`);
 
-    // 3. Save to Supabase user_decks if user is known
-    const sb = getSupabaseClient();
-    if (sb && userId) {
+        const distilledTopic = await distillTopicFromConversation(history, prompt, groqApiKey);
+        const pptServiceBase = process.env.PPT_SERVICE_BASE || 'http://127.0.0.1:8001';
+
+        // 1. Generate slides via PPT service
+        let pptGenData;
         try {
-            await sb.from('user_decks').insert({
-                id: deckId,
-                user_id: userId,
-                title,
-                slides,
-                theme,
-                seed_color: seedColor
+            const genRes = await fetch(`${pptServiceBase}/api/generate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt: distilledTopic,
+                    num_slides: slideCount,
+                    theme: 'midnight'
+                }),
+                signal: AbortSignal.timeout(60000)
             });
-            console.log('[ppt-flow] Saved deck to Supabase user_decks:', deckId);
-        } catch (dbErr) {
-            console.warn('[ppt-flow] Supabase user_decks notice:', dbErr.message);
+            if (!genRes.ok) {
+                const errText = await genRes.text();
+                throw new Error(`PPT generator returned ${genRes.status}: ${errText}`);
+            }
+            pptGenData = await genRes.json();
+        } catch (err) {
+            console.error('[ppt-flow] Generation failed:', err.message);
+            sendJson(res, 502, { error: `PPT Service Error: ${err.message}` }, req);
+            return;
         }
+
+        const slides = pptGenData.slides || (pptGenData.slide ? [pptGenData.slide] : []);
+        const title = pptGenData.title || (slides[0]?.t ? slides[0].t.slice(0, 50) : 'AI Pitch Deck');
+        const theme = pptGenData.theme || 'midnight';
+        const seedColor = pptGenData.theme_seed_hex || '#0EA5E9';
+
+        const filename = `${title.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '_')}.pptx`;
+        const deckId = crypto.randomUUID();
+        const downloadUrl = `/api/ppt/download/${encodeURIComponent(filename)}?deckId=${encodeURIComponent(deckId)}`;
+
+        // 3. Save to Supabase user_decks if user is known
+        if (sb && userId) {
+            try {
+                await sb.from('user_decks').insert({
+                    id: deckId,
+                    user_id: userId,
+                    title,
+                    slides,
+                    theme,
+                    seed_color: seedColor,
+                    ai_edits_count: 0
+                });
+                console.log('[ppt-flow] Saved deck to Supabase user_decks:', deckId);
+            } catch (dbErr) {
+                console.warn('[ppt-flow] Supabase user_decks notice:', dbErr.message);
+            }
+        }
+
+        if (!isPro && userId) {
+            await incrementUserLifetimePptCount(sb, userId, lifetimeCount);
+        }
+
+        // 4. Record usage
+        await recordUsage({
+            inputTokens: estimateRequestTokens(prompt),
+            outputTokens: slides.length * 150,
+            cachedTokens: 0,
+            latencyMs: Date.now() - requestStart,
+            model: 'ppt-generator',
+            userEmail,
+            plan,
+            prompt
+        });
+
+        const pptDeck = {
+            deckId,
+            title,
+            slideCount: slides.length,
+            slides,
+            downloadUrl,
+            filename,
+            theme,
+            seed_color: seedColor
+        };
+
+        const answer = `A **${slides.length}-slide** presentation on **"${title}"** has been generated from this discussion!\n\nYou can open and edit it directly in **NetRoot AI PPT Studio** or download the PowerPoint (.pptx) file below.\n\n__PPT_DECK__${JSON.stringify(pptDeck)}__PPT_DECK__`;
+
+        sendJson(res, 200, { answer, pptDeck }, req);
+    } catch (unhandledErr) {
+        console.error('[ppt-flow] Unhandled error:', unhandledErr);
+        sendJson(res, 500, { error: `Failed to create presentation: ${unhandledErr.message}` }, req);
     }
-
-    // 4. Record usage
-    await recordUsage({
-        inputTokens: estimateRequestTokens(prompt),
-        outputTokens: slides.length * 150,
-        cachedTokens: 0,
-        latencyMs: Date.now() - requestStart,
-        model: 'ppt-generator',
-        userEmail,
-        plan,
-        prompt
-    });
-
-    const pptDeck = {
-        deckId,
-        title,
-        slideCount: slides.length,
-        slides,
-        downloadUrl,
-        filename,
-        theme,
-        seed_color: seedColor
-    };
-
-    const answer = `A **${slides.length}-slide** presentation on **"${title}"** has been generated from this discussion!\n\nYou can open and edit it directly in **PPT Studio** or download the PowerPoint (.pptx) file below.\n\n__PPT_DECK__${JSON.stringify(pptDeck)}__PPT_DECK__`;
-
-    sendJson(res, 200, { answer, pptDeck }, req);
 }
 
 async function handlePptDownload(req, res) {
@@ -1550,7 +1822,24 @@ async function handleGetPlan(req, res) {
     if (profile?.plan !== summary.effective_plan) {
         await supabase.from('profiles').upsert({ id: found.id, plan: summary.effective_plan }, { onConflict: 'id' });
     }
-    sendJson(res, 200, { ...summary, plan: summary.effective_plan, feature_access: profile?.feature_access || {} });
+    const lifetimePptCount = await getUserLifetimePptCount(supabase, found.id, email);
+    sendJson(res, 200, { ...summary, plan: summary.effective_plan, feature_access: profile?.feature_access || {}, lifetime_ppt_count: lifetimePptCount });
+}
+
+async function handlePptQuota(req, res) {
+    const { plan, email, userId } = await resolveUserPlan(req);
+    const sb = getSupabaseClient();
+    const isPro = plan === 'pro' || plan === 'enterprise';
+    const lifetimePptCount = await getUserLifetimePptCount(sb, userId, email);
+    const freeLimitReached = !isPro && lifetimePptCount >= 2;
+    sendJson(res, 200, {
+        plan,
+        isPro,
+        lifetimePptCount,
+        maxFreePpt: 2,
+        maxDeckAiEdits: 5,
+        freeLimitReached,
+    }, req);
 }
 
 // ─── Stripe ──────────────────────────────────────────────────────────────────
@@ -2327,7 +2616,7 @@ async function handleSendEmail(req, res) {
 }
 
 const server = createServer(async (req, res) => {
-    if (req.method === 'OPTIONS') { sendJson(res, 204, {}); return; }
+    if (req.method === 'OPTIONS') { sendJson(res, 204, {}, req); return; }
     if (req.method === 'GET' && req.url === '/api/plan-limits') {
         try { handlePlanLimits(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
         return;
@@ -2342,6 +2631,10 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'POST' && req.url === '/api/chat') {
         try { await handleChat(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
+        return;
+    }
+    if (req.method === 'GET' && req.url.startsWith('/api/ppt/quota')) {
+        try { await handlePptQuota(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
         return;
     }
     if (req.method === 'GET' && req.url.startsWith('/api/get-plan')) {
@@ -2408,8 +2701,13 @@ const server = createServer(async (req, res) => {
         try { await handleVideoGeneration(req, res); } catch (e) { console.error('[video-generation]', e); sendJson(res, 500, { error: e.message }, req); }
         return;
     }
+    const parsedReqUrl = new URL(req.url, 'http://127.0.0.1');
+    if (PPT_ROUTES.has(parsedReqUrl.pathname) || req.url.startsWith('/api/ppt/')) {
+        try { await handlePptProxy(req, res); } catch (e) { console.error('[ppt-proxy]', e); sendJson(res, 500, { error: e.message }, req); }
+        return;
+    }
     if (req.method === 'POST' && req.url === '/api/generate-ppt') {
-        try { await handlePptGeneration(req, res); } catch (e) { console.error('[ppt-generation]', e); sendJson(res, 500, { error: e.message }, req); }
+        try { await handlePptProxy(req, res); } catch (e) { console.error('[ppt-generation]', e); sendJson(res, 500, { error: e.message }, req); }
         return;
     }
     if (req.method === 'GET' && req.url.startsWith('/api/download/')) {

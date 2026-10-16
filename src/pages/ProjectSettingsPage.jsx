@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   Loader2, Check, Copy, Search, Download, Plus,
   MoreHorizontal, PenSquare, AlertTriangle, Users, X, Cpu,
-  CreditCard, Lock, Zap, Star, Shield, ChevronRight,
+  CreditCard, Lock, Zap, Star, Shield, ChevronRight, Presentation,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -220,6 +220,13 @@ const ALL_MODELS = [
     rpm: 10, tpm: 0, dailyTokens: 1000, contextWindow: 0,
     usageWeight: 1,
   },
+  {
+    id: 'ppt-studio',
+    name: 'NetRoot AI PPT Studio',
+    desc: 'Executive 16:9 presentation generation & AI slide editing • ~850–1,200 tokens/deck',
+    rpm: 20, tpm: 6000, dailyTokens: 100000, contextWindow: 131072,
+    usageWeight: 0.15,
+  },
 ];
 
 function getVisibleModelIds(plan) {
@@ -431,18 +438,33 @@ function LimitsTab({ darkMode, onUpgrade }) {
                 <div className="flex items-start justify-between gap-4 mb-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${darkMode ? 'bg-[#222]' : 'bg-gray-100'}`}>
-                      <Cpu
-                        className={`w-4 h-4 ${isBlocked
-                          ? 'text-red-600'
-                          : isOver
-                            ? 'text-red-400'
-                            : isWarn
-                              ? 'text-yellow-400'
-                              : darkMode
-                                ? 'text-gray-400'
-                                : 'text-gray-500'
-                          }`}
-                      />
+                      {model.id === 'ppt-studio' ? (
+                        <Presentation
+                          className={`w-4 h-4 ${isBlocked
+                            ? 'text-red-600'
+                            : isOver
+                              ? 'text-red-400'
+                              : isWarn
+                                ? 'text-yellow-400'
+                                : darkMode
+                                  ? 'text-blue-400'
+                                  : 'text-blue-600'
+                            }`}
+                        />
+                      ) : (
+                        <Cpu
+                          className={`w-4 h-4 ${isBlocked
+                            ? 'text-red-600'
+                            : isOver
+                              ? 'text-red-400'
+                              : isWarn
+                                ? 'text-yellow-400'
+                                : darkMode
+                                  ? 'text-gray-400'
+                                  : 'text-gray-500'
+                            }`}
+                        />
+                      )}
                     </div>
 
                     <div className="min-w-0">

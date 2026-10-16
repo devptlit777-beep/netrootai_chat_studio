@@ -1,6 +1,13 @@
 import React, { useState } from 'react';
+<<<<<<< HEAD
 import { useTranslation } from 'react-i18next';
 import { Wand2, X, Loader2, Check } from 'lucide-react';
+=======
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import { PPT_API_BASE } from './pptConstants';
+import { Wand2, X, Loader2, Check, Sparkles } from 'lucide-react';
+>>>>>>> 806306b7a37e545d96f582656b0a5eb47c8d972a
 
 const PRESET_KEYS = [
   'ppt.presetConcise',
@@ -16,10 +23,18 @@ export default function RestyleModal({
   targetInfo = null,
   slideTitle = '',
   onApplyRestyle,
+  deckId = null,
+  isEditLimitReached = false,
 }) {
+<<<<<<< HEAD
   const { t } = useTranslation();
   const presets = PRESET_KEYS.map((key) => t(key));
   const [instruction, setInstruction] = useState(presets[0]);
+=======
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [instruction, setInstruction] = useState(PRESETS[0]);
+>>>>>>> 806306b7a37e545d96f582656b0a5eb47c8d972a
   const [isRestyling, setIsRestyling] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -28,6 +43,10 @@ export default function RestyleModal({
   const originalText = targetInfo.text || '';
 
   const handleExecuteRestyle = async (presetText) => {
+    if (isEditLimitReached) {
+      navigate('/pricing');
+      return;
+    }
     const finalInstruction = presetText || instruction;
     if (!finalInstruction.trim() || isRestyling) return;
 
@@ -35,14 +54,18 @@ export default function RestyleModal({
     setErrorMsg('');
 
     try {
-      const PPT_API_BASE = import.meta.env.VITE_PPT_API_URL || 'http://127.0.0.1:8001';
       const res = await fetch(`${PPT_API_BASE}/api/restyle-text`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-email': user?.email || '',
+        },
         body: JSON.stringify({
           text: originalText,
           instruction: finalInstruction.trim(),
           slide_title: slideTitle,
+          deckId: deckId || undefined,
+          userEmail: user?.email || '',
         }),
       });
 
@@ -73,8 +96,13 @@ export default function RestyleModal({
               <Wand2 className="w-4 h-4" />
             </div>
             <div>
+<<<<<<< HEAD
               <h2 className="text-sm font-bold text-white">{t('ppt.restyleWithAI')}</h2>
               <p className="text-xs text-slate-400">{t('ppt.restyleDescription')}</p>
+=======
+              <h2 className="text-sm font-bold text-white">Restyle with NetRoot AI</h2>
+              <p className="text-xs text-slate-400">Rephrase or refine point tone</p>
+>>>>>>> 806306b7a37e545d96f582656b0a5eb47c8d972a
             </div>
           </div>
           <button
@@ -88,6 +116,24 @@ export default function RestyleModal({
 
         {/* Body */}
         <div className="p-5 space-y-4">
+          {isEditLimitReached && (
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="text-xs text-amber-200">
+                  Free AI edit limit reached (5/5). Upgrade to Pro for unlimited AI restyling.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate('/pricing')}
+                className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-white text-xs font-bold shrink-0 transition"
+              >
+                Upgrade to Pro
+              </button>
+            </div>
+          )}
+
           {errorMsg && (
             <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs">
               {errorMsg}
@@ -105,7 +151,7 @@ export default function RestyleModal({
           </div>
 
           {/* Quick Preset Buttons */}
-          <div>
+          <div className={isEditLimitReached ? 'opacity-50 pointer-events-none' : ''}>
             <span className="text-[10px] font-bold uppercase tracking-wider font-mono text-slate-400 block mb-2">
               {t('ppt.selectPreset')}
             </span>
@@ -118,7 +164,7 @@ export default function RestyleModal({
                     setInstruction(p);
                     handleExecuteRestyle(p);
                   }}
-                  disabled={isRestyling}
+                  disabled={isRestyling || isEditLimitReached}
                   className="w-full text-left text-xs px-3 py-2 rounded-lg bg-[#18181b] hover:bg-[#202025] border border-[#26262a] hover:border-purple-500/50 text-slate-300 hover:text-white flex items-center justify-between transition disabled:opacity-50"
                 >
                   <span>{p}</span>
@@ -138,6 +184,7 @@ export default function RestyleModal({
                 type="text"
                 value={instruction}
                 onChange={(e) => setInstruction(e.target.value)}
+<<<<<<< HEAD
                 placeholder={t('ppt.restylePlaceholder')}
                 className="flex-1 bg-[#18181b] border border-[#2b2b30] focus:border-purple-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 outline-none"
               />
@@ -154,6 +201,36 @@ export default function RestyleModal({
                 )}
                 <span>{t('ppt.apply')}</span>
               </button>
+=======
+                disabled={isEditLimitReached || isRestyling}
+                placeholder="e.g. Simplify language, make it executive-level, add a metaphor..."
+                className="flex-1 bg-[#18181b] border border-[#2b2b30] focus:border-purple-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 outline-none disabled:opacity-50"
+              />
+              {isEditLimitReached ? (
+                <button
+                  type="button"
+                  onClick={() => navigate('/pricing')}
+                  className="px-4 py-2 bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-200" />
+                  <span>Upgrade to Pro</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleExecuteRestyle(instruction)}
+                  disabled={!instruction.trim() || isRestyling}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  {isRestyling ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Check className="w-3.5 h-3.5" />
+                  )}
+                  <span>Apply</span>
+                </button>
+              )}
+>>>>>>> 806306b7a37e545d96f582656b0a5eb47c8d972a
             </div>
           </div>
         </div>

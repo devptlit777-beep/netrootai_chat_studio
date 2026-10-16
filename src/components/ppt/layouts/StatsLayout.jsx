@@ -96,10 +96,10 @@ export default function StatsLayout({
           return (
             <div
               key={idx}
-              className="flex flex-col justify-between slide-card-block rounded-xl p-5 relative overflow-hidden group hover:border-sky-500/50 transition"
+              className="flex flex-col justify-start gap-3.5 slide-card-block rounded-xl p-5 relative overflow-hidden group hover:border-sky-500/50 transition"
             >
               <div className="w-full">
-                <div className="flex items-center justify-between mb-2.5">
+                <div className="flex items-center justify-between mb-2">
                   <span className="text-[10px] font-bold uppercase tracking-wider font-mono text-slate-400">
                     KPI #{String(idx + 1).padStart(2, '0')}
                   </span>
@@ -131,7 +131,7 @@ export default function StatsLayout({
                   onChange={(val) => handleUpdateItem(idx, 'num', val)}
                   onBlur={onPushHistory}
                   singleLine={true}
-                  className="text-4xl font-black font-mono tracking-tight rounded px-1 transition"
+                  className="text-4xl sm:text-5xl font-black font-mono tracking-tight rounded px-1 transition"
                   style={{ color: 'var(--slide-accent)' }}
                 />
 
@@ -142,21 +142,26 @@ export default function StatsLayout({
                   onChange={(val) => handleUpdateItem(idx, 'label', val)}
                   onBlur={onPushHistory}
                   singleLine={true}
-                  className="text-base font-bold mt-2 rounded px-1 transition"
+                  className="text-base sm:text-lg font-bold mt-2 rounded px-1 transition leading-snug"
                   style={{ color: 'var(--slide-title)' }}
                 />
               </div>
 
-              {/* Metric Description */}
-              <EditableText
-                tag="p"
-                value={desc}
-                onChange={(val) => handleUpdateItem(idx, 'desc', val)}
-                onBlur={onPushHistory}
-                singleLine={false}
-                className="text-xs mt-3 leading-relaxed rounded px-1 transition"
-                style={{ color: 'var(--slide-text)' }}
-              />
+              {/* Subtle accent divider to anchor the card */}
+              <div className="w-full border-t border-white/10 my-0.5" />
+
+              {/* Metric Description & Strategic Points */}
+              <div className="flex-1 w-full overflow-y-auto pr-1">
+                <EditableText
+                  tag="p"
+                  value={desc}
+                  onChange={(val) => handleUpdateItem(idx, 'desc', val)}
+                  onBlur={onPushHistory}
+                  singleLine={false}
+                  className="text-xs sm:text-sm leading-relaxed rounded px-1 transition text-balance"
+                  style={{ color: 'var(--slide-text)' }}
+                />
+              </div>
             </div>
           );
         })}

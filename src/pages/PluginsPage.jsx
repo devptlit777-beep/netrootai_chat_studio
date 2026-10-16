@@ -28,7 +28,7 @@ const CONFIG_FIELDS = {
 };
 
 const PLUGINS = [
-    { id: 'ppt-generator', name: 'AI Presentation Studio', description: 'Transform chat discussions into executive 16:9 presentation slide decks, visual cards, and native PowerPoint (.pptx) files.', category: 'Productivity', icon: '📽️', needsConfig: false },
+    { id: 'ppt-generator', name: 'NetRoot AI PPT Studio', description: 'Transform chat discussions into executive 16:9 presentation slide decks, visual cards, and native PowerPoint (.pptx) files.', category: 'Productivity', icon: '📽️', needsConfig: false, proOnly: true },
     { id: 'web-search', name: 'Web Search', description: 'Search the web in real time. No API key required; add an optional Brave Search key for improved results.', category: 'Search', icon: '🌐', needsConfig: true },
     { id: 'calculator', name: 'Calculator', description: 'Evaluate math expressions precisely. The AI runs your formula server-side and returns the exact result.', category: 'Productivity', icon: '🧮', needsConfig: false },
     { id: 'pdf-search', name: 'PDF.js Search', description: 'Extract and search text from uploaded PDF files using PDF.js, then answer questions about the document.', category: 'Data', icon: '📄', needsConfig: false },
@@ -43,7 +43,7 @@ const PLUGINS = [
     // { id: 'csv-analyzer', name: 'CSV Analyzer', description: 'Upload a CSV file and ask questions about the data. The AI parses and analyses it directly.', category: 'Data', icon: '📊', needsConfig: true },
     // { id: 'linear', name: 'Linear', description: 'Query Linear issues and projects using your API key.', category: 'Productivity', icon: '🔷', needsConfig: true },
     // { id: 'image-gen', name: 'Image Generation', description: 'Generate images from text prompts using DALL·E via your OpenAI API key.', category: 'Productivity', icon: '🎨', needsConfig: true },
-    
+
 ];
 
 function Toggle({ enabled, onChange, darkMode, disabled }) {

@@ -1,5 +1,10 @@
 import React, { useState } from 'react';
+<<<<<<< HEAD
 import { useTranslation } from 'react-i18next';
+=======
+import { useAuth } from '../../contexts/AuthContext';
+import { PPT_API_BASE } from './pptConstants';
+>>>>>>> 806306b7a37e545d96f582656b0a5eb47c8d972a
 import {
   Search,
   X,
@@ -15,7 +20,11 @@ export default function UnsplashModal({
   initialQuery = '',
   onSelectImage,
 }) {
+<<<<<<< HEAD
   const { t } = useTranslation();
+=======
+  const { user } = useAuth();
+>>>>>>> 806306b7a37e545d96f582656b0a5eb47c8d972a
   const [query, setQuery] = useState(initialQuery || 'enterprise cloud technology');
   const [candidates, setCandidates] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -37,9 +46,13 @@ export default function UnsplashModal({
     setErrorMsg('');
 
     try {
-      const PPT_API_BASE = import.meta.env.VITE_PPT_API_URL || 'http://127.0.0.1:8001';
       const res = await fetch(
-        `${PPT_API_BASE}/api/search-image-candidates?query=${encodeURIComponent(searchTopic.trim())}`
+        `${PPT_API_BASE}/api/search-image-candidates?query=${encodeURIComponent(searchTopic.trim())}`,
+        {
+          headers: {
+            'x-user-email': user?.email || '',
+          },
+        }
       );
       if (!res.ok) throw new Error('Failed to fetch image candidates');
       const data = await res.json();
@@ -67,12 +80,14 @@ export default function UnsplashModal({
     const targetUrl = cand.regular_url || cand.thumb_url || cand.url || cand.thumb;
 
     try {
-      const PPT_API_BASE = import.meta.env.VITE_PPT_API_URL || 'http://127.0.0.1:8001';
       // Fetch base64 data uri via backend
       const res = await fetch(`${PPT_API_BASE}/api/fetch-candidate-image`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: targetUrl }),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-email': user?.email || '',
+        },
+        body: JSON.stringify({ url: targetUrl, userEmail: user?.email || '' }),
       });
 
       if (!res.ok) throw new Error('Could not download image');

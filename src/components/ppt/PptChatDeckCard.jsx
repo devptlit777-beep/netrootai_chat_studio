@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import { PPT_API_BASE } from './pptConstants';
 import {
   Presentation,
   ExternalLink,
@@ -15,6 +17,7 @@ import {
 export default function PptChatDeckCard({ pptDeck, darkMode = true }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [downloading, setDownloading] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
   const [showOutline, setShowOutline] = useState(true);
@@ -69,15 +72,18 @@ export default function PptChatDeckCard({ pptDeck, darkMode = true }) {
     if (downloading) return;
     setDownloading(true);
     try {
-      const PPT_API_BASE = import.meta.env.VITE_PPT_API_URL || 'http://127.0.0.1:8001';
       const res = await fetch(`${PPT_API_BASE}/api/render`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-email': user?.email || '',
+        },
         body: JSON.stringify({
           slides: pptDeck.slides || [],
           deck_title: title,
           theme: theme,
           theme_seed_hex: pptDeck.seed_color || '#0EA5E9',
+          userEmail: user?.email || '',
         }),
       });
 
@@ -196,7 +202,7 @@ export default function PptChatDeckCard({ pptDeck, darkMode = true }) {
           className="flex-1 min-w-[170px] inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 shadow-md hover:shadow-blue-500/25 active:scale-[0.98] transition-all"
         >
           <ExternalLink className="w-3.5 h-3.5" />
-          <span>{t('ppt.openPptStudio')}</span>
+          <span>Open in PPT Studio</span>
         </button>
 
         <button

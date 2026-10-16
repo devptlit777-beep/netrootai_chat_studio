@@ -98,7 +98,7 @@ export default function FlowchartLayout({
 
           return (
             <React.Fragment key={idx}>
-              <div className="flex-1 min-w-[190px] flex flex-col justify-between slide-card-block rounded-xl p-4 relative overflow-hidden group hover:border-sky-500/50 transition">
+              <div className="flex-1 min-w-[190px] flex flex-col justify-start gap-2.5 slide-card-block rounded-xl p-4 relative overflow-hidden group hover:border-sky-500/50 transition">
                 <div className="w-full">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[10px] font-bold uppercase tracking-wider font-mono text-slate-400">
@@ -139,20 +139,22 @@ export default function FlowchartLayout({
                   />
                 </div>
 
-                <EditableText
-                  tag="p"
-                  value={desc}
-                  onChange={(val) => handleUpdateNode(idx, 'desc', val)}
-                  onBlur={onPushHistory}
-                  singleLine={false}
-                  className="text-xs mt-2 leading-relaxed flex-1 rounded px-1 transition"
-                  style={{ color: 'var(--slide-text)' }}
-                />
+                <div className="flex-1 flex flex-col min-h-0 overflow-y-auto pr-0.5">
+                  <EditableText
+                    tag="p"
+                    value={desc}
+                    onChange={(val) => handleUpdateNode(idx, 'desc', val)}
+                    onBlur={onPushHistory}
+                    singleLine={false}
+                    className="text-xs leading-relaxed rounded px-1 transition whitespace-pre-line"
+                    style={{ color: 'var(--slide-text)' }}
+                  />
+                </div>
               </div>
 
               {/* Animated connector arrow */}
               {idx < nodes.length - 1 && (
-                <div className="flex items-start justify-center shrink-0 pt-6 text-sky-400">
+                <div className="flex items-start justify-center shrink-0 pt-7 text-sky-400">
                   <div className="w-6 h-6 rounded-full flex items-center justify-center bg-slate-900 border border-slate-700 shadow-sm text-sky-400">
                     <ArrowRight className="w-3.5 h-3.5 animate-pulse" />
                   </div>

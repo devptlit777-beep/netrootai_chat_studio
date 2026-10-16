@@ -265,16 +265,19 @@ async def api_fetch_candidate_image(req: FetchCandidateImageRequest):
 async def api_render_pptx(payload: Union[List[SlideDSL], SlideDSL, dict]):
     """Renders validated Slide DSL into an in-memory downloadable PowerPoint (.pptx) stream."""
     theme = "midnight"
+    seed_hex = None
     title = "Presentation"
     if isinstance(payload, dict):
         theme = str(payload.get("theme", "midnight"))
+        seed_hex = payload.get("theme_seed_hex") or payload.get("seed_color")
         title = payload.get("deck_title") or (payload.get("slides", [{}])[0].get("t") if payload.get("slides") else "Presentation")
     elif isinstance(payload, list) and payload:
         title = payload[0].t if hasattr(payload[0], 't') else payload[0].get('t', 'Presentation')
         
     clean_title = re.sub(r"[^\w\s-]", "", str(title)).strip()
     clean_title = re.sub(r"[\s]+", "_", clean_title)[:50] or "Presentation"
-    pptx_stream = generate_pptx(payload, theme_name=theme)
+    effective_theme_or_seed = seed_hex or theme
+    pptx_stream = generate_pptx(payload, theme_name=effective_theme_or_seed)
     return StreamingResponse(
         pptx_stream,
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",

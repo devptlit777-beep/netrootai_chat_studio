@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { usePlan } from '../../contexts/PlanContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { THEME_OPTIONS, PPT_API_BASE } from './pptConstants';
 import {
@@ -37,10 +37,14 @@ export default function PptStudioHub({
   activeSlidesCount = 0,
   isGeneratingDeck = false,
 }) {
-  const { t: translate, i18n } = useTranslation();
   const { user } = useAuth();
+  const { plan, lifetimePptCount = 0, featureAccess } = usePlan();
   const { theme, toggleTheme } = useTheme();
   const darkMode = theme === 'dark';
+
+  const isPro = plan === 'pro' || plan === 'enterprise' || Boolean(featureAccess?.['ppt-studio']);
+  const maxFreePpt = 2;
+  const isFreeLimitReached = !isPro && lifetimePptCount >= maxFreePpt;
 
   const [prompt, setPrompt] = useState('');
   const [numSlides, setNumSlides] = useState(5);
@@ -56,9 +60,10 @@ export default function PptStudioHub({
   const [inlineOutline, setInlineOutline] = useState(null);
   const [outlineError, setOutlineError] = useState('');
 
-  // Load user presentations from Supabase or LocalStorage
+  // Load user presentations from Supabase and LocalStorage (seamlessly merged)
   const loadSavedDecks = async () => {
     setLoadingDecks(true);
+    let cloudDecks = [];
     try {
       if (user?.id) {
         const { data, error } = await supabase
@@ -68,22 +73,40 @@ export default function PptStudioHub({
           .order('updated_at', { ascending: false });
 
         if (!error && Array.isArray(data)) {
-          setSavedDecks(data);
-          setLoadingDecks(false);
-          return;
+          cloudDecks = data;
         }
       }
-      // Local storage fallback
-      const local = localStorage.getItem('netroot_saved_slides');
-      if (local) {
-        setSavedDecks(JSON.parse(local));
-      } else {
-        setSavedDecks([]);
-      }
     } catch (err) {
-      console.warn('[PptStudioHub] Error loading decks:', err);
-      const local = localStorage.getItem('netroot_saved_slides');
-      if (local) setSavedDecks(JSON.parse(local));
+      console.warn('[PptStudioHub] Supabase decks notice:', err);
+    }
+
+    try {
+      const local = JSON.parse(localStorage.getItem('netroot_saved_slides') || '[]');
+      let activeDeck = null;
+      try {
+        const act = JSON.parse(localStorage.getItem('netroot_active_working_deck') || '{}');
+        if (act.id && Array.isArray(act.slides) && act.slides.length > 0) {
+          activeDeck = {
+            id: act.id,
+            title: act.deckTitle || 'Untitled Presentation',
+            slides: act.slides,
+            theme: act.currentTheme || 'midnight',
+            seed_color: act.currentSeed || '#0EA5E9',
+            updated_at: new Date().toISOString(),
+          };
+        }
+      } catch {}
+
+      const combinedMap = new Map();
+      cloudDecks.forEach((d) => d.id && combinedMap.set(d.id, d));
+      local.forEach((d) => d.id && !combinedMap.has(d.id) && combinedMap.set(d.id, d));
+      if (activeDeck && !combinedMap.has(activeDeck.id)) {
+        combinedMap.set(activeDeck.id, activeDeck);
+      }
+
+      setSavedDecks(Array.from(combinedMap.values()));
+    } catch (e) {
+      setSavedDecks(cloudDecks || []);
     } finally {
       setLoadingDecks(false);
     }
@@ -97,6 +120,10 @@ export default function PptStudioHub({
   // Direct generation or outline-aware submit
   const handleDirectGenerateSubmit = (e) => {
     e?.preventDefault();
+    if (isFreeLimitReached) {
+      navigate('/pricing');
+      return;
+    }
     if (isGeneratingDeck) return;
 
     if (inlineOutline && inlineOutline.length > 0) {
@@ -115,6 +142,10 @@ export default function PptStudioHub({
 
   // Inline Outline Planning (Directly inside Hub, avoiding the popup box!)
   const handlePlanOutlineInline = async () => {
+    if (isFreeLimitReached) {
+      navigate('/pricing');
+      return;
+    }
     if (!prompt.trim() || isPlanningOutline || isGeneratingDeck) return;
     setIsPlanningOutline(true);
     setOutlineError('');
@@ -122,10 +153,14 @@ export default function PptStudioHub({
     try {
       const res = await fetch(`${PPT_API_BASE}/api/generate-outline`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-email': user?.email || '',
+        },
         body: JSON.stringify({
           prompt: prompt.trim(),
           num_slides: numSlides,
+          userEmail: user?.email || '',
         }),
       });
 
@@ -241,7 +276,7 @@ export default function PptStudioHub({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold font-mono tracking-wider text-sky-500 uppercase">
-                {translate('ppt.slideStudio')}
+                Slide Studio
               </span>
               <span className={`text-xs ${darkMode ? 'text-slate-600' : 'text-slate-300'}`}>/</span>
               <span className="text-xs font-semibold text-slate-400">{translate('ppt.workspaceHub')}</span>
@@ -255,22 +290,36 @@ export default function PptStudioHub({
           {activeSlidesCount > 0 && (
             <button
               type="button"
-              onClick={onResumeActiveDeck}
+              onClick={() => {
+                if (isFreeLimitReached) {
+                  navigate('/pricing');
+                  return;
+                }
+                onResumeActiveDeck();
+              }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition border cursor-pointer ${
-                darkMode
+                isFreeLimitReached
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20'
+                  : darkMode
                   ? 'bg-sky-500/10 border-sky-500/30 text-sky-400 hover:bg-sky-500/20'
                   : 'bg-sky-50 border-sky-200 text-sky-600 hover:bg-sky-100'
               }`}
             >
               <Play className="w-3.5 h-3.5 fill-current" />
-              <span>{translate('ppt.resumeSession')} ({activeSlidesCount} {translate('ppt.slide', { count: activeSlidesCount })})</span>
+              <span>Resume Active Deck ({activeSlidesCount} slides)</span>
             </button>
           )}
 
           {/* Blank Deck Quick Action */}
           <button
             type="button"
-            onClick={onStartBlankDeck}
+            onClick={() => {
+              if (isFreeLimitReached) {
+                navigate('/pricing');
+                return;
+              }
+              onStartBlankDeck();
+            }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition border cursor-pointer ${
               darkMode
                 ? 'bg-white/5 border-white/10 hover:bg-white/10 text-slate-300'
@@ -278,7 +327,7 @@ export default function PptStudioHub({
             }`}
           >
             <FilePlus className="w-3.5 h-3.5" />
-            <span>{translate('ppt.blankDeck')}</span>
+            <span>Blank Deck</span>
           </button>
 
           {/* Theme Switcher */}
@@ -307,7 +356,7 @@ export default function PptStudioHub({
           <div className="relative text-center max-w-2xl mx-auto mb-8 space-y-2">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20 mb-1">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>{translate('ppt.tagline')}</span>
+              <span>Next-Gen AI Presentation Engine</span>
             </div>
             <h2 className="text-2xl sm:text-4xl font-extrabold tracking-tight text-balance">
               {translate('ppt.heroTitle')}
@@ -331,13 +380,16 @@ export default function PptStudioHub({
                 <textarea
                   rows={3}
                   value={prompt}
+                  disabled={isFreeLimitReached || isGeneratingDeck}
                   onChange={(e) => {
                     setPrompt(e.target.value);
                     if (inlineOutline) setInlineOutline(null);
                   }}
-                  placeholder={translate('ppt.prompt')}
+                  placeholder="e.g. Series A investor pitch deck for an autonomous enterprise AI platform covering problem, market size, product demo, unit economics, and roadmap..."
                   className={`w-full p-4 rounded-xl text-sm sm:text-base font-medium outline-none transition border resize-none leading-relaxed ${
-                    darkMode
+                    isFreeLimitReached
+                      ? 'opacity-60 cursor-not-allowed bg-black/40 text-slate-400 border-amber-500/20'
+                      : darkMode
                       ? 'bg-[#0f0f12] text-white border-white/10 focus:border-sky-500/80 placeholder:text-slate-600'
                       : 'bg-slate-50 text-slate-900 border-slate-200 focus:border-sky-500 placeholder:text-slate-400'
                   }`}
@@ -351,7 +403,7 @@ export default function PptStudioHub({
                   darkMode ? 'border-white/10' : 'border-slate-100'
                 }`}
               >
-                <div className="flex flex-wrap items-center gap-4">
+                <div className={`flex flex-wrap items-center gap-4 ${isFreeLimitReached ? 'opacity-40 pointer-events-none' : ''}`}>
                   {/* Slide Count Selector: 1 to 10 Drawer/Rail */}
                   <div className="flex items-center gap-2">
                     <span className={`text-xs font-mono font-bold shrink-0 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
@@ -403,7 +455,7 @@ export default function PptStudioHub({
                   </div>
                 </div>
 
-                {/* Primary Actions */}
+                {/* Primary Actions (Suggestion B) */}
                 <div className="flex items-center gap-2 self-end sm:self-auto">
                   <button
                     type="button"
@@ -420,7 +472,7 @@ export default function PptStudioHub({
                     ) : (
                       <Layers className="w-3.5 h-3.5 text-sky-400" />
                     )}
-                    <span>{isPlanningOutline ? translate('ppt.planningAgenda') : translate('ppt.planOutline')}</span>
+                    <span>{isPlanningOutline ? 'Planning Agenda...' : 'Plan Outline'}</span>
                   </button>
 
                   <button
@@ -431,11 +483,11 @@ export default function PptStudioHub({
                     {isGeneratingDeck ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>{translate('ppt.generatingDeck')}</span>
+                        <span>Generating Deck...</span>
                       </>
                     ) : (
                       <>
-                        <span>{translate('ppt.generatePresentation')}</span>
+                        <span>Generate Presentation</span>
                         <ArrowRight className="w-3.5 h-3.5" />
                       </>
                     )}
@@ -567,9 +619,15 @@ export default function PptStudioHub({
         </section>
 
         {/* Quick Bento Options */}
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <section className={`grid gap-4 ${activeSlidesCount > 0 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
           <div
-            onClick={onStartBlankDeck}
+            onClick={() => {
+              if (isFreeLimitReached) {
+                navigate('/pricing');
+                return;
+              }
+              onStartBlankDeck();
+            }}
             className={`p-5 rounded-2xl border transition-all duration-200 flex items-start gap-4 cursor-pointer group ${
               darkMode
                 ? 'bg-[#151518]/70 border-white/10 hover:border-sky-500/50 hover:bg-[#1a1a20]'
@@ -581,18 +639,22 @@ export default function PptStudioHub({
             </div>
             <div>
               <h3 className="text-sm font-bold flex items-center gap-1.5">
-                <span>{translate('ppt.blankPresentation')}</span>
+                <span>Blank Presentation</span>
                 <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
               </h3>
               <p className={`text-xs mt-1 leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                {translate('ppt.blankDescription')}
+                Start fresh with an empty canvas. Choose custom bento layouts, add bullet points, and edit content freely.
               </p>
             </div>
           </div>
 
-          <div
-            onClick={() => {
-              if (activeSlidesCount > 0) {
+          {activeSlidesCount > 0 && (
+            <div
+              onClick={() => {
+                if (isFreeLimitReached) {
+                  navigate('/pricing');
+                  return;
+                }
                 onResumeActiveDeck();
               } else {
                 setPrompt('Series A Investor Pitch Deck');
@@ -609,13 +671,13 @@ export default function PptStudioHub({
             </div>
             <div>
               <h3 className="text-sm font-bold flex items-center gap-1.5">
-                <span>{activeSlidesCount > 0 ? translate('ppt.resumeSession') : translate('ppt.pitchTemplate')}</span>
+                <span>{activeSlidesCount > 0 ? 'Resume Active Session' : 'Quick Pitch Deck Template'}</span>
                 <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
               </h3>
               <p className={`text-xs mt-1 leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
                 {activeSlidesCount > 0
-                  ? translate('ppt.resumeDescription', { title: activeDeckTitle || translate('ppt.untitledPresentation'), count: activeSlidesCount })
-                  : translate('ppt.pitchDescription')}
+                  ? `Continue working on "${activeDeckTitle || 'Untitled Presentation'}" (${activeSlidesCount} slides ready in editor).`
+                  : 'Load a pre-architected 5-slide investor deck structure ready for quick custom points.'}
               </p>
             </div>
           </div>

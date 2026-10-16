@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
 import { usePlan } from "./contexts/PlanContext";
@@ -31,7 +31,7 @@ function UpgradeRequired({ darkMode }) {
       <div className={`w-full max-w-md rounded-2xl border p-8 text-center ${darkMode ? "bg-[#111] border-[#2a2a2a]" : "bg-white border-gray-200"}`}>
         <h1 className="text-xl font-bold">{t("dashboard.upgrade")}</h1>
         <p className={`mt-3 text-sm leading-6 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
-          {t("dashboard.featureRequiresPro")}
+          Your one-month access period has ended. Chat remains available on the Free plan, but this feature requires an active Pro plan.
         </p>
         <button onClick={() => navigate("/pricing")} className="mt-6 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700">
           Upgrade to Pro
