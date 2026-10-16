@@ -15,16 +15,17 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { usePlan } from "../contexts/PlanContext";
+import { useTranslation } from "react-i18next";
 
 const navItems = [
-  { icon: Home, path: "/dashboard", label: "Home" },
-  { icon: MessageSquare, path: "/threads", label: "Threads" },
-  { icon: History, path: "/history", label: "History" },
-  { icon: FolderOpen, path: "/files", label: "Files" },
-  { icon: Share2, path: "/shared", label: "Shared" },
-  { icon: Database, path: "/plugins", label: "Plugins" },
-  { icon: Sparkles, path: "/image-studio", label: "Image Studio" },
-  { icon: Presentation, path: "/ppt-studio", label: "PPT Studio" },
+  { icon: Home, path: "/dashboard", label: "sidebar.home" },
+  { icon: MessageSquare, path: "/threads", label: "sidebar.threads" },
+  { icon: History, path: "/history", label: "sidebar.history" },
+  { icon: FolderOpen, path: "/files", label: "sidebar.files" },
+  { icon: Share2, path: "/shared", label: "sidebar.shared" },
+  { icon: Database, path: "/plugins", label: "sidebar.plugins" },
+  { icon: Sparkles, path: "/image-studio", label: "sidebar.imageStudio" },
+  { icon: Presentation, path: "/ppt-studio", label: "sidebar.pptStudio" },
 ];
 
 function getFallbackAvatar(email) {
@@ -35,6 +36,7 @@ function getFallbackAvatar(email) {
 }
 
 export default function Sidebar() {
+  const { t } = useTranslation();
   const { profile, user } = useAuth();
   const { theme } = useTheme();
   const { accessExpired, featureAccess } = usePlan();
@@ -77,7 +79,7 @@ export default function Sidebar() {
             <button
               key={path}
               onClick={() => navigate(path)}
-              title={label}
+              title={t(label)}
               className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${active
                 ? darkMode
                   ? "bg-white/10 text-white"
@@ -97,7 +99,7 @@ export default function Sidebar() {
       <div className="flex flex-col items-center gap-2 mt-auto">
         <button
           onClick={() => navigate("/help")}
-          title="Docs & Help"
+          title={t("sidebar.docsHelp")}
           className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${location.pathname === "/help"
             ? darkMode
               ? "bg-white/10 text-white"
@@ -112,7 +114,7 @@ export default function Sidebar() {
 
         {canUse("project-settings") && <button
           onClick={() => navigate("/project-settings")}
-          title="Project Settings"
+          title={t("sidebar.projectSettings")}
           className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${location.pathname === "/project-settings"
             ? darkMode
               ? "bg-white/10 text-white"

@@ -4,6 +4,7 @@ import { usePlan } from '../contexts/PlanContext';
 import { useAuth } from '../contexts/AuthContext';
 import API_BASE from '../lib/api';
 import { DEFAULT_PLAN_LIMITS, fetchPlanLimits, getModelImageLimit } from '../lib/planLimits';
+import { useTranslation } from 'react-i18next';
 
 const PLANS = [
   {
@@ -57,6 +58,7 @@ const PLANS = [
 ];
 
 export default function Billing({ darkMode }) {
+  const { t } = useTranslation();
   const { plan, refresh, autoRenew, planEndDate } = usePlan();
   const { user } = useAuth();
   const [loadingPlan, setLoadingPlan] = useState(null);
@@ -92,10 +94,10 @@ export default function Billing({ darkMode }) {
         body: JSON.stringify({ email: user.email, plan: planId, months, autoRenew: autoRenewChoice }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error || 'Failed to start checkout.'); return; }
+      if (!res.ok) { setError(data.error || t('billing.failedCheckout')); return; }
       window.location.href = data.url;
     } catch {
-      setError('Network error. Please try again.');
+      setError(t('billing.networkError'));
     } finally {
       setLoadingPlan(null);
     }
@@ -112,14 +114,14 @@ export default function Billing({ darkMode }) {
         body: JSON.stringify({ email: user.email }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error || 'Failed to downgrade to Free.'); return; }
+      if (!res.ok) { setError(data.error || t('billing.failedDowngrade')); return; }
       await refresh();
       const endDate = data.current_period_end ? new Date(data.current_period_end).toLocaleDateString() : null;
       setDowngradeMessage(data.cancel_at_period_end
-        ? `Auto-renewal is off. Your Pro access remains active until ${endDate || 'the end of the current billing period'}.`
-        : 'Your plan has been changed to Free.');
+        ? t('billing.noRenewal', { date: endDate || t('billing.billingPeriodEnd') })
+        : t('billing.changedToFree'));
     } catch {
-      setError('Network error. Please try again.');
+      setError(t('billing.networkError'));
     } finally {
       setLoadingPlan(null);
     }
@@ -150,41 +152,38 @@ export default function Billing({ darkMode }) {
           </div>
           <div>
             <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-              You are on the{' '}
-              <span className={plan === 'enterprise' ? 'text-purple-400' : plan === 'pro' ? 'text-blue-400' : ''}>
-                {plan.charAt(0).toUpperCase() + plan.slice(1)}
-              </span>{' '}plan
+              {t('billing.youAreOnPlan', { plan: t(`common.${plan}`, { defaultValue: plan.charAt(0).toUpperCase() + plan.slice(1) }) })}
             </p>
             <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-              {plan === 'free' ? `Upgrade to raise your daily token limit to ${proLimit.toLocaleString()} and unlock ${proModelsCount} model${proModelsCount === 1 ? '' : 's'}; FLUX includes ${fluxImageLimit} images/month.`
-                : plan === 'pro' ? `You currently have ${proLimit.toLocaleString()} daily tokens, access to ${proModelsCount} model${proModelsCount === 1 ? '' : 's'}, and FLUX allows ${fluxImageLimit} images/month.`
-                  : 'You have unlimited tokens and full access to all features, including FLUX at up to 10 images/month.'}
+              {plan === 'free' ? t('billing.freePlanDescription', { tokens: proLimit.toLocaleString(), models: proModelsCount, images: fluxImageLimit })
+                : plan === 'pro' ? t('billing.proPlanDescription', { tokens: proLimit.toLocaleString(), models: proModelsCount, images: fluxImageLimit })
+                  : t('billing.enterprisePlanDescription')}
             </p>
           </div>
         </div>
       </div>
 
       <div className={`rounded-2xl border px-5 py-4 ${darkMode ? 'border-[#2a2a2a] bg-[#161616]' : 'border-gray-200 bg-white'}`}>
-        <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Free vs Pro at a glance</p>
+        <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('billing.freeVsPro')}</p>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div className={`rounded-xl p-3 border ${darkMode ? 'border-[#2a2a2a] bg-[#1a1a1a]' : 'border-gray-200 bg-gray-50'}`}>
-            <p className={`text-xs font-semibold uppercase tracking-wide ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Free</p>
+            <p className={`text-xs font-semibold uppercase tracking-wide ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{t('common.free')}</p>
             <p className={`mt-1 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{freeLimit.toLocaleString()} tokens/day • {freeModelsCount} model{freeModelsCount === 1 ? '' : 's'}</p>
           </div>
           <div className={`rounded-xl p-3 border ${darkMode ? 'border-blue-500/30 bg-blue-500/10' : 'border-blue-200 bg-blue-50'}`}>
-            <p className={`text-xs font-semibold uppercase tracking-wide ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>Pro</p>
+            <p className={`text-xs font-semibold uppercase tracking-wide ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>{t('common.pro')}</p>
             <p className={`mt-1 text-sm ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>{proLimit.toLocaleString()} tokens/day • {proModelsCount} model{proModelsCount === 1 ? '' : 's'} • FLUX: {fluxImageLimit} images/month</p>
           </div>
         </div>
       </div>
 
       <div className={`rounded-2xl border px-5 py-4 ${darkMode ? 'border-[#2a2a2a] bg-[#161616]' : 'border-gray-200 bg-white'}`}>
-        <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Choose Pro duration</p>
+        <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('billing.chooseDuration')}</p>
         <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>You will be charged ${(19 * months).toFixed(2)} every {months} month{months === 1 ? '' : 's'} until you cancel.</p>
         <div className="mt-3 flex gap-2">
-          {[1, 2, 3, 6, 12].map(value => <button key={value} type="button" onClick={() => setMonths(value)} className={`px-3 py-2 rounded-lg text-sm font-semibold border ${months === value ? 'bg-blue-600 border-blue-500 text-white' : darkMode ? 'border-[#333] text-gray-400 hover:text-white' : 'border-gray-200 text-gray-600'}`}>{value} {value === 1 ? 'month' : 'months'}</button>)}
+          {[1, 2, 3, 6, 12].map(value => <button key={value} type="button" onClick={() => setMonths(value)} className={`px-3 py-2 rounded-lg text-sm font-semibold border ${months === value ? 'bg-blue-600 border-blue-500 text-white' : darkMode ? 'border-[#333] text-gray-400 hover:text-white' : 'border-gray-200 text-gray-600'}`}>{value} {t(value === 1 ? 'common.month' : 'common.months')}</button>)}
         </div>
-        <label className={`mt-4 flex items-center gap-2 text-xs cursor-pointer ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}><input type="checkbox" checked={autoRenewChoice} onChange={event => setAutoRenewChoice(event.target.checked)} className="accent-blue-600" /> Auto-renew this plan when the selected term ends</label>
+        <label className={`mt-4 flex items-center gap-2 text-xs cursor-pointer ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}><input type="checkbox" checked={autoRenewChoice} onChange={event => setAutoRenewChoice(event.target.checked)} className="accent-blue-600" /> {t('billing.autoRenew')}</label>
       </div>
 
       {/* Plan cards */}
@@ -205,14 +204,14 @@ export default function Billing({ darkMode }) {
             >
               {p.badge && (
                 <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-xs font-semibold bg-blue-500 text-white px-3 py-0.5 rounded-full">
-                  {p.badge}
+                  {t('billing.mostPopular')}
                 </span>
               )}
               {isCurrent && (
                 <span className={`absolute top-4 right-4 text-xs font-semibold px-2 py-0.5 rounded-full border ${p.color === 'purple' ? 'bg-purple-500/15 text-purple-400 border-purple-500/30'
                   : p.color === 'blue' ? 'bg-blue-500/15 text-blue-400 border-blue-500/30'
                     : darkMode ? 'bg-[#2a2a2a] text-gray-400 border-[#3a3a3a]' : 'bg-gray-100 text-gray-500 border-gray-200'
-                  }`}>Active</span>
+                  }`}>{t('billing.active')}</span>
               )}
 
               <div>
@@ -221,21 +220,21 @@ export default function Billing({ darkMode }) {
                   <Icon className={`w-5 h-5 ${p.color === 'purple' ? 'text-purple-400' : p.color === 'blue' ? 'text-blue-400' : darkMode ? 'text-gray-400' : 'text-gray-500'
                     }`} />
                 </div>
-                <p className={`text-base font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{p.name}</p>
+                <p className={`text-base font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t(`common.${p.id}`)}</p>
                 <div className="flex items-baseline gap-1 mt-1">
                   <span className={`text-2xl font-bold ${p.color === 'purple' ? 'text-purple-400' : p.color === 'blue' ? 'text-blue-400' : darkMode ? 'text-white' : 'text-gray-900'
-                    }`}>{p.price}</span>
-                  <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{p.period}</span>
+                    }`}>{p.price === 'Custom' ? t('billing.customPrice') : p.price}</span>
+                  <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{t(`billing.${p.id === 'free' ? 'forever' : p.id === 'pro' ? 'perMonth' : 'contactUs'}`)}</span>
                 </div>
                 {p.id === 'free' && plan !== 'free' && (
                   <p className={`mt-3 text-xs leading-relaxed ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                    {autoRenew ? `Cancel renewal at the end of the current billing period${planEndDate ? ` (${new Date(planEndDate).toLocaleDateString()})` : ''}.` : 'Your cancellation is scheduled; Pro access continues until the plan end date.'}
+                    {autoRenew ? `${t('billing.cancelRenewal')}${planEndDate ? ` (${new Date(planEndDate).toLocaleDateString()})` : ''}.` : t('billing.cancellationScheduled')}
                   </p>
                 )}
               </div>
 
               <ul className="space-y-2 flex-1">
-                {p.features.map((f) => (
+                {t(`billing.features.${p.id}`, { returnObjects: true }).map((f) => (
                   <li key={f} className="flex items-start gap-2">
                     <Check className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${p.color === 'purple' ? 'text-purple-400' : p.color === 'blue' ? 'text-blue-400' : 'text-emerald-400'
                       }`} />
@@ -268,8 +267,8 @@ export default function Billing({ darkMode }) {
                   }`}
               >
                 {loadingPlan === p.id
-                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Redirecting…</>
-                  : isCurrent ? 'Current plan' : p.id === 'free' ? (plan !== 'free' && !autoRenew ? 'Cancellation scheduled' : 'Downgrade to Free') : p.cta}
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> {t('billing.redirecting')}</>
+                  : isCurrent ? t('plans.currentPlan') : p.id === 'free' ? (plan !== 'free' && !autoRenew ? t('billing.cancellationScheduledLabel') : t('billing.downgradeToFreeButton')) : p.id === 'enterprise' ? t('billing.contactSales') : t('dashboard.upgrade')}
               </button>
             </div>
           );

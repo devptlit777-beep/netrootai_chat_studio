@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -36,6 +37,7 @@ export default function PptStudioHub({
   activeSlidesCount = 0,
   isGeneratingDeck = false,
 }) {
+  const { t: translate, i18n } = useTranslation();
   const { user } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const darkMode = theme === 'dark';
@@ -239,12 +241,12 @@ export default function PptStudioHub({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold font-mono tracking-wider text-sky-500 uppercase">
-                Slide Studio
+                {translate('ppt.slideStudio')}
               </span>
               <span className={`text-xs ${darkMode ? 'text-slate-600' : 'text-slate-300'}`}>/</span>
-              <span className="text-xs font-semibold text-slate-400">Workspace Hub</span>
+              <span className="text-xs font-semibold text-slate-400">{translate('ppt.workspaceHub')}</span>
             </div>
-            <h1 className="text-sm font-bold tracking-tight">Presentation Dashboard</h1>
+            <h1 className="text-sm font-bold tracking-tight">{translate('ppt.dashboard')}</h1>
           </div>
         </div>
 
@@ -261,7 +263,7 @@ export default function PptStudioHub({
               }`}
             >
               <Play className="w-3.5 h-3.5 fill-current" />
-              <span>Resume Active Deck ({activeSlidesCount} slides)</span>
+              <span>{translate('ppt.resumeSession')} ({activeSlidesCount} {translate('ppt.slide', { count: activeSlidesCount })})</span>
             </button>
           )}
 
@@ -276,7 +278,7 @@ export default function PptStudioHub({
             }`}
           >
             <FilePlus className="w-3.5 h-3.5" />
-            <span>Blank Deck</span>
+            <span>{translate('ppt.blankDeck')}</span>
           </button>
 
           {/* Theme Switcher */}
@@ -288,7 +290,7 @@ export default function PptStudioHub({
                 ? 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
                 : 'bg-slate-100 border-slate-200 text-slate-600 hover:text-slate-900'
             }`}
-            title="Toggle Light / Dark mode"
+            title={translate('ppt.toggleTheme')}
           >
             {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
@@ -305,13 +307,13 @@ export default function PptStudioHub({
           <div className="relative text-center max-w-2xl mx-auto mb-8 space-y-2">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20 mb-1">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Next-Gen AI Presentation Engine</span>
+              <span>{translate('ppt.tagline')}</span>
             </div>
             <h2 className="text-2xl sm:text-4xl font-extrabold tracking-tight text-balance">
-              What do you want to present today?
+              {translate('ppt.heroTitle')}
             </h2>
             <p className={`text-xs sm:text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-              Type your topic or project idea. NetRoot AI will architect structured, visually compelling slides in seconds.
+              {translate('ppt.heroDescription')}
             </p>
           </div>
 
@@ -333,7 +335,7 @@ export default function PptStudioHub({
                     setPrompt(e.target.value);
                     if (inlineOutline) setInlineOutline(null);
                   }}
-                  placeholder="e.g. Series A investor pitch deck for an autonomous enterprise AI platform covering problem, market size, product demo, unit economics, and roadmap..."
+                  placeholder={translate('ppt.prompt')}
                   className={`w-full p-4 rounded-xl text-sm sm:text-base font-medium outline-none transition border resize-none leading-relaxed ${
                     darkMode
                       ? 'bg-[#0f0f12] text-white border-white/10 focus:border-sky-500/80 placeholder:text-slate-600'
@@ -353,7 +355,7 @@ export default function PptStudioHub({
                   {/* Slide Count Selector: 1 to 10 Drawer/Rail */}
                   <div className="flex items-center gap-2">
                     <span className={`text-xs font-mono font-bold shrink-0 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                      Slides ({numSlides}):
+                      {translate('ppt.slidesCount', { count: numSlides })}
                     </span>
                     <div className="flex items-center gap-1 overflow-x-auto max-w-[270px] sm:max-w-[340px] p-1 rounded-xl border bg-black/20 border-white/10 scrollbar-none">
                       {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
@@ -381,7 +383,7 @@ export default function PptStudioHub({
                   {/* Theme Selector */}
                   <div className="flex items-center gap-1.5">
                     <span className={`text-xs font-mono font-bold ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                      Theme:
+                      {translate('ppt.theme')}
                     </span>
                     <select
                       value={selectedTheme}
@@ -418,7 +420,7 @@ export default function PptStudioHub({
                     ) : (
                       <Layers className="w-3.5 h-3.5 text-sky-400" />
                     )}
-                    <span>{isPlanningOutline ? 'Planning Agenda...' : 'Plan Outline'}</span>
+                    <span>{isPlanningOutline ? translate('ppt.planningAgenda') : translate('ppt.planOutline')}</span>
                   </button>
 
                   <button
@@ -429,11 +431,11 @@ export default function PptStudioHub({
                     {isGeneratingDeck ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Generating Deck...</span>
+                        <span>{translate('ppt.generatingDeck')}</span>
                       </>
                     ) : (
                       <>
-                        <span>Generate Presentation</span>
+                        <span>{translate('ppt.generatePresentation')}</span>
                         <ArrowRight className="w-3.5 h-3.5" />
                       </>
                     )}
@@ -452,7 +454,7 @@ export default function PptStudioHub({
                     <div className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-sky-500 animate-pulse" />
                       <span className="text-xs font-bold font-mono uppercase tracking-wider text-sky-400">
-                        Agenda Breakdown ({inlineOutline.length} Slides Planned)
+                        {translate('ppt.agendaBreakdown', { count: inlineOutline.length })}
                       </span>
                     </div>
 
@@ -463,7 +465,7 @@ export default function PptStudioHub({
                         className="text-xs font-semibold text-sky-400 hover:text-sky-300 flex items-center gap-1 cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>Add Slide</span>
+                        <span>{translate('ppt.addSlide')}</span>
                       </button>
                       <button
                         type="button"
@@ -474,7 +476,7 @@ export default function PptStudioHub({
                             : 'border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                         }`}
                       >
-                        Collapse
+                        {translate('ppt.collapse')}
                       </button>
                     </div>
                   </div>
@@ -527,7 +529,7 @@ export default function PptStudioHub({
                             type="button"
                             onClick={() => handleRemoveOutlineSlide(idx)}
                             className="opacity-60 group-hover:opacity-100 text-slate-500 hover:text-rose-400 p-1 rounded transition shrink-0 cursor-pointer"
-                            title="Remove slide from agenda"
+                            title={translate('ppt.removeAgendaSlide')}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -547,7 +549,7 @@ export default function PptStudioHub({
                       {isGeneratingDeck ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Generating Presentation...</span>
+                          <span>{translate('ppt.generatingPresentation')}</span>
                         </>
                       ) : (
                         <>
@@ -579,11 +581,11 @@ export default function PptStudioHub({
             </div>
             <div>
               <h3 className="text-sm font-bold flex items-center gap-1.5">
-                <span>Blank Presentation</span>
+                <span>{translate('ppt.blankPresentation')}</span>
                 <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
               </h3>
               <p className={`text-xs mt-1 leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                Start fresh with an empty canvas. Choose custom bento layouts, add bullet points, and edit content freely.
+                {translate('ppt.blankDescription')}
               </p>
             </div>
           </div>
@@ -607,13 +609,13 @@ export default function PptStudioHub({
             </div>
             <div>
               <h3 className="text-sm font-bold flex items-center gap-1.5">
-                <span>{activeSlidesCount > 0 ? 'Resume Active Session' : 'Quick Pitch Deck Template'}</span>
+                <span>{activeSlidesCount > 0 ? translate('ppt.resumeSession') : translate('ppt.pitchTemplate')}</span>
                 <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
               </h3>
               <p className={`text-xs mt-1 leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
                 {activeSlidesCount > 0
-                  ? `Continue working on "${activeDeckTitle || 'Untitled Presentation'}" (${activeSlidesCount} slides ready in editor).`
-                  : 'Load a pre-architected 5-slide investor deck structure ready for quick custom points.'}
+                  ? translate('ppt.resumeDescription', { title: activeDeckTitle || translate('ppt.untitledPresentation'), count: activeSlidesCount })
+                  : translate('ppt.pitchDescription')}
               </p>
             </div>
           </div>
@@ -625,10 +627,10 @@ export default function PptStudioHub({
             <div>
               <h2 className="text-base font-bold flex items-center gap-2">
                 <FolderKanban className="w-4 h-4 text-sky-400" />
-                <span>My Slides ({savedDecks.length})</span>
+                <span>{translate('ppt.mySlides')} ({savedDecks.length})</span>
               </h2>
               <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                Cloud & local presentations saved to your NetRoot account.
+                {translate('ppt.savedDescription')}
               </p>
             </div>
 
@@ -640,7 +642,7 @@ export default function PptStudioHub({
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search presentations..."
+                  placeholder={translate('ppt.searchPresentations')}
                   className={`w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border outline-none ${
                     darkMode
                       ? 'bg-[#151518] border-white/10 text-white placeholder:text-slate-600 focus:border-sky-500'
@@ -655,7 +657,7 @@ export default function PptStudioHub({
           {loadingDecks ? (
             <div className="flex items-center justify-center py-16 gap-2 text-xs text-slate-400">
               <Loader2 className="w-4 h-4 animate-spin text-sky-500" />
-              <span>Loading saved presentations...</span>
+              <span>{translate('ppt.loadingPresentations')}</span>
             </div>
           ) : filteredDecks.length === 0 ? (
             <div
@@ -666,11 +668,11 @@ export default function PptStudioHub({
               <div className="w-12 h-12 rounded-2xl bg-sky-500/10 text-sky-400 flex items-center justify-center mx-auto">
                 <Layers className="w-6 h-6" />
               </div>
-              <h3 className="text-sm font-bold">No presentations found</h3>
+              <h3 className="text-sm font-bold">{translate('ppt.noPresentations')}</h3>
               <p className={`text-xs max-w-sm mx-auto ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
                 {searchQuery
-                  ? 'No presentation titles match your search criteria.'
-                  : 'You have not created any saved decks yet. Enter a topic in the AI box above to create your first presentation!'}
+                  ? translate('ppt.noSearchResults')
+                  : translate('ppt.emptySaved')}
               </p>
             </div>
           ) : (
@@ -678,13 +680,13 @@ export default function PptStudioHub({
               {filteredDecks.map((deck) => {
                 const count = Array.isArray(deck.slides) ? deck.slides.length : 1;
                 const updatedTime = deck.updated_at
-                  ? new Date(deck.updated_at).toLocaleDateString(undefined, {
+                  ? new Date(deck.updated_at).toLocaleDateString(i18n.language === 'hi' ? 'hi-IN' : undefined, {
                       month: 'short',
                       day: 'numeric',
                       hour: '2-digit',
                       minute: '2-digit',
                     })
-                  : 'Recently';
+                  : translate('ppt.recently');
 
                 return (
                   <div
@@ -700,7 +702,7 @@ export default function PptStudioHub({
                       {/* Top Badges & Delete Button */}
                       <div className="flex items-center justify-between gap-2 mb-2">
                         <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-400 border border-sky-500/20">
-                          {count} {count === 1 ? 'Slide' : 'Slides'}
+                          {translate('ppt.slide', { count })}
                         </span>
                         <div className="flex items-center gap-1">
                           {confirmDeleteId === deck.id ? (
@@ -708,20 +710,20 @@ export default function PptStudioHub({
                               onClick={(e) => e.stopPropagation()}
                               className="flex items-center gap-1.5 bg-rose-500/15 border border-rose-500/30 rounded-lg px-2 py-0.5 animate-in fade-in duration-150"
                             >
-                              <span className="text-[10px] text-rose-400 font-bold">Delete?</span>
+                              <span className="text-[10px] text-rose-400 font-bold">{translate('ppt.deleteQuestion')}</span>
                               <button
                                 type="button"
                                 onClick={() => handleConfirmDelete(deck.id)}
                                 className="px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold cursor-pointer transition shadow-sm"
                               >
-                                Yes
+                                {translate('ppt.yes')}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setConfirmDeleteId(null)}
                                 className="px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 text-slate-300 text-[10px] cursor-pointer transition"
                               >
-                                No
+                                {translate('ppt.no')}
                               </button>
                             </div>
                           ) : (
@@ -737,7 +739,7 @@ export default function PptStudioHub({
                                   ? 'text-slate-400 hover:text-rose-400 hover:bg-rose-500/10'
                                   : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'
                               }`}
-                              title="Delete presentation"
+                              title={translate('ppt.deletePresentation')}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -747,13 +749,13 @@ export default function PptStudioHub({
 
                       {/* Deck Title */}
                       <h4 className="text-sm font-bold line-clamp-2 group-hover:text-sky-400 transition-colors">
-                        {deck.title || 'Untitled Presentation'}
+                        {deck.title || translate('ppt.untitledPresentation')}
                       </h4>
 
                       {/* Preview first slide topic or layout */}
                       {deck.slides?.[0]?.t && (
                         <p className={`text-xs mt-1 line-clamp-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                          Cover: {deck.slides[0].t}
+                          {translate('ppt.cover')} {deck.slides[0].t}
                         </p>
                       )}
                     </div>
@@ -769,7 +771,7 @@ export default function PptStudioHub({
                         <span>{updatedTime}</span>
                       </div>
                       <span className="text-sky-500 font-semibold group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                        Open Studio →
+                        {translate('ppt.openStudio')}
                       </span>
                     </div>
                   </div>

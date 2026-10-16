@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import EditableText from '../EditableText';
 import { stripMarkdown } from '../pptConstants';
 import { Plus, X, ArrowRight } from 'lucide-react';
@@ -10,6 +11,7 @@ export default function FlowchartLayout({
   onUpdateSlide,
   onPushHistory,
 }) {
+  const { t } = useTranslation();
   const nodes = Array.isArray(slide.c) ? slide.c : [];
 
   const parseNode = (nodeItem, idx) => {
@@ -119,7 +121,7 @@ export default function FlowchartLayout({
                         type="button"
                         onClick={() => handleDeleteNode(idx)}
                         className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 p-0.5 rounded transition"
-                        title="Delete node"
+                        title={t('ppt.deleteNode')}
                       >
                         <X className="w-3 h-3" />
                       </button>
@@ -169,7 +171,7 @@ export default function FlowchartLayout({
           className="text-xs font-semibold text-sky-400 hover:text-sky-300 border border-dashed border-sky-500/40 hover:border-sky-400 rounded-lg px-3 py-1 flex items-center gap-1.5 transition"
         >
           <Plus className="w-3.5 h-3.5" />
-          <span>Add Pipeline Step</span>
+          <span>{t('ppt.addPipelineStep')}</span>
         </button>
       </div>
     </div>

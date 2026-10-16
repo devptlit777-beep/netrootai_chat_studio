@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
+import { useTranslation } from 'react-i18next';
 
 export default function ResetPassword() {
+    const { t } = useTranslation();
     const { theme } = useTheme();
     const darkMode = theme === 'dark';
 
@@ -18,7 +20,7 @@ export default function ResetPassword() {
             if (session) {
                 setSessionReady(true);
             } else {
-                setError('Reset link is invalid or has expired. Please request a new one.');
+                setError(t('auth.invalidResetLink'));
             }
         });
     }, []);
@@ -29,23 +31,23 @@ export default function ResetPassword() {
         setSuccess(null);
 
         if (!password) {
-            setError('Enter a new password');
+            setError(t('auth.enterNewPassword'));
             return;
         }
         if (password !== confirm) {
-            setError('Passwords do not match');
+            setError(t('auth.passwordsDoNotMatch'));
             return;
         }
 
         setLoading(true);
         const { error } = await supabase.auth.updateUser({ password });
         if (error) {
-            setError(error.message || 'Failed to update password');
+            setError(error.message || t('auth.failedUpdatePassword'));
             setLoading(false);
             return;
         }
 
-        setSuccess('Password updated. You can now sign in.');
+        setSuccess(t('auth.passwordUpdated'));
         setLoading(false);
         try { window.history.replaceState({}, document.title, '/login'); } catch (e) { }
     }
@@ -54,32 +56,32 @@ export default function ResetPassword() {
         <div className={`min-h-screen flex items-center justify-center relative overflow-hidden ${darkMode ? 'bg-[#0a0a0f]' : 'bg-gradient-to-br from-blue-50 via-white to-cyan-50'}`}>
             <div className="relative z-10 w-full max-w-md mx-4">
                 <div className={`${darkMode ? 'bg-[#111118]/90 backdrop-blur-xl border-white/10' : 'bg-white border-gray-200'} border rounded-2xl px-8 py-10 shadow-2xl`}>
-                    <h1 className={`text-2xl font-semibold text-center mb-6 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Reset your password</h1>
+                    <h1 className={`text-2xl font-semibold text-center mb-6 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('auth.resetPassword')}</h1>
 
                     <p className={`text-sm text-center mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                        Enter a new password to update your account.
+                        {t('auth.resetPasswordInfo')}
                     </p>
 
                     <form onSubmit={handleSubmit} className="space-y-5">
                         <div>
-                            <label className={`block text-sm font-medium mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>New password</label>
+                            <label className={`block text-sm font-medium mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{t('auth.newPassword')}</label>
                             <input
                                 type="password"
                                 value={password}
                                 onChange={e => setPassword(e.target.value)}
-                                placeholder="New password"
+                                placeholder={t('auth.newPassword')}
                                 className={`w-full border rounded-lg px-4 py-2.5 outline-none transition-colors text-sm ${darkMode ? 'bg-[#1a1a28] border-white/10 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'}`}
                                 required
                             />
                         </div>
 
                         <div>
-                            <label className={`block text-sm font-medium mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Confirm password</label>
+                            <label className={`block text-sm font-medium mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{t('auth.confirmPassword')}</label>
                             <input
                                 type="password"
                                 value={confirm}
                                 onChange={e => setConfirm(e.target.value)}
-                                placeholder="Confirm password"
+                                placeholder={t('auth.confirmPassword')}
                                 className={`w-full border rounded-lg px-4 py-2.5 outline-none transition-colors text-sm ${darkMode ? 'bg-[#1a1a28] border-white/10 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'}`}
                                 required
                             />
@@ -89,7 +91,7 @@ export default function ResetPassword() {
                         {success && <p className={`text-sm rounded-lg px-3 py-2 ${darkMode ? 'text-emerald-400 bg-emerald-400/10 border border-emerald-400/20' : 'text-emerald-600 bg-emerald-50 border border-emerald-200'}`}>{success}</p>}
 
                         <button type="submit" disabled={loading || !sessionReady} className="w-full bg-[#3b82f6] hover:bg-[#2563eb] disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg transition-colors text-sm mt-1">
-                            {loading ? 'Please wait...' : 'Update password'}
+                            {loading ? t('auth.wait') : t('auth.updatePassword')}
                         </button>
                     </form>
 

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { THEME_OPTIONS, THEME_SEEDS } from './pptConstants';
 import { useTheme } from '../../contexts/ThemeContext';
 import {
@@ -46,6 +47,7 @@ export default function PptTopBar({
   saveStatus = 'saved', // 'saved' | 'saving' | 'error'
   onBackToHub,
 }) {
+  const { t } = useTranslation();
   const { theme, toggleTheme } = useTheme();
   const darkMode = theme === 'dark';
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
@@ -69,10 +71,10 @@ export default function PptTopBar({
                 ? 'bg-white/5 border-white/10 hover:bg-white/10 text-slate-300 hover:text-white'
                 : 'bg-slate-100 border-slate-200 hover:bg-slate-200 text-slate-700 hover:text-slate-900'
             }`}
-            title="Back to Dashboard Hub"
+            title={t('ppt.backHub')}
           >
             <ChevronLeft className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Hub</span>
+            <span className="hidden sm:inline">{t('ppt.hub')}</span>
           </button>
         )}
 
@@ -91,13 +93,13 @@ export default function PptTopBar({
           type="text"
           value={deckTitle || ''}
           onChange={(e) => onChangeDeckTitle && onChangeDeckTitle(e.target.value)}
-          placeholder="Untitled Presentation"
+          placeholder={t('ppt.untitledPresentation')}
           className={`text-sm font-semibold rounded-lg px-2 py-0.5 transition outline-none border focus:border-sky-500 max-w-[150px] sm:max-w-[240px] md:max-w-[320px] truncate ${
             darkMode
               ? 'bg-transparent text-white border-transparent hover:border-white/20 focus:bg-[#18181b]'
               : 'bg-transparent text-slate-900 border-transparent hover:border-slate-300 focus:bg-white'
           }`}
-          title="Click to rename presentation"
+          title={t('ppt.renamePresentation')}
         />
 
         {/* Cloud Auto-Save Status */}
@@ -105,23 +107,23 @@ export default function PptTopBar({
           {saveStatus === 'saving' ? (
             <span className="flex items-center gap-1 text-sky-400">
               <Loader2 className="w-3 h-3 animate-spin" />
-              <span>Saving...</span>
+              <span>{t('ppt.saving')}</span>
             </span>
           ) : saveStatus === 'error' ? (
             <span
               className="flex items-center gap-1 text-amber-400/90"
-              title="Saved locally (Cloud offline)"
+              title={t('ppt.savedLocallyTitle')}
             >
               <CloudOff className="w-3 h-3" />
-              <span>Local backup</span>
+              <span>{t('ppt.localBackup')}</span>
             </span>
           ) : (
             <span
               className="flex items-center gap-1 text-emerald-400/80"
-              title="All changes saved to cloud"
+              title={t('ppt.savedCloudTitle')}
             >
               <Cloud className="w-3 h-3" />
-              <span>Saved</span>
+              <span>{t('ppt.saved')}</span>
             </span>
           )}
         </div>
@@ -142,7 +144,7 @@ export default function PptTopBar({
               ? 'text-slate-400 hover:text-white disabled:opacity-30 disabled:hover:text-slate-400'
               : 'text-slate-500 hover:text-slate-900 disabled:opacity-30 disabled:hover:text-slate-500'
           }`}
-          title="Undo (Ctrl+Z)"
+          title={t('ppt.undo')}
         >
           <Undo2 className="w-3.5 h-3.5" />
         </button>
@@ -155,7 +157,7 @@ export default function PptTopBar({
               ? 'text-slate-400 hover:text-white disabled:opacity-30 disabled:hover:text-slate-400'
               : 'text-slate-500 hover:text-slate-900 disabled:opacity-30 disabled:hover:text-slate-500'
           }`}
-          title="Redo (Ctrl+Y)"
+          title={t('ppt.redo')}
         >
           <Redo2 className="w-3.5 h-3.5" />
         </button>
@@ -170,7 +172,7 @@ export default function PptTopBar({
           className={`p-1 rounded transition ${
             darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'
           }`}
-          title="Zoom out"
+          title={t('ppt.zoomOut')}
         >
           <ZoomOut className="w-3.5 h-3.5" />
         </button>
@@ -180,7 +182,7 @@ export default function PptTopBar({
           className={`text-[11px] font-mono font-medium px-1.5 transition ${
             darkMode ? 'text-slate-300 hover:text-white' : 'text-slate-700 hover:text-slate-900'
           }`}
-          title="Reset zoom to 100%"
+          title={t('ppt.resetZoom')}
         >
           {Math.round(zoomScale * 100)}%
         </button>
@@ -190,7 +192,7 @@ export default function PptTopBar({
           className={`p-1 rounded transition ${
             darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'
           }`}
-          title="Zoom in"
+          title={t('ppt.zoomIn')}
         >
           <ZoomIn className="w-3.5 h-3.5" />
         </button>
@@ -240,7 +242,7 @@ export default function PptTopBar({
                       darkMode ? 'text-slate-400' : 'text-slate-500'
                     }`}
                   >
-                    Theme Palettes
+                    {t('ppt.themePalettes')}
                   </span>
                   <div className="space-y-1">
                     {THEME_OPTIONS.map((th) => (
@@ -283,7 +285,7 @@ export default function PptTopBar({
                       darkMode ? 'text-slate-400' : 'text-slate-500'
                     }`}
                   >
-                    Brand Seed Accent
+                    {t('ppt.brandSeedAccent')}
                   </span>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {Object.entries(THEME_SEEDS).map(([k, hex]) => (
@@ -311,7 +313,7 @@ export default function PptTopBar({
                           ? 'border-slate-600 bg-white/5'
                           : 'border-slate-300 bg-slate-50'
                       }`}
-                      title="Custom color hex"
+                      title={t('ppt.customColor')}
                     >
                       <Palette
                         className={`w-2.5 h-2.5 ${
@@ -355,7 +357,7 @@ export default function PptTopBar({
               ? 'border-[#26262a] bg-[#18181b] hover:bg-white/5 text-slate-300 hover:text-white'
               : 'border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-700'
           }`}
-          title="Fullscreen Presentation (F5)"
+          title={t('ppt.fullscreen')}
         >
           <Maximize2 className="w-4 h-4" />
         </button>
@@ -369,10 +371,10 @@ export default function PptTopBar({
               ? 'border-[#26262a] bg-[#18181b] hover:border-slate-500 text-slate-200 hover:text-white'
               : 'border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900'
           }`}
-          title="Open My Slides Library"
+          title={t('ppt.mySlidesLibrary')}
         >
           <FolderKanban className="w-3.5 h-3.5 text-sky-500" />
-          <span className="hidden sm:inline">My Slides</span>
+          <span className="hidden sm:inline">{t('ppt.mySlides')}</span>
         </button>
 
         {/* Slide AI Toggle Button */}
@@ -386,10 +388,10 @@ export default function PptTopBar({
               ? 'border-purple-500/40 bg-purple-950/30 text-purple-300 hover:bg-purple-950/60 hover:border-purple-400'
               : 'border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100 hover:border-purple-400'
           }`}
-          title="Toggle Slide AI"
+          title={t('ppt.toggleSlideAI')}
         >
           <Bot className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Slide AI</span>
+          <span className="hidden sm:inline">{t('ppt.slideAI')}</span>
         </button>
 
         {/* New Presentation Trigger */}
@@ -401,10 +403,10 @@ export default function PptTopBar({
               ? 'border-sky-500/40 bg-sky-950/30 hover:bg-sky-900/50 text-sky-300 hover:text-white'
               : 'border-sky-300 bg-sky-50 hover:bg-sky-100 text-sky-700'
           }`}
-          title="Create New Presentation (Open Hub)"
+          title={t('ppt.createNewPresentation')}
         >
           <Plus className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">New Presentation</span>
+          <span className="hidden sm:inline">{t('ppt.newPresentation')}</span>
         </button>
 
         {/* Download PPTX Native Button */}

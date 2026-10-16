@@ -5,8 +5,10 @@ import { useTheme } from '../contexts/ThemeContext';
 import { usePlan } from '../contexts/PlanContext';
 import { useAuth } from '../contexts/AuthContext';
 import API_BASE from '../lib/api';
+import { useTranslation } from 'react-i18next';
 
 export default function CheckoutSuccessPage() {
+  const { t } = useTranslation();
   const { theme } = useTheme();
   const darkMode = theme === 'dark';
   const navigate = useNavigate();
@@ -25,7 +27,7 @@ export default function CheckoutSuccessPage() {
   useEffect(() => {
     if (!sessionId) {
       setStatus('error');
-      setErrorMsg('No session ID found. Please contact support.');
+      setErrorMsg(t('checkout.noSession'));
       return;
     }
 
@@ -39,7 +41,7 @@ export default function CheckoutSuccessPage() {
         const data = await res.json();
         if (!res.ok) {
           setStatus('error');
-          setErrorMsg(data.error || 'Verification failed.');
+          setErrorMsg(data.error || t('checkout.verificationFailed'));
           return;
         }
         // Refresh plan in context so UI updates immediately
@@ -56,7 +58,7 @@ export default function CheckoutSuccessPage() {
         setStatus('success');
       } catch (e) {
         setStatus('error');
-        setErrorMsg('Network error. Your payment was received — please refresh the page.');
+        setErrorMsg(t('checkout.networkError'));
       }
     }
 
@@ -91,10 +93,10 @@ export default function CheckoutSuccessPage() {
               </div>
             </div>
             <h1 className={`text-2xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-              Activating your plan…
+              {t('checkout.activating')}
             </h1>
             <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              Verifying your payment with Stripe. This takes just a second.
+              {t('checkout.verifying')}
             </p>
           </>
         )}
@@ -107,14 +109,14 @@ export default function CheckoutSuccessPage() {
               </div>
             </div>
             <h1 className={`text-2xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-              You're on {planName}! 🎉
+              {t('checkout.activatedHeading', { plan: planName })}
             </h1>
             <p className={`text-sm mb-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              Your plan has been activated. Enjoy 10× token limits and all unlocked features.
+              {t('checkout.planActivated')}
             </p>
             <div className={`rounded-xl border p-4 mb-8 ${darkMode ? 'bg-emerald-500/10 border-emerald-500/25' : 'bg-emerald-50 border-emerald-200'}`}>
               <p className={`text-sm font-medium ${darkMode ? 'text-emerald-400' : 'text-emerald-700'}`}>
-                ✓ Plan activated successfully
+                {t('checkout.activatedSuccessfully')}
               </p>
             </div>
             <div className="flex flex-col gap-3">
@@ -122,11 +124,11 @@ export default function CheckoutSuccessPage() {
                 onClick={() => navigate('/dashboard')}
                 className="flex items-center justify-center gap-2 w-full bg-white hover:bg-gray-100 text-black font-medium px-6 py-3 rounded-xl text-sm transition-colors"
               >
-                Go to Dashboard
+                {t('checkout.dashboard')}
                 <ArrowRight className="w-4 h-4" />
               </button>
               <p className={`text-xs ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-                Redirecting in {countdown}s…
+                {t('checkout.redirecting', { count: countdown })}
               </p>
             </div>
           </>
@@ -140,7 +142,7 @@ export default function CheckoutSuccessPage() {
               </div>
             </div>
             <h1 className={`text-2xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-              Activation Failed
+              {t('checkout.activationFailed')}
             </h1>
             <p className={`text-sm mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
               {errorMsg}
@@ -149,7 +151,7 @@ export default function CheckoutSuccessPage() {
               onClick={() => navigate('/dashboard')}
               className="flex items-center justify-center gap-2 w-full bg-white hover:bg-gray-100 text-black font-medium px-6 py-3 rounded-xl text-sm transition-colors"
             >
-              Go to Dashboard
+              {t('checkout.dashboard')}
               <ArrowRight className="w-4 h-4" />
             </button>
           </>

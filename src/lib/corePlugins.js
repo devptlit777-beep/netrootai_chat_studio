@@ -18,9 +18,10 @@ export async function ensureCorePlugins(userId) {
   _running.add(userId);
   try {
     const rows = CORE_PLUGINS.map(p => ({ user_id: userId, ...p }));
-    await supabase
+    const { error } = await supabase
       .from('user_plugins')
       .upsert(rows, { onConflict: 'user_id,plugin_id', ignoreDuplicates: true });
+    if (error) throw error;
     _done.add(userId);
   } finally {
     _running.delete(userId);

@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import API_BASE from '../lib/api';
+import { useTranslation } from 'react-i18next';
 import {
   Sparkles,
   Image as ImageIcon,
@@ -37,6 +38,7 @@ const STYLES = [
 ];
 
 export default function ImageStudioPage() {
+  const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const { theme } = useTheme();
   const darkMode = theme === 'dark';
@@ -230,7 +232,7 @@ export default function ImageStudioPage() {
           await navigator.clipboard.write([
             new ClipboardItem({ [file.type]: blob }),
           ]);
-          setShareMessage('Image copied. Paste it into your social media post.');
+          setShareMessage(t('imageStudio.copied'));
           return;
         } catch {
           // Fall back to downloading when clipboard access is unavailable.
@@ -238,10 +240,10 @@ export default function ImageStudioPage() {
       }
 
       handleDownload(image.image_url, file.name);
-      setShareMessage('Image downloaded. Attach it to a post in your social media app.');
+      setShareMessage(t('imageStudio.downloaded'));
     } catch {
       handleDownload(image.image_url, `netrootai-image-${image.id}.png`);
-      setShareMessage('Image downloaded. Attach it to a post in your social media app.');
+      setShareMessage(t('imageStudio.downloaded'));
     }
   }
 
@@ -266,11 +268,11 @@ export default function ImageStudioPage() {
           </div>
           <div>
             <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-              Image Studio
+              {t('imageStudio.title')}
             </h1>
             <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
               {/* Generate images or videos from text descriptions */}
-              Generate images from text descriptions
+              {t('imageStudio.description')}
             </p>
           </div>
         </div>
@@ -281,20 +283,20 @@ export default function ImageStudioPage() {
             <div className="grid grid-cols-2 gap-2 mb-5">
               {['image', 'video'].map((value) => (
                 <button key={value} onClick={() => setMode(value)} className={`rounded-lg border py-2 text-sm font-semibold capitalize ${mode === value ? 'bg-blue-500 border-blue-500 text-white' : darkMode ? 'border-[#2a2a2a] text-gray-400' : 'border-gray-200 text-gray-600'}`}>
-                  {value}
+                  {t(`imageStudio.${value}`)}
                 </button>
               ))}
             </div>
-            {mode === 'video' && <p className={`mb-4 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Model: {VIDEO_MODEL}</p>}
+            {mode === 'video' && <p className={`mb-4 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{t('imageStudio.model')} {VIDEO_MODEL}</p>}
             <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              Description
+              {t('imageStudio.descriptionLabel')}
             </label>
             <textarea
               ref={promptRef}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={'A serene mountain lake at sunset with reflections of pine trees...'}
+              placeholder={t('imageStudio.promptPlaceholder')}
               rows={5}
               className={`w-full rounded-xl border px-4 py-3 text-sm outline-none resize-none transition-colors ${darkMode
                 ? 'bg-[#1a1a1a] border-[#2a2a2a] text-white placeholder-gray-600 focus:border-blue-500'
@@ -304,7 +306,7 @@ export default function ImageStudioPage() {
 
             {/* Size selector */}
             <label className={`block text-xs font-semibold uppercase tracking-wider mt-5 mb-2 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-              Aspect Ratio
+              {t('imageStudio.aspectRatio')}
             </label>
             <div className={`grid gap-2 ${mode === 'video' ? 'grid-cols-2' : 'grid-cols-3'}`}>
               {(mode === 'video' ? VIDEO_ASPECT_RATIOS.map((ratio) => ({ label: ratio === '16:9' ? 'Landscape' : 'Portrait', value: ratio, ratio })) : SIZES).map((size) => {
@@ -322,7 +324,7 @@ export default function ImageStudioPage() {
                       : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
                     }`}
                 >
-                  <div className="font-semibold">{size.label}</div>
+                  <div className="font-semibold">{t(`imageStudio.sizes.${size.label}`)}</div>
                   <div className={selected ? 'text-blue-100' : darkMode ? 'text-gray-600' : 'text-gray-400'}>
                     {size.ratio}
                   </div>
@@ -333,7 +335,7 @@ export default function ImageStudioPage() {
 
             {/* Style selector */}
             <label className={`block text-xs font-semibold uppercase tracking-wider mt-5 mb-2 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-              Style
+              {t('imageStudio.style')}
             </label>
             <div className="flex flex-wrap gap-2">
               {STYLES.map((style) => (
@@ -347,7 +349,7 @@ export default function ImageStudioPage() {
                       : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
                     }`}
                 >
-                  {style.label}
+                  {t(`imageStudio.styles.${style.label}`)}
                 </button>
               ))}
             </div>
@@ -361,18 +363,18 @@ export default function ImageStudioPage() {
               {generating ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Generating...
+                  {t('imageStudio.generating')}
                 </>
               ) : (
                 <>
                   <Wand2 className="w-4 h-4" />
-                  {mode === 'video' ? 'Generate Video' : 'Generate Image'}
+                  {t(mode === 'video' ? 'imageStudio.generateVideo' : 'imageStudio.generateImage')}
                 </>
               )}
             </button>
 
             <p className={`text-xs mt-3 text-center ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-              Press Ctrl+Enter to generate
+              {t('imageStudio.shortcut')}
             </p>
 
             {error && (
@@ -391,10 +393,10 @@ export default function ImageStudioPage() {
                   <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
                 </div>
                 <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                  Creating your {mode}...
+                  {t('imageStudio.creating', { mode: t(`imageStudio.${mode}`) })}
                 </p>
                 <p className={`text-xs mt-1 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-                  {mode === 'video' ? 'Video generation can take a few minutes' : 'This usually takes 10-20 seconds'}
+                  {mode === 'video' ? t('imageStudio.videoWait') : t('imageStudio.imageWait')}
                 </p>
               </div>
             )}
@@ -409,10 +411,10 @@ export default function ImageStudioPage() {
                   <ImageIcon className={`w-7 h-7 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`} />
                 </div>
                 <p className={`text-sm font-medium ${darkMode ? 'text-gray-500' : 'text-gray-600'}`}>
-                  No {mode === 'video' ? 'videos' : 'images'} yet
+                  {mode === 'video' ? t('imageStudio.noVideos') : t('imageStudio.noImages')}
                 </p>
                 <p className={`text-xs mt-1 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-                  Write a description and hit Generate to create your first {mode}
+                  {t('imageStudio.firstCreate', { mode: t(`imageStudio.${mode}`) })}
                 </p>
               </div>
             ) : (
@@ -444,7 +446,7 @@ export default function ImageStudioPage() {
                             />
                             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-end justify-center pb-3 opacity-0 group-hover:opacity-100">
                               <span className="text-white text-xs font-medium bg-black/50 rounded-full px-3 py-1">
-                                Click to view
+                                {t('imageStudio.clickToView')}
                               </span>
                             </div>
                           </div>
@@ -456,14 +458,14 @@ export default function ImageStudioPage() {
                           <div className="flex items-center justify-between mt-2.5">
                             <div className={`flex items-center gap-1 text-[11px] ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
                               <Clock className="w-3 h-3" />
-                              {formatDate(img.created_at)}
+                              {formatDate(img.created_at, i18n.resolvedLanguage)}
                             </div>
                             <div className="flex items-center gap-1">
                               {!isVideo && (
                                 <button
                                   onClick={() => handleShare(img)}
-                                  title="Share image"
-                                  aria-label="Share image"
+                                  title={t('imageStudio.shareImage')}
+                                  aria-label={t('imageStudio.shareImage')}
                                   className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${darkMode ? 'text-gray-500 hover:text-white hover:bg-white/5' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'}`}
                                 >
                                   <Share2 className="w-3.5 h-3.5" />
@@ -471,14 +473,14 @@ export default function ImageStudioPage() {
                               )}
                               <button
                                 onClick={() => handleDownload(img.image_url, `${isVideo ? 'video' : 'image'}-${img.id}.${extension || 'png'}`)}
-                                title="Download"
+                                title={t('imageStudio.download')}
                                 className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${darkMode ? 'text-gray-500 hover:text-white hover:bg-white/5' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'}`}
                               >
                                 <Download className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 onClick={() => handleDelete(img.id)}
-                                title="Delete"
+                                title={t('imageStudio.delete')}
                                 className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${darkMode ? 'text-gray-500 hover:text-red-400 hover:bg-red-500/10' : 'text-gray-400 hover:text-red-500 hover:bg-red-50'}`}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -523,14 +525,14 @@ export default function ImageStudioPage() {
                 className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
               >
                 <Share2 className="w-4 h-4" />
-                Share
+                {t('imageStudio.share')}
               </button>
               <button
                 onClick={() => handleDownload(previewImage.image_url, `image-${previewImage.id}.png`)}
                 className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
               >
                 <Download className="w-4 h-4" />
-                Download
+                {t('imageStudio.download')}
               </button>
             </div>
           </div>
@@ -540,9 +542,9 @@ export default function ImageStudioPage() {
   );
 }
 
-function formatDate(iso) {
+function formatDate(iso, locale) {
   const d = new Date(iso);
-  return d.toLocaleDateString(undefined, {
+  return d.toLocaleDateString(locale, {
     month: 'short',
     day: 'numeric',
   });

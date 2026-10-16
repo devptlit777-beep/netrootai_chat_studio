@@ -3,8 +3,10 @@ import { Search, Plus, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useTheme } from "../contexts/ThemeContext";
+import { useTranslation } from "react-i18next";
 
 export default function ThreadsPage() {
+  const { t } = useTranslation();
   const { theme } = useTheme();
   const darkMode = theme === "dark";
 
@@ -27,7 +29,7 @@ export default function ThreadsPage() {
   }
 
   async function deleteThread(id) {
-    if (!window.confirm("Delete this thread?")) return;
+    if (!window.confirm(t('threadsPage.confirmDelete'))) return;
 
     await supabase
       .from("threads")
@@ -69,7 +71,7 @@ export default function ThreadsPage() {
           className={`text-2xl font-bold ${darkMode ? "text-white" : "text-gray-900"
             }`}
         >
-          Threads
+          {t('threadsPage.title')}
         </h1>
 
         <button
@@ -77,7 +79,7 @@ export default function ThreadsPage() {
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white"
         >
           <Plus className="w-4 h-4" />
-          New Thread
+          {t('threadsPage.newThread')}
         </button>
       </div>
 
@@ -90,7 +92,7 @@ export default function ThreadsPage() {
           />
 
           <input
-            placeholder="Search threads..."
+            placeholder={t('threadsPage.search')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className={`w-full pl-10 pr-4 py-3 rounded-xl border outline-none ${darkMode
@@ -108,7 +110,7 @@ export default function ThreadsPage() {
               className={`text-center py-16 ${darkMode ? "text-gray-500" : "text-gray-400"
                 }`}
             >
-              No threads found
+              {t('threadsPage.noThreads')}
             </div>
           ) : (
             filteredThreads.map((thread) => (

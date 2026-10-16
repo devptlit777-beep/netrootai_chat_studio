@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Search,
   X,
@@ -14,6 +15,7 @@ export default function UnsplashModal({
   initialQuery = '',
   onSelectImage,
 }) {
+  const { t } = useTranslation();
   const [query, setQuery] = useState(initialQuery || 'enterprise cloud technology');
   const [candidates, setCandidates] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -118,8 +120,8 @@ export default function UnsplashModal({
               <ImageIcon className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white">Add Slide Visual</h2>
-              <p className="text-xs text-slate-400">Search free high-res photos or upload</p>
+              <h2 className="text-sm font-bold text-white">{t('ppt.addVisual')}</h2>
+              <p className="text-xs text-slate-400">{t('ppt.searchPhotos')}</p>
             </div>
           </div>
           <button
@@ -147,7 +149,7 @@ export default function UnsplashModal({
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search topic photo (e.g. cloud security, analytics, AI)..."
+                placeholder={t('ppt.searchPhotoPlaceholder')}
                 className="w-full bg-[#18181b] border border-[#2b2b30] focus:border-sky-500 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-slate-500 outline-none transition"
               />
             </div>
@@ -157,7 +159,7 @@ export default function UnsplashModal({
               className="px-4 py-2.5 bg-sky-500 hover:bg-sky-400 disabled:opacity-40 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
             >
               {isSearching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-              <span>Search</span>
+              <span>{t('ppt.search')}</span>
             </button>
           </form>
 
@@ -202,7 +204,7 @@ export default function UnsplashModal({
           <div className="pt-3 border-t border-[#26262a] grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-[#2b2b30] hover:border-sky-500/50 bg-[#18181b] text-slate-300 hover:text-white cursor-pointer transition text-xs font-semibold">
               <Upload className="w-4 h-4 text-sky-400" />
-              <span>Upload Local Image</span>
+              <span>{t('ppt.uploadLocalImage')}</span>
               <input type="file" accept="image/*" onChange={handleFileUpload} className="sr-only" />
             </label>
 
@@ -211,7 +213,7 @@ export default function UnsplashModal({
                 type="text"
                 value={urlInput}
                 onChange={(e) => setUrlInput(e.target.value)}
-                placeholder="Or paste direct image URL..."
+                placeholder={t('ppt.imageUrl')}
                 className="flex-1 bg-[#18181b] border border-[#2b2b30] rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 outline-none"
               />
               <button

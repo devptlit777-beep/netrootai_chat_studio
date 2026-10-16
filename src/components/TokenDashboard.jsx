@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { Sparkles, RefreshCw, BarChart3, Clock, Cpu } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import API_BASE from '../lib/api';
+import { useTranslation } from 'react-i18next';
 
 const DEFAULT_GROQ_USAGE = {
     model: 'openai/gpt-oss-20b',
@@ -31,11 +32,12 @@ function formatCurrency(value) {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(value);
 }
 
-function formatTime(date) {
-    return new Date(date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+function formatTime(date, locale) {
+    return new Date(date).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 export default function TokenDashboard({ darkMode }) {
+    const { t, i18n } = useTranslation();
     const { session } = useAuth();
     const [usageData, setUsageData] = useState(DEFAULT_GROQ_USAGE);
     const [loading, setLoading] = useState(true);
@@ -119,21 +121,21 @@ export default function TokenDashboard({ darkMode }) {
                         </div>
                         <div>
                             {/* <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Active model</p> */}
-                            <p className={`text-base font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>ALL MODELS</p>
+                            <p className={`text-base font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('usageDashboard.allModels')}</p>
                             {/* <p className={`text-base font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{usageData.modelDisplayName || usageData.model}</p> */}
                         </div>
                     </div>
                     <div className="text-right">
-                        <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Context window</p>
+                        <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{t('usageDashboard.contextWindow')}</p>
                         <p className={`text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{formatNumber(usageData.contextWindow)} tokens</p>
                     </div>
                 </div>
 
                 <div className="mb-3">
                     <div className="flex items-center justify-between mb-1.5">
-                        <span className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Daily token usage</span>
+                        <span className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{t('usageDashboard.dailyUsage')}</span>
                         <span className={`text-xs font-bold ${hasLimit ? textColor : 'text-sky-400'}`}>
-                            {hasLimit ? `${usedPct}% used` : 'No daily limit'}
+                            {hasLimit ? t('usageDashboard.percentUsed', { percent: usedPct }) : t('usageDashboard.noDailyLimit')}
                         </span>
                     </div>
                     {hasLimit && (
@@ -148,17 +150,17 @@ export default function TokenDashboard({ darkMode }) {
 
                 <div className="grid grid-cols-3 gap-3">
                     <div className={`rounded-2xl p-3 ${darkMode ? 'bg-[#121212]' : 'bg-white border border-gray-200'}`}>
-                        <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Used today</p>
+                        <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{t('usageDashboard.usedToday')}</p>
                         <p className={`mt-1 text-base font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{formatNumber(usageData.tokensUsedToday)}</p>
                     </div>
                     <div className={`rounded-2xl p-3 ${darkMode ? 'bg-[#121212]' : 'bg-white border border-gray-200'}`}>
-                        <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Remaining</p>
+                        <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{t('usageDashboard.remaining')}</p>
                         <p className={`mt-1 text-base font-semibold ${hasLimit ? textColor : 'text-sky-400'}`}>
-                            {hasLimit ? formatNumber(usageData.remainingTokens) : '∞ Unlimited'}
+                            {hasLimit ? formatNumber(usageData.remainingTokens) : t('usageDashboard.unlimited')}
                         </p>
                     </div>
                     <div className={`rounded-2xl p-3 ${darkMode ? 'bg-[#121212]' : 'bg-white border border-gray-200'}`}>
-                        <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Daily limit</p>
+                        <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{t('usageDashboard.dailyLimit')}</p>
                         <p className={`mt-1 text-base font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                             {hasLimit ? formatNumber(usageData.dailyTokenLimit) : '—'}
                         </p>
@@ -167,7 +169,7 @@ export default function TokenDashboard({ darkMode }) {
 
                 {usedPct >= 90 && (
                     <div className="mt-3 rounded-2xl bg-red-500/10 px-4 py-2 text-xs text-red-400 font-medium">
-                        ⚠️ Approaching daily token limit — resets at midnight UTC
+                        {t('usageDashboard.approachingLimit')}
                     </div>
                 )}
             </div>
@@ -179,18 +181,18 @@ export default function TokenDashboard({ darkMode }) {
                             <Sparkles className={`h-5 w-5 ${darkMode ? 'text-sky-400' : 'text-sky-600'}`} />
                         </div>
                         <div>
-                            <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Total spend</p>
+                            <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('usageDashboard.totalSpend')}</p>
                             <p className={`text-3xl font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{formatCurrency(usageData.totalSpend)}</p>
                         </div>
                     </div>
                     <div className={card}>
                         <div className="flex items-center justify-between gap-3">
                             <div>
-                                <p className={lbl}>Total tokens</p>
+                                <p className={lbl}>{t('usageDashboard.totalTokens')}</p>
                                 <p className={val}>{formatNumber(totalTokens)}</p>
                             </div>
                             <div>
-                                <p className={lbl}>Total requests</p>
+                                <p className={lbl}>{t('usageDashboard.totalRequests')}</p>
                                 <p className={val}>{formatNumber(usageData.totalRequests)}</p>
                             </div>
                         </div>
@@ -215,7 +217,7 @@ export default function TokenDashboard({ darkMode }) {
 
                 <div className="flex min-w-[240px] flex-col gap-3">
                     <div className={`flex items-center justify-between rounded-3xl border px-4 py-3 ${darkMode ? 'border-[#242424] bg-[#181818]' : 'border-gray-200 bg-gray-50'}`}>
-                        <span className={lbl}>Period</span>
+                        <span className={lbl}>{t('usageDashboard.period')}</span>
                         <div className="flex gap-2">
                             {['1d', '7d', '30d'].map((v) => (
                                 <button key={v} onClick={() => setPeriod(v)}
@@ -229,14 +231,14 @@ export default function TokenDashboard({ darkMode }) {
                     <div className={card}>
                         <div className="flex items-center justify-between gap-2">
                             <div>
-                                <p className={lbl}>Cached tokens</p>
+                                <p className={lbl}>{t('usageDashboard.cachedTokens')}</p>
                                 <p className={`mt-1 ${val}`}>{formatNumber(usageData.cachedTokens)}</p>
                             </div>
                             <div className="rounded-2xl bg-sky-500/10 p-2 text-sky-400">
                                 <BarChart3 className="h-5 w-5" />
                             </div>
                         </div>
-                        <p className={`mt-3 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Saved by cache reads and repeated context.</p>
+                        <p className={`mt-3 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{t('usageDashboard.cacheDescription')}</p>
                     </div>
 
                     <div className={card}>
@@ -245,11 +247,11 @@ export default function TokenDashboard({ darkMode }) {
                                 <RefreshCw className={`h-4 w-4 ${darkMode ? 'text-sky-400' : 'text-sky-600'}`} />
                             </div>
                             <div>
-                                <p className={lbl}>Avg latency</p>
+                                <p className={lbl}>{t('usageDashboard.avgLatency')}</p>
                                 <p className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{usageData.averageLatencyMs} ms</p>
                             </div>
                         </div>
-                        <p className={`mt-3 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Average response time for the selected period.</p>
+                        <p className={`mt-3 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{t('usageDashboard.latencyDescription')}</p>
                     </div>
                 </div>
             </div>
@@ -257,7 +259,7 @@ export default function TokenDashboard({ darkMode }) {
             <div className={`mt-6 rounded-3xl border p-5 ${darkMode ? 'border-[#242424] bg-[#181818]' : 'border-gray-200 bg-gray-50'}`}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                        <p className={lbl}>Usage breakdown</p>
+                        <p className={lbl}>{t('usageDashboard.breakdown')}</p>
                         <p className={`text-base font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{usageData.periodLabel}</p>
                     </div>
                     <div className="flex flex-col items-end gap-2">
@@ -272,7 +274,7 @@ export default function TokenDashboard({ darkMode }) {
                                     )}
                                 </div>
                                 <span className={`text-xs font-semibold uppercase tracking-[0.15em] ${isLive ? 'text-emerald-500' : 'text-red-500'}`}>
-                                    {isLive ? 'Live' : 'Offline'}
+                                    {isLive ? t('usageDashboard.live') : t('usageDashboard.offline')}
                                 </span>
                             </div>
                             <button onClick={loadUsage} disabled={refreshing || loading}
@@ -283,7 +285,7 @@ export default function TokenDashboard({ darkMode }) {
                         {lastUpdated && (
                             <div className={`flex items-center gap-1 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
                                 <Clock className="w-3 h-3" />
-                                <span>Updated: {formatTime(lastUpdated)}</span>
+                                <span>{t('usageDashboard.updated', { time: formatTime(lastUpdated, i18n.resolvedLanguage) })}</span>
                             </div>
                         )}
                     </div>
@@ -292,7 +294,7 @@ export default function TokenDashboard({ darkMode }) {
                 {error && <div className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</div>}
 
                 <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                    {[['Input tokens', usageData.inputTokens], ['Output tokens', usageData.outputTokens], ['Total requests', usageData.totalRequests], ['Cached tokens', usageData.cachedTokens]].map(([l, v]) => (
+                    {[[t('usageDashboard.inputTokens'), usageData.inputTokens], [t('usageDashboard.outputTokens'), usageData.outputTokens], [t('usageDashboard.totalRequests'), usageData.totalRequests], [t('usageDashboard.cachedTokens'), usageData.cachedTokens]].map(([l, v]) => (
                         <div key={l} className={`rounded-3xl border p-4 ${darkMode ? 'border-[#2b2b2b] bg-[#121212]' : 'border-gray-200 bg-white'}`}>
                             <p className={lbl}>{l}</p>
                             <p className={`mt-2 ${val}`}>{formatNumber(v)}</p>

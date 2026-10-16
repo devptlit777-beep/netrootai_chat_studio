@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import EditableText from '../EditableText';
 import SvgChart from './SvgChart';
 import BulletList from './BulletList';
@@ -14,6 +15,7 @@ export default function ChartLayout({
   onPushHistory,
   isGeneratingAI,
 }) {
+  const { t } = useTranslation();
   const hasValidChartData =
     slide.chart_data &&
     Array.isArray(slide.chart_data.categories) &&
@@ -99,7 +101,7 @@ export default function ChartLayout({
                 }`}
               >
                 <BarChart3 className="w-3 h-3" />
-                <span>Bar</span>
+                <span>{t('ppt.chartTypes.Bar')}</span>
               </button>
               <button
                 type="button"
@@ -111,7 +113,7 @@ export default function ChartLayout({
                 }`}
               >
                 <TrendingUp className="w-3 h-3" />
-                <span>Line</span>
+                <span>{t('ppt.chartTypes.Line')}</span>
               </button>
               <button
                 type="button"
@@ -123,7 +125,7 @@ export default function ChartLayout({
                 }`}
               >
                 <PieChart className="w-3 h-3" />
-                <span>Donut</span>
+                <span>{t('ppt.chartTypes.Donut')}</span>
               </button>
             </div>
           </div>
@@ -135,9 +137,9 @@ export default function ChartLayout({
             ) : (
               <div className="flex flex-col items-center justify-center p-6 text-center text-slate-400">
                 <BarChart3 className="w-10 h-10 mb-2 opacity-40 text-sky-400" />
-                <p className="text-xs font-medium text-slate-300">No Numerical Data Provided</p>
+                <p className="text-xs font-medium text-slate-300">{t('ppt.noChartData')}</p>
                 <p className="text-[11px] text-slate-500 mt-1 max-w-[200px]">
-                  Focus is on qualitative strategic takeaways.
+                  {t('ppt.qualitativeFocus')}
                 </p>
               </div>
             )}
@@ -148,9 +150,9 @@ export default function ChartLayout({
         <div className="w-5/12 flex flex-col slide-card-block rounded-xl p-5 overflow-hidden">
           <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-700/60 shrink-0">
             <span className="text-xs font-bold uppercase tracking-wider font-mono text-sky-400">
-              Strategic Takeaways
+              {t('ppt.strategicTakeaways')}
             </span>
-            <span className="text-[10px] text-slate-500 font-mono">Takeaways</span>
+            <span className="text-[10px] text-slate-500 font-mono">{t('ppt.takeaways')}</span>
           </div>
 
           <BulletList

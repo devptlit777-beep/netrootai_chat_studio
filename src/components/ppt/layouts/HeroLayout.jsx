@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import EditableText from '../EditableText';
 
 export default function HeroLayout({
@@ -8,6 +9,7 @@ export default function HeroLayout({
   onOpenPhotoModal,
   onPushHistory,
 }) {
+  const { t } = useTranslation();
   const subtitle = Array.isArray(slide.c) && slide.c[0]
     ? (Array.isArray(slide.c[0]) ? slide.c[0].join(' ') : slide.c[0])
     : 'Strategic Vision & Executive Briefing';
@@ -114,7 +116,7 @@ export default function HeroLayout({
                   type="button"
                   onClick={() => adjustImageScale(-0.1)}
                   className="w-5 h-5 flex items-center justify-center rounded hover:bg-slate-700 font-bold"
-                  title="Scale down"
+                  title={t('ppt.scaleDown')}
                 >
                   −
                 </button>
@@ -125,7 +127,7 @@ export default function HeroLayout({
                   type="button"
                   onClick={() => adjustImageScale(0.1)}
                   className="w-5 h-5 flex items-center justify-center rounded hover:bg-slate-700 font-bold"
-                  title="Scale up"
+                  title={t('ppt.scaleUp')}
                 >
                   +
                 </button>
@@ -134,14 +136,14 @@ export default function HeroLayout({
                   onClick={onOpenPhotoModal}
                   className="text-blue-400 hover:text-blue-300 px-1 py-0.5 rounded text-[11px] ml-1"
                 >
-                  Replace
+                  {t('ppt.replace')}
                 </button>
                 <button
                   type="button"
                   onClick={removeImage}
                   className="text-rose-400 hover:text-rose-300 px-1 py-0.5 rounded text-[11px]"
                 >
-                  Delete
+                  {t('ppt.delete')}
                 </button>
               </div>
 

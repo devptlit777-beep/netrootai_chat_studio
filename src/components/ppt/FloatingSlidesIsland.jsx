@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
 import {
   ChevronLeft,
@@ -29,6 +30,7 @@ export default function FloatingSlidesIsland({
   isRegenerating = false,
   onOpenPresentMode,
 }) {
+  const { t } = useTranslation();
   const { theme } = useTheme();
   const darkMode = theme === 'dark';
 
@@ -110,7 +112,7 @@ export default function FloatingSlidesIsland({
               }`}
             >
               <Layers className="w-3.5 h-3.5 text-sky-500" />
-              <span>Slides Overview ({slides.length})</span>
+              <span>{t('ppt.slidesOverview', { count: slides.length })}</span>
             </div>
 
             <div className="flex items-center gap-2">
@@ -119,7 +121,7 @@ export default function FloatingSlidesIsland({
                   darkMode ? 'text-slate-400' : 'text-slate-500'
                 }`}
               >
-                Drag to reorder
+                {t('ppt.dragToReorder')}
               </span>
               <button
                 type="button"
@@ -131,7 +133,7 @@ export default function FloatingSlidesIsland({
                     ? 'text-slate-400 hover:text-white hover:bg-white/5'
                     : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
                 }`}
-                title={isPinned ? 'Unpin deck' : 'Pin deck open'}
+                title={isPinned ? t('ppt.unpinDeck') : t('ppt.pinDeck')}
               >
                 {isPinned ? <Pin className="w-3 h-3 fill-sky-500" /> : <PinOff className="w-3 h-3" />}
               </button>
@@ -196,7 +198,7 @@ export default function FloatingSlidesIsland({
                             ? 'text-slate-400 hover:text-amber-300'
                             : 'text-slate-500 hover:text-amber-500'
                         }`}
-                        title="Toggle Light / Dark mode"
+                        title={t('ppt.toggleTheme')}
                       >
                         {mode === 'dark' ? <Moon className="w-2.5 h-2.5" /> : <Sun className="w-2.5 h-2.5 text-amber-500" />}
                       </button>
@@ -215,7 +217,7 @@ export default function FloatingSlidesIsland({
                             ? 'text-slate-400 hover:text-sky-300'
                             : 'text-slate-500 hover:text-sky-600'
                         }`}
-                        title="Duplicate slide"
+                        title={t('ppt.duplicateSlide')}
                       >
                         <Copy className="w-2.5 h-2.5" />
                       </button>
@@ -235,7 +237,7 @@ export default function FloatingSlidesIsland({
                               ? 'text-slate-400 hover:text-rose-400 hover:bg-rose-500/10'
                               : 'text-slate-500 hover:text-rose-600 hover:bg-rose-50'
                           }`}
-                          title="Delete slide"
+                          title={t('ppt.deleteSlide')}
                         >
                           <Trash2 className="w-2.5 h-2.5" />
                         </button>
@@ -249,7 +251,7 @@ export default function FloatingSlidesIsland({
                       darkMode ? 'text-slate-200' : 'text-slate-800'
                     }`}
                   >
-                    {slide.t || 'Untitled Slide'}
+                    {slide.t || t('ppt.untitledSlide')}
                   </p>
                 </div>
               );
@@ -264,10 +266,10 @@ export default function FloatingSlidesIsland({
                   ? 'border-sky-500/40 hover:border-sky-400 bg-sky-500/5 hover:bg-sky-500/10 text-sky-400'
                   : 'border-sky-300 hover:border-sky-500 bg-sky-50 hover:bg-sky-100/70 text-sky-600'
               }`}
-              title="Add new blank slide"
+              title={t('ppt.addBlankSlide')}
             >
               <Plus className="w-4 h-4" />
-              <span>Add Slide</span>
+              <span>{t('ppt.addSlide')}</span>
             </button>
           </div>
         </div>
@@ -289,7 +291,7 @@ export default function FloatingSlidesIsland({
           className={`p-1 rounded-full disabled:opacity-25 transition cursor-pointer ${
             darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'
           }`}
-          title="Previous slide (Left Arrow)"
+          title={t('ppt.previousSlide')}
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
@@ -300,7 +302,7 @@ export default function FloatingSlidesIsland({
           className={`flex items-center gap-2 px-2.5 py-1 rounded-full cursor-pointer transition group ${
             darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-slate-100 hover:bg-slate-200'
           }`}
-          title="Hover or click to view all slides"
+          title={t('ppt.allSlides')}
         >
           <span
             className={`text-xs font-mono font-bold ${
@@ -344,7 +346,7 @@ export default function FloatingSlidesIsland({
           className={`p-1 rounded-full disabled:opacity-25 transition cursor-pointer ${
             darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'
           }`}
-          title="Next slide (Right Arrow)"
+          title={t('ppt.nextSlide')}
         >
           <ChevronRight className="w-4 h-4" />
         </button>
@@ -362,7 +364,7 @@ export default function FloatingSlidesIsland({
           className={`p-1 transition cursor-pointer ${
             darkMode ? 'text-sky-400 hover:text-sky-300' : 'text-sky-600 hover:text-sky-700'
           }`}
-          title="Add new blank slide"
+          title={t('ppt.addBlankSlide')}
         >
           <Plus className="w-4 h-4" />
         </button>
@@ -375,7 +377,7 @@ export default function FloatingSlidesIsland({
           className={`p-1 transition disabled:opacity-30 cursor-pointer ${
             darkMode ? 'text-purple-400 hover:text-purple-300' : 'text-purple-600 hover:text-purple-700'
           }`}
-          title="Quick regenerate this slide"
+          title={t('ppt.regenerateSlide')}
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isRegenerating ? 'animate-spin' : ''}`} />
         </button>
@@ -396,7 +398,7 @@ export default function FloatingSlidesIsland({
                 ? 'text-slate-400 hover:text-rose-400 hover:bg-rose-500/10'
                 : 'text-slate-500 hover:text-rose-600 hover:bg-rose-50'
             } rounded-full`}
-            title="Delete current slide"
+            title={t('ppt.deleteCurrentSlide')}
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
@@ -409,7 +411,7 @@ export default function FloatingSlidesIsland({
           className={`p-1 transition cursor-pointer ${
             darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'
           }`}
-          title="Fullscreen presentation (F5)"
+          title={t('ppt.fullscreen')}
         >
           <Maximize2 className="w-3.5 h-3.5" />
         </button>

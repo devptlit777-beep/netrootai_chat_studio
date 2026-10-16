@@ -5,6 +5,7 @@ import { usePlan } from '../contexts/PlanContext';
 import { supabase } from '../lib/supabase';
 import { ensureCorePlugins } from '../lib/corePlugins';
 import { Search, X, Settings, CheckCircle, Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 const CATEGORIES = ['All', 'Productivity', 'Code', 'Search', 'Data', 'Communication'];
 
@@ -61,6 +62,7 @@ function Toggle({ enabled, onChange, darkMode, disabled }) {
 }
 
 function ConfigModal({ plugin, config, onSave, onClose, darkMode }) {
+    const { t } = useTranslation();
     const fields = CONFIG_FIELDS[plugin.id] || [];
     const requiredFields = fields.filter(f => f.required !== false);
     const [values, setValues] = useState(() => {
@@ -79,15 +81,15 @@ function ConfigModal({ plugin, config, onSave, onClose, darkMode }) {
                     <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-2">
                             <span className="text-xl">{plugin.icon}</span>
-                            <p className="font-semibold">{plugin.name}</p>
+                            <p className="font-semibold">{t(`pluginsPage.pluginNames.${plugin.id}`, { defaultValue: plugin.name })}</p>
                         </div>
                         <button onClick={onClose}><X className="w-4 h-4 text-gray-400 hover:text-white" /></button>
                     </div>
                     <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                        No configuration needed. Once enabled, attach a CSV file in the chat and ask questions about it.
+                        {t('pluginsPage.csvConfigDescription')}
                     </p>
                     <button onClick={() => onSave({})} className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded-lg py-2 text-sm font-medium transition-colors">
-                        Enable Plugin
+                        {t('pluginsPage.enablePlugin')}
                     </button>
                 </div>
             </div>
@@ -101,15 +103,15 @@ function ConfigModal({ plugin, config, onSave, onClose, darkMode }) {
                     <div className="flex items-center gap-2">
                         <span className="text-xl">{plugin.icon}</span>
                         <p className="font-semibold">
-                            {plugin.name}
-                            {plugin.id === 'web-search' ? ' - Optional Configuration' : ' — Configuration'}
+                            {t(`pluginsPage.pluginNames.${plugin.id}`, { defaultValue: plugin.name })}
+                            {plugin.id === 'web-search' ? ` - ${t('pluginsPage.optionalConfig')}` : ` — ${t('pluginsPage.config')}`}
                         </p>
                     </div>
                     <button onClick={onClose}><X className="w-4 h-4 text-gray-400 hover:text-white" /></button>
                 </div>
                 {plugin.id === 'web-search' && (
                     <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                        No API key required. Leave this blank to use the built-in search fallback, or add a Brave Search API key for better results.
+                        {t('pluginsPage.searchFallbackDescription')}
                     </p>
                 )}
                 <div className="space-y-3 mb-5">
@@ -128,14 +130,14 @@ function ConfigModal({ plugin, config, onSave, onClose, darkMode }) {
                 </div>
                 <div className="flex gap-2">
                     <button onClick={onClose} className={`flex-1 rounded-lg py-2 text-sm font-medium border transition-colors ${darkMode ? 'border-[#2a2a2a] text-gray-400 hover:text-white' : 'border-gray-300 text-gray-600 hover:text-gray-900'}`}>
-                        Cancel
+                        {t('common.cancel')}
                     </button>
                     <button
                         onClick={() => onSave(values)}
                         disabled={requiredFields.some(f => !values[f.key]?.trim())}
                         className="flex-1 bg-blue-500 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg py-2 text-sm font-medium transition-colors"
                     >
-                        Save & Enable
+                        {t('pluginsPage.saveEnable')}
                     </button>
                 </div>
             </div>
@@ -143,6 +145,7 @@ function ConfigModal({ plugin, config, onSave, onClose, darkMode }) {
     );
 }
 export default function PluginsPage() {
+    const { t } = useTranslation();
     const { theme } = useTheme();
     const { user } = useAuth();
     const { plan } = usePlan();
@@ -151,24 +154,32 @@ export default function PluginsPage() {
     const [pluginStates, setPluginStates] = useState({});
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(null);
+    const [pluginError, setPluginError] = useState('');
+    const [loadFailed, setLoadFailed] = useState(false);
     const [configModal, setConfigModal] = useState(null);
     const [search, setSearch] = useState('');
     const [activeCategory, setActiveCategory] = useState('All');
 
     const loadPlugins = useCallback(async () => {
         if (!user) return;
+        setLoading(true);
+        setPluginError('');
+        setLoadFailed(false);
         try {
             await ensureCorePlugins(user.id);
-            const { data } = await supabase
+            const { data, error } = await supabase
                 .from('user_plugins')
                 .select('plugin_id, enabled, config')
                 .eq('user_id', user.id);
+            if (error) throw error;
 
             const map = {};
             (data || []).forEach(row => { map[row.plugin_id] = { enabled: row.enabled, config: row.config || {} }; });
             setPluginStates(map);
         } catch (error) {
             console.error('Failed to load plugins:', error);
+            setPluginError(error.message || 'Failed to load plugin settings.');
+            setLoadFailed(true);
         } finally {
             setLoading(false);
         }
@@ -178,31 +189,25 @@ export default function PluginsPage() {
 
     async function savePlugin(pluginId, enabled, config = {}) {
         setSaving(pluginId);
+        setPluginError('');
         try {
             const payload = { user_id: user.id, plugin_id: pluginId, enabled, config };
             const { data, error } = await supabase
                 .from('user_plugins')
-                .select('plugin_id')
-                .eq('user_id', user.id)
-                .eq('plugin_id', pluginId)
-                .maybeSingle();
+                .upsert(payload, { onConflict: 'user_id,plugin_id' })
+                .select('plugin_id, enabled, config')
+                .single();
 
-            if (error && error.code !== 'PGRST116') {
-                throw error;
-            }
-
-            if (data) {
-                await supabase
-                    .from('user_plugins')
-                    .update(payload)
-                    .eq('user_id', user.id)
-                    .eq('plugin_id', pluginId);
-            } else {
-                await supabase.from('user_plugins').insert(payload);
-            }
-            setPluginStates(prev => ({ ...prev, [pluginId]: { enabled, config } }));
+            if (error) throw error;
+            setPluginStates(prev => ({
+                ...prev,
+                [pluginId]: { enabled: data.enabled, config: data.config || {} },
+            }));
+            return true;
         } catch (error) {
             console.error('Failed to save plugin:', error);
+            setPluginError(error.message || 'Failed to save plugin settings.');
+            return false;
         } finally {
             setSaving(null);
         }
@@ -221,8 +226,9 @@ export default function PluginsPage() {
     }
 
     async function handleConfigSave(config) {
-        await savePlugin(configModal.id, true, config);
-        setConfigModal(null);
+        if (await savePlugin(configModal.id, true, config)) {
+            setConfigModal(null);
+        }
     }
 
     const filtered = PLUGINS.filter(p => {
@@ -240,9 +246,9 @@ export default function PluginsPage() {
 
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
                     <div>
-                        <h1 className={`text-2xl font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Plugins</h1>
+                        <h1 className={`text-2xl font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('pluginsPage.title')}</h1>
                         <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                            {loading ? 'Loading...' : `${enabledCount} of ${PLUGINS.length} plugins enabled`}
+                            {loading ? t('pluginsPage.loading') : t('pluginsPage.enabledCount', { enabled: enabledCount, total: PLUGINS.length })}
                         </p>
                     </div>
                     <div className={`flex items-center gap-2 border rounded-lg px-3 py-2 w-full sm:w-64 ${darkMode ? 'bg-[#1a1a1a] border-[#2a2a2a]' : 'bg-white border-gray-300'}`}>
@@ -251,7 +257,7 @@ export default function PluginsPage() {
                             type="text"
                             value={search}
                             onChange={e => setSearch(e.target.value)}
-                            placeholder="Search plugins..."
+                            placeholder={t('pluginsPage.search')}
                             className={`bg-transparent text-sm outline-none flex-1 ${darkMode ? 'text-white placeholder-gray-600' : 'text-gray-900 placeholder-gray-400'}`}
                         />
                         {search && <button onClick={() => setSearch('')}><X className="w-3.5 h-3.5 text-gray-500" /></button>}
@@ -262,10 +268,21 @@ export default function PluginsPage() {
                     {CATEGORIES.map(cat => (
                         <button key={cat} onClick={() => setActiveCategory(cat)}
                             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${activeCategory === cat ? 'bg-blue-500 text-white' : darkMode ? 'bg-[#1a1a1a] text-gray-400 hover:bg-[#222] border border-[#2a2a2a]' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'}`}>
-                            {cat}
+                            {t(`pluginsPage.categories.${cat}`)}
                         </button>
                     ))}
                 </div>
+
+                {pluginError && (
+                    <div role="alert" className={`mb-5 rounded-lg border px-4 py-3 text-sm ${darkMode ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                        {pluginError}
+                        {loadFailed && (
+                            <button type="button" onClick={loadPlugins} className="ml-3 underline">
+                                {t('common.retry')}
+                            </button>
+                        )}
+                    </div>
+                )}
 
                 {loading ? (
                     <div className="flex items-center justify-center py-20">
@@ -273,7 +290,7 @@ export default function PluginsPage() {
                     </div>
                 ) : filtered.length === 0 ? (
                     <div className={`flex flex-col items-center justify-center py-20 rounded-2xl border ${darkMode ? 'border-[#222] bg-[#111]' : 'border-gray-200 bg-white'}`}>
-                        <p className={`text-sm font-medium ${darkMode ? 'text-gray-500' : 'text-gray-600'}`}>No plugins found</p>
+                        <p className={`text-sm font-medium ${darkMode ? 'text-gray-500' : 'text-gray-600'}`}>{t('pluginsPage.noPlugins')}</p>
                     </div>
                 ) : (
                     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -290,18 +307,18 @@ export default function PluginsPage() {
                                             <span className="text-2xl leading-none">{plugin.icon}</span>
                                             <div>
                                                 <div className="flex items-center gap-1.5">
-                                                    <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{plugin.name}</p>
+                                                    <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t(`pluginsPage.pluginNames.${plugin.id}`, { defaultValue: plugin.name })}</p>
                                                     {enabled && <CheckCircle className="w-3.5 h-3.5 text-blue-400" />}
                                                 </div>
                                                 <span className={`text-xs px-2 py-0.5 rounded-full ${darkMode ? 'bg-[#222] text-gray-500' : 'bg-gray-100 text-gray-500'}`}>
-                                                    {plugin.category}
+                                                    {t(`pluginsPage.categories.${plugin.category}`)}
                                                 </span>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             {locked && <span className="text-[10px] font-semibold uppercase tracking-wide text-purple-400">Pro</span>}
                                             {enabled && plugin.needsConfig && (
-                                                <button onClick={() => setConfigModal(plugin)} title="Edit config"
+                                                <button onClick={() => setConfigModal(plugin)} title={t('pluginsPage.editConfig')}
                                                     className={`p-1 rounded-lg transition-colors ${darkMode ? 'text-gray-500 hover:text-gray-300 hover:bg-white/5' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}>
                                                     <Settings className="w-3.5 h-3.5" />
                                                 </button>
@@ -309,16 +326,16 @@ export default function PluginsPage() {
                                             {isSaving ? (
                                                 <Loader2 className="w-5 h-5 animate-spin text-blue-400" />
                                             ) : (
-                                                <Toggle enabled={enabled} onChange={() => handleToggle(plugin)} darkMode={darkMode} disabled={locked} />
+                                                <Toggle enabled={enabled} onChange={() => handleToggle(plugin)} darkMode={darkMode} disabled={locked || loadFailed} />
                                             )}
                                         </div>
                                     </div>
                                     <p className={`text-xs leading-relaxed ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                                        {plugin.description}
+                                        {t(`pluginsPage.pluginDescriptions.${plugin.id}`, { defaultValue: plugin.description })}
                                     </p>
                                     {!plugin.needsConfig && (
                                         <span className={`text-xs font-medium px-2 py-0.5 rounded-full w-fit ${darkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-50 text-emerald-600'}`}>
-                                            No API key required
+                                            {t('pluginsPage.noApiKey')}
                                         </span>
                                     )}
                                 </div>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Search, Plus, Pencil, Trash2, Copy, Check, ExternalLink, X, Key } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useTranslation } from 'react-i18next';
 
 function generateApiKey() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -17,8 +18,8 @@ function trackingIdFromId(id) {
   return 'key_' + clean.slice(0, 16);
 }
 
-function formatDate(dateStr) {
-  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+function formatDate(dateStr, locale) {
+  return new Date(dateStr).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function inputCls(dark) {
@@ -30,6 +31,7 @@ function inputCls(dark) {
 }
 
 export default function ApiKeysTab({ darkMode }) {
+  const { t, i18n } = useTranslation();
   const { user, profile } = useAuth();
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -150,10 +152,10 @@ export default function ApiKeysTab({ darkMode }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-8">
-        <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>API keys</h2>
+        <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('apiKeys.title')}</h2>
         <div className="flex items-center gap-3">
           <button className={`flex items-center gap-2 text-sm border rounded-lg px-4 py-2 transition-colors ${darkMode ? 'border-[#3a3a3a] text-gray-300 hover:bg-white/5' : 'border-gray-300 text-gray-700 hover:bg-gray-100'}`}>
-            API Key Usage
+            {t('apiKeys.usage')}
             <ExternalLink className="w-3.5 h-3.5" />
           </button>
           <button
@@ -161,7 +163,7 @@ export default function ApiKeysTab({ darkMode }) {
             className="flex items-center gap-2 text-sm font-medium bg-white hover:bg-gray-100 text-black rounded-lg px-4 py-2 transition-colors"
           >
             <Plus className="w-4 h-4" />
-            Create new secret key
+            {t('apiKeys.create')}
           </button>
         </div>
       </div>
@@ -173,7 +175,7 @@ export default function ApiKeysTab({ darkMode }) {
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search..."
+            placeholder={t('apiKeys.search')}
             className={`bg-transparent outline-none text-sm w-36 ${darkMode ? 'text-white placeholder-gray-600' : 'text-gray-900 placeholder-gray-400'}`}
           />
         </div>
@@ -187,17 +189,17 @@ export default function ApiKeysTab({ darkMode }) {
           }`}
         >
           {statusFilter === 'active' && <Check className="w-3.5 h-3.5" />}
-          Active
+          {t('apiKeys.active')}
           {statusFilter === 'active' && <X className="w-3 h-3 ml-0.5 opacity-60" />}
         </button>
 
         <button className={`flex items-center gap-1.5 text-sm border rounded-full px-3 py-1.5 transition-colors ${darkMode ? 'border-[#333] text-gray-500 hover:text-gray-300' : 'border-gray-200 text-gray-500 hover:text-gray-700'}`}>
           <Plus className="w-3.5 h-3.5" />
-          Add filter
+          {t('apiKeys.addFilter')}
         </button>
 
         <span className={`text-sm ml-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-          {filtered.length} result{filtered.length !== 1 ? 's' : ''}
+          {t('apiKeys.result', { count: filtered.length })}
         </span>
       </div>
 
@@ -206,14 +208,14 @@ export default function ApiKeysTab({ darkMode }) {
           className={`min-w-[900px] grid text-xs font-medium uppercase tracking-wide px-5 py-3 border-b ${border} ${darkMode ? 'text-gray-500 bg-[#161616]' : 'text-gray-400 bg-gray-50'}`}
           style={{ gridTemplateColumns: '1.6fr 0.8fr 1.6fr 1fr 1fr 1fr 1fr 0.8fr 56px' }}
         >
-          <span>Name</span>
-          <span>Status</span>
-          <span>Tracking ID</span>
-          <span>Secret Key</span>
-          <span>Created</span>
-          <span>Last used</span>
-          <span>Created by</span>
-          <span>Permissions</span>
+          <span>{t('common.name')}</span>
+          <span>{t('apiKeys.status')}</span>
+          <span>{t('apiKeys.trackingId')}</span>
+          <span>{t('apiKeys.secretKey')}</span>
+          <span>{t('apiKeys.created')}</span>
+          <span>{t('apiKeys.lastUsed')}</span>
+          <span>{t('apiKeys.createdBy')}</span>
+          <span>{t('apiKeys.permissions')}</span>
           <span />
         </div>
 
@@ -225,10 +227,10 @@ export default function ApiKeysTab({ darkMode }) {
           <div className={`flex flex-col items-center justify-center py-20 ${darkMode ? 'bg-[#141414]' : 'bg-white'}`}>
             <Key className={`w-10 h-10 mb-3 ${darkMode ? 'text-gray-700' : 'text-gray-300'}`} />
             <p className={`text-sm font-semibold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-              {keys.length === 0 ? 'No API keys yet' : 'No keys match your filters'}
+              {keys.length === 0 ? t('apiKeys.noKeys') : t('apiKeys.noFilterMatches')}
             </p>
             <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-              {keys.length === 0 ? 'Create a secret key to get started.' : 'Try adjusting your search or filters.'}
+              {keys.length === 0 ? t('apiKeys.createToStart') : t('apiKeys.adjustFilters')}
             </p>
           </div>
         ) : (
@@ -249,7 +251,7 @@ export default function ApiKeysTab({ darkMode }) {
                     : darkMode ? 'text-gray-500 bg-[#222]' : 'text-gray-500 bg-gray-100'
                 }`}>
                   {k.is_active && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />}
-                  {k.is_active ? 'Active' : 'Inactive'}
+                  {k.is_active ? t('apiKeys.active') : t('apiKeys.inactive')}
                 </span>
               </span>
 
@@ -262,30 +264,30 @@ export default function ApiKeysTab({ darkMode }) {
               </span>
 
               <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                {formatDate(k.created_at)}
+                {formatDate(k.created_at, i18n.resolvedLanguage)}
               </span>
 
               <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                {k.last_used_at ? formatDate(k.last_used_at) : 'Never'}
+                {k.last_used_at ? formatDate(k.last_used_at, i18n.resolvedLanguage) : t('apiKeys.never')}
               </span>
 
               <span className={`text-xs truncate pr-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                 {creatorName}
               </span>
 
-              <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>All</span>
+              <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{t('apiKeys.all')}</span>
 
               <div className="flex items-center gap-0.5 justify-end">
                 <button
                   onClick={() => { setRenaming(k); setRenameValue(k.name); }}
-                  title="Rename"
+                  title={t('apiKeys.rename')}
                   className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${darkMode ? 'text-gray-500 hover:text-white hover:bg-white/10' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'}`}
                 >
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
                 <button
                   onClick={() => setDeleting(k)}
-                  title="Revoke"
+                  title={t('apiKeys.revoke')}
                   className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${darkMode ? 'text-gray-500 hover:text-red-400 hover:bg-red-400/10' : 'text-gray-400 hover:text-red-600 hover:bg-red-50'}`}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -301,7 +303,7 @@ export default function ApiKeysTab({ darkMode }) {
           <div className={`w-full max-w-md rounded-2xl border shadow-2xl ${darkMode ? 'bg-[#141414] border-[#2a2a2a]' : 'bg-white border-gray-200'}`}>
             <div className={`flex items-center justify-between px-6 py-5 border-b ${border}`}>
               <h3 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                {createdKey ? 'Save your key' : 'Create new secret key'}
+                {createdKey ? t('apiKeys.saveKey') : t('apiKeys.create')}
               </h3>
               <button
                 onClick={closeCreate}
@@ -315,28 +317,28 @@ export default function ApiKeysTab({ darkMode }) {
               {!createdKey ? (
                 <>
                   <div>
-                    <label className={`block text-sm font-medium mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Name</label>
+                    <label className={`block text-sm font-medium mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{t('common.name')}</label>
                     <input
                       type="text"
                       value={newKeyName}
                       onChange={e => setNewKeyName(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && !creating && newKeyName.trim() && handleCreate()}
-                      placeholder="My secret key"
+                      placeholder={t('apiKeys.mySecretKey')}
                       className={inputCls(darkMode)}
                       autoFocus
                     />
                   </div>
                   <div>
-                    <label className={`block text-sm font-medium mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Permissions</label>
+                    <label className={`block text-sm font-medium mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{t('apiKeys.permissions')}</label>
                     <div className="relative">
                       <select
                         value={newKeyPerms}
                         onChange={e => setNewKeyPerms(e.target.value)}
                         className={`${inputCls(darkMode)} appearance-none cursor-pointer`}
                       >
-                        <option>All</option>
-                        <option>Read only</option>
-                        <option>Write only</option>
+                        <option>{t('apiKeys.all')}</option>
+                        <option>{t('apiKeys.readOnly')}</option>
+                        <option>{t('apiKeys.writeOnly')}</option>
                       </select>
                       <div className={`absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -350,8 +352,8 @@ export default function ApiKeysTab({ darkMode }) {
               ) : (
                 <>
                   <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                    Please save this key somewhere safe. For security reasons,{' '}
-                    <strong className={darkMode ? 'text-white' : 'text-gray-900'}>you won't be able to view it again</strong> after closing this dialog.
+                    {t('apiKeys.saveSomewhereSafe')}{' '}
+                    <strong className={darkMode ? 'text-white' : 'text-gray-900'}>{t('apiKeys.cannotViewAgain')}</strong> after closing this dialog.
                   </p>
                   <div className={`flex items-start gap-2 border rounded-lg px-3 py-3 ${darkMode ? 'bg-[#0d0d0d] border-[#2e2e2e]' : 'bg-gray-50 border-gray-200'}`}>
                     <span className={`flex-1 break-all text-xs font-mono ${darkMode ? 'text-emerald-400' : 'text-gray-800'}`}>{createdKey}</span>
@@ -363,7 +365,7 @@ export default function ApiKeysTab({ darkMode }) {
                     </button>
                   </div>
                   <p className={`text-xs ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>
-                    Copy this key now — it will not be shown again.
+                    {t('apiKeys.copyNow')}
                   </p>
                 </>
               )}
@@ -374,7 +376,7 @@ export default function ApiKeysTab({ darkMode }) {
                 onClick={closeCreate}
                 className={`text-sm px-4 py-2 rounded-lg border transition-colors ${darkMode ? 'border-[#3a3a3a] text-gray-400 hover:text-white' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
               >
-                {createdKey ? 'Done' : 'Cancel'}
+                {createdKey ? t('apiKeys.done') : t('common.cancel')}
               </button>
               {!createdKey && (
                 <button
@@ -382,7 +384,7 @@ export default function ApiKeysTab({ darkMode }) {
                   disabled={creating || !newKeyName.trim()}
                   className="text-sm font-medium bg-white hover:bg-gray-100 disabled:opacity-50 text-black px-5 py-2 rounded-lg transition-colors"
                 >
-                  {creating ? 'Creating...' : 'Create secret key'}
+                  {creating ? t('apiKeys.creating') : t('apiKeys.createSecret')}
                 </button>
               )}
             </div>
@@ -394,13 +396,13 @@ export default function ApiKeysTab({ darkMode }) {
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className={`w-full max-w-sm rounded-2xl border shadow-2xl ${darkMode ? 'bg-[#141414] border-[#2a2a2a]' : 'bg-white border-gray-200'}`}>
             <div className={`flex items-center justify-between px-6 py-5 border-b ${border}`}>
-              <h3 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Rename key</h3>
+              <h3 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('apiKeys.renameKey')}</h3>
               <button onClick={() => setRenaming(null)} className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${darkMode ? 'text-gray-400 hover:text-white hover:bg-white/5' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}>
                 <X className="w-4 h-4" />
               </button>
             </div>
             <div className="px-6 py-5">
-              <label className={`block text-sm font-medium mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Name</label>
+              <label className={`block text-sm font-medium mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{t('common.name')}</label>
               <input
                 type="text"
                 value={renameValue}
@@ -411,9 +413,9 @@ export default function ApiKeysTab({ darkMode }) {
               />
             </div>
             <div className={`flex justify-end gap-2 px-6 py-4 border-t ${border}`}>
-              <button onClick={() => setRenaming(null)} className={`text-sm px-4 py-2 rounded-lg border transition-colors ${darkMode ? 'border-[#3a3a3a] text-gray-400 hover:text-white' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>Cancel</button>
+              <button onClick={() => setRenaming(null)} className={`text-sm px-4 py-2 rounded-lg border transition-colors ${darkMode ? 'border-[#3a3a3a] text-gray-400 hover:text-white' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>{t('common.cancel')}</button>
               <button onClick={handleRename} disabled={renameLoading || !renameValue.trim()} className="text-sm font-medium bg-white hover:bg-gray-100 disabled:opacity-50 text-black px-5 py-2 rounded-lg transition-colors">
-                {renameLoading ? 'Saving...' : 'Save'}
+                {renameLoading ? t('project.saving') : t('project.save')}
               </button>
             </div>
           </div>
@@ -428,18 +430,16 @@ export default function ApiKeysTab({ darkMode }) {
                 <div className="w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center shrink-0">
                   <Trash2 className="w-5 h-5 text-red-400" />
                 </div>
-                <h3 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Revoke secret key</h3>
+                <h3 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('apiKeys.revokeTitle')}</h3>
               </div>
               <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                This will permanently revoke{' '}
-                <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>"{deleting.name}"</span>.
-                Any integrations using this key will stop working.
+                {t('apiKeys.revokeWarning', { name: deleting.name })}
               </p>
             </div>
             <div className={`flex justify-end gap-2 px-6 py-4 border-t ${border}`}>
-              <button onClick={() => setDeleting(null)} className={`text-sm px-4 py-2 rounded-lg border transition-colors ${darkMode ? 'border-[#3a3a3a] text-gray-400 hover:text-white' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>Cancel</button>
+              <button onClick={() => setDeleting(null)} className={`text-sm px-4 py-2 rounded-lg border transition-colors ${darkMode ? 'border-[#3a3a3a] text-gray-400 hover:text-white' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>{t('common.cancel')}</button>
               <button onClick={handleDelete} disabled={deleteLoading} className="text-sm font-medium bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white px-5 py-2 rounded-lg transition-colors">
-                {deleteLoading ? 'Revoking...' : 'Revoke key'}
+                {deleteLoading ? t('apiKeys.revoking') : t('apiKeys.revokeKey')}
               </button>
             </div>
           </div>

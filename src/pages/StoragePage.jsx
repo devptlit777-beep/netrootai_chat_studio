@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 import {
   Upload,
@@ -21,6 +22,7 @@ import {
 const MAX_STORAGE_BYTES = 256 * 1024 * 1024;
 
 export default function StoragePage() {
+  const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const { theme } = useTheme();
   const darkMode = theme === 'dark';
@@ -69,7 +71,7 @@ export default function StoragePage() {
 
     if (currentUsedSize + totalSelectedSize > MAX_STORAGE_BYTES) {
       const remainingBytes = Math.max(0, MAX_STORAGE_BYTES - currentUsedSize);
-      setError(`You can upload up to ${formatBytes(MAX_STORAGE_BYTES)} per user. You have ${formatBytes(remainingBytes)} remaining.`);
+      setError(t('storage.uploadLimitError', { max: formatBytes(MAX_STORAGE_BYTES), remaining: formatBytes(remainingBytes) }));
       return;
     }
 
@@ -81,7 +83,7 @@ export default function StoragePage() {
     for (const file of files) {
       const remainingBytes = MAX_STORAGE_BYTES - usedBytes;
       if (file.size > remainingBytes) {
-        setError(`This file is too large for your remaining storage. ${formatBytes(remainingBytes)} left.`);
+        setError(t('storage.fileTooLarge', { remaining: formatBytes(remainingBytes) }));
         setUploading(false);
         return;
       }
@@ -180,17 +182,17 @@ export default function StoragePage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
             <h1 className={`text-2xl font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-              My Storage
+              {t('storage.title')}
             </h1>
             <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-              {attachments.length} file{attachments.length !== 1 ? 's' : ''} · {formatBytes(totalSize)} used of {formatBytes(MAX_STORAGE_BYTES)}
+              {attachments.length} {attachments.length === 1 ? t('storage.file') : t('storage.files')} · {formatBytes(totalSize)} {t('storage.usedOf')} {formatBytes(MAX_STORAGE_BYTES)}
             </p>
             <div className="flex items-center gap-2 mt-2">
               <div className={`h-2 w-32 rounded-full overflow-hidden ${darkMode ? 'bg-[#222]' : 'bg-gray-200'}`}>
                 <div className="h-2 rounded-full bg-[#3b82f6]" style={{ width: `${storageUsagePercent}%` }} />
               </div>
               <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                {formatBytes(remainingStorageBytes)} left
+                {formatBytes(remainingStorageBytes)} {t('storage.left')}
               </span>
             </div>
           </div>
@@ -202,7 +204,7 @@ export default function StoragePage() {
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Search files..."
+                placeholder={t('storage.search')}
                 className={`bg-transparent text-sm outline-none w-48 ${darkMode ? 'text-white placeholder-gray-600' : 'text-gray-900 placeholder-gray-400'}`}
               />
               {searchQuery && (
@@ -226,7 +228,7 @@ export default function StoragePage() {
               className="flex items-center gap-2 bg-[#3b82f6] hover:bg-[#2563eb] disabled:opacity-60 text-white rounded-lg px-4 py-2.5 text-sm font-medium transition-colors"
             >
               {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              {uploading ? 'Uploading...' : 'Upload'}
+              {uploading ? t('storage.uploading') : t('storage.upload')}
             </button>
           </div>
         </div>
@@ -260,10 +262,10 @@ export default function StoragePage() {
         >
           <Upload className={`w-8 h-8 mb-3 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`} />
           <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            Drag & drop files here, or click Upload to select files
+            {t('storage.dropFiles')}
           </p>
           <p className={`text-xs mt-1 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-            Per-user limit: {formatBytes(MAX_STORAGE_BYTES)} total · {formatBytes(remainingStorageBytes)} remaining
+            {t('storage.perUserLimit')} {formatBytes(MAX_STORAGE_BYTES)} total · {formatBytes(remainingStorageBytes)} {t('storage.remaining')}
           </p>
         </div>
 
@@ -275,10 +277,10 @@ export default function StoragePage() {
           <div className={`flex flex-col items-center justify-center py-20 rounded-2xl border ${darkMode ? 'border-[#222] bg-[#111111]' : 'border-gray-200 bg-white'}`}>
             <HardDrive className={`w-12 h-12 mb-4 ${darkMode ? 'text-gray-700' : 'text-gray-300'}`} />
             <p className={`text-sm font-medium ${darkMode ? 'text-gray-500' : 'text-gray-600'}`}>
-              {searchQuery ? 'No files match your search' : 'No files yet'}
+              {searchQuery ? t('storage.noSearchResults') : t('storage.noFiles')}
             </p>
             <p className={`text-xs mt-1 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-              {searchQuery ? 'Try a different search term' : 'Upload your first file to get started'}
+              {searchQuery ? t('storage.tryDifferentSearch') : t('storage.firstUpload')}
             </p>
           </div>
         ) : (
@@ -289,7 +291,7 @@ export default function StoragePage() {
                 className="flex items-center gap-1.5 hover:text-gray-700 transition-colors text-left"
               >
                 <FileType className="w-3.5 h-3.5" />
-                Name
+                {t('storage.name')}
                 <ArrowUpDown className={`w-3 h-3 transition-transform ${sortField === 'name' ? (darkMode ? 'text-[#3b82f6]' : 'text-blue-500') : 'opacity-30'}`} />
               </button>
 
@@ -298,7 +300,7 @@ export default function StoragePage() {
                 className="flex items-center gap-1.5 hover:text-gray-700 transition-colors text-left"
               >
                 <HardDrive className="w-3.5 h-3.5" />
-                Size
+                {t('storage.size')}
                 <ArrowUpDown className={`w-3 h-3 transition-transform ${sortField === 'size' ? (darkMode ? 'text-[#3b82f6]' : 'text-blue-500') : 'opacity-30'}`} />
               </button>
 
@@ -307,11 +309,11 @@ export default function StoragePage() {
                 className="flex items-center gap-1.5 hover:text-gray-700 transition-colors text-left"
               >
                 <Clock className="w-3.5 h-3.5" />
-                Date
+                {t('storage.date')}
                 <ArrowUpDown className={`w-3 h-3 transition-transform ${sortField === 'created_at' ? (darkMode ? 'text-[#3b82f6]' : 'text-blue-500') : 'opacity-30'}`} />
               </button>
 
-              <span className="text-right">Actions</span>
+              <span className="text-right">{t('storage.actions')}</span>
             </div>
 
             <div className="divide-y">
@@ -337,13 +339,13 @@ export default function StoragePage() {
                   </p>
 
                   <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                    {formatDate(attachment.created_at)}
+                    {formatDate(attachment.created_at, i18n.resolvedLanguage)}
                   </p>
 
                   <div className="flex items-center justify-end gap-1">
                     <button
                       onClick={() => handleDownload(attachment)}
-                      title="Download"
+                      title={t('storage.download')}
                       className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${darkMode ? 'text-gray-500 hover:text-white hover:bg-white/5' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'}`}
                     >
                       <Download className="w-4 h-4" />
@@ -352,7 +354,7 @@ export default function StoragePage() {
                     <button
                       onClick={() => handleDelete(attachment.id, attachment.storage_path)}
                       disabled={deleting === attachment.id}
-                      title="Delete"
+                      title={t('storage.delete')}
                       className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${darkMode ? 'text-gray-500 hover:text-red-400 hover:bg-red-500/10' : 'text-gray-400 hover:text-red-500 hover:bg-red-50'}`}
                     >
                       {deleting === attachment.id ? (
@@ -393,9 +395,9 @@ function formatBytes(bytes) {
   return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
 }
 
-function formatDate(iso) {
+function formatDate(iso, locale) {
   const d = new Date(iso);
-  return d.toLocaleDateString(undefined, {
+  return d.toLocaleDateString(locale, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',

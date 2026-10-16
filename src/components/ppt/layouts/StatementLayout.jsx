@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import EditableText from '../EditableText';
 import { stripMarkdown } from '../pptConstants';
 import { Trash2 } from 'lucide-react';
@@ -11,6 +12,7 @@ export default function StatementLayout({
   onOpenPhotoModal,
   onPushHistory,
 }) {
+  const { t } = useTranslation();
   const items = Array.isArray(slide.c) ? slide.c : [String(slide.c || '')];
   const statementText = stripMarkdown(
     items.length > 0 ? (Array.isArray(items[0]) ? items[0].join(' ') : String(items[0] || '')) : ''
@@ -97,7 +99,7 @@ export default function StatementLayout({
               className="pt-3 border-t border-slate-700/50 flex items-center justify-between text-xs font-medium"
               style={{ color: 'var(--slide-text-muted)' }}
             >
-              <span className="font-mono text-[10px] tracking-wider uppercase">CORE TAKEAWAY</span>
+              <span className="font-mono text-[10px] tracking-wider uppercase">{t('ppt.coreTakeaway')}</span>
             </div>
           </div>
 
@@ -112,7 +114,7 @@ export default function StatementLayout({
                   type="button"
                   onClick={() => adjustImageScale(-0.1)}
                   className="w-5 h-5 flex items-center justify-center rounded hover:bg-slate-700 font-bold"
-                  title="Scale down"
+                  title={t('ppt.scaleDown')}
                 >
                   −
                 </button>
@@ -123,7 +125,7 @@ export default function StatementLayout({
                   type="button"
                   onClick={() => adjustImageScale(0.1)}
                   className="w-5 h-5 flex items-center justify-center rounded hover:bg-slate-700 font-bold"
-                  title="Scale up"
+                  title={t('ppt.scaleUp')}
                 >
                   +
                 </button>
@@ -132,7 +134,7 @@ export default function StatementLayout({
                   onClick={onOpenPhotoModal}
                   className="text-sky-400 hover:text-sky-300 px-1 py-0.5 rounded text-[11px]"
                 >
-                  Replace
+                  {t('ppt.replace')}
                 </button>
                 <button
                   type="button"
@@ -187,7 +189,7 @@ export default function StatementLayout({
             className="pt-4 border-t border-slate-700/50 flex items-center justify-between text-xs font-medium"
             style={{ color: 'var(--slide-text-muted)' }}
           >
-            <span className="font-mono text-[11px] tracking-wider uppercase">CORE TAKEAWAY</span>
+            <span className="font-mono text-[11px] tracking-wider uppercase">{t('ppt.coreTakeaway')}</span>
           </div>
         </div>
       )}

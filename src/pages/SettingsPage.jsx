@@ -25,6 +25,8 @@ const GPT5_MODELS = [
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
+import { useTranslation } from 'react-i18next';
+import { changeAppLanguage, languageOptions } from '../i18n';
 
 function getFallbackAvatar(email) {
   const seed = email || 'default';
@@ -32,6 +34,7 @@ function getFallbackAvatar(email) {
 }
 
 export default function SettingsPage() {
+  const { t } = useTranslation();
   const { user, profile, refreshProfile, signOut } = useAuth();
   const { theme } = useTheme();
   const darkMode = theme === 'dark';
@@ -41,8 +44,8 @@ export default function SettingsPage() {
     <div className={`min-h-screen ${darkMode ? 'bg-[#0e0e0e] text-white' : 'bg-gray-50 text-gray-900'}`}>
       <div className="max-w-2xl mx-auto px-6 py-12">
         <div className={`flex gap-1 mb-10 border-b ${darkMode ? 'border-[#222]' : 'border-gray-200'}`}>
-          <TabBtn label="User" active={tab === 'user'} onClick={() => setTab('user')} darkMode={darkMode} />
-          <TabBtn label="Security" active={tab === 'security'} onClick={() => setTab('security')} darkMode={darkMode} />
+          <TabBtn label={t('settings.user')} active={tab === 'user'} onClick={() => setTab('user')} darkMode={darkMode} />
+          <TabBtn label={t('settings.security')} active={tab === 'security'} onClick={() => setTab('security')} darkMode={darkMode} />
         </div>
 
         {tab === 'user' ? (
@@ -73,6 +76,7 @@ function TabBtn({ label, active, onClick, darkMode }) {
 }
 
 function UserTab({ profile, user, onSaved, darkMode }) {
+  const { t, i18n } = useTranslation();
   const [fullName, setFullName] = useState(profile?.full_name ?? '');
   const [phone, setPhone] = useState(profile?.phone ?? '');
   const [defaultOrg, setDefaultOrg] = useState(profile?.default_org ?? '');
@@ -166,16 +170,43 @@ function UserTab({ profile, user, onSaved, darkMode }) {
 
   return (
     <div className="space-y-8">
+      <section>
+        <h1 className={`text-2xl font-semibold mb-6 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('settings.general')}</h1>
+        <div className={`flex items-center justify-between gap-4 rounded-2xl border px-5 py-4 ${darkMode ? 'border-[#252525]' : 'border-gray-200'}`}>
+          <div>
+            <label htmlFor="app-language" className={`block text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+              {t('settings.language')}
+            </label>
+            <p className={`mt-0.5 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              {t('settings.languageDescription')}
+            </p>
+          </div>
+          <div className="relative shrink-0">
+            <select
+              id="app-language"
+              value={i18n.resolvedLanguage || i18n.language}
+              onChange={event => changeAppLanguage(event.target.value)}
+              className={`appearance-none cursor-pointer rounded-full border py-2.5 pl-4 pr-10 text-sm font-medium outline-none transition-colors ${darkMode ? 'border-[#464646] bg-[#2c2c2c] text-white hover:bg-[#363636]' : 'border-gray-300 bg-white text-gray-900 hover:bg-gray-50'}`}
+            >
+              {languageOptions.map(({ code, name }) => (
+                <option key={code} value={code}>{name}</option>
+              ))}
+            </select>
+            <ChevronDown className={`pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+          </div>
+        </div>
+      </section>
+
       {uploadError && (
         <div className={`border rounded-lg px-4 py-3 text-sm flex items-center gap-2 ${darkMode ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-red-50 border-red-200 text-red-600'}`}>
-          <span className="font-medium">Upload failed:</span> {uploadError}
+          <span className="font-medium">{t('settings.uploadFailed')}</span> {uploadError}
         </div>
       )}
 
       {uploadDone && (
         <div className={`border rounded-lg px-4 py-3 text-sm flex items-center gap-2 ${darkMode ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
           <Check className="w-4 h-4" />
-          Avatar updated successfully.
+          {t('settings.avatarUpdated')}
         </div>
       )}
 
@@ -211,11 +242,11 @@ function UserTab({ profile, user, onSaved, darkMode }) {
         <div>
           <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{profile?.full_name || 'Your Name'}</p>
           <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{user?.email}</p>
-          <p className={`text-xs mt-1 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>Click the camera icon to change your avatar</p>
+          <p className={`text-xs mt-1 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>{t('settings.avatarHint')}</p>
         </div>
       </div>
 
-      <FormField label="Name" desc="The name associated with this account" darkMode={darkMode}>
+      <FormField label={t('settings.name')} desc={t('settings.nameDescription')} darkMode={darkMode}>
         <input
           type="text"
           value={fullName}
@@ -224,7 +255,7 @@ function UserTab({ profile, user, onSaved, darkMode }) {
         />
       </FormField>
 
-      <FormField label="Email address" desc="The email address associated with this account" darkMode={darkMode}>
+      <FormField label={t('settings.email')} desc={t('settings.emailDescription')} darkMode={darkMode}>
         <input
           type="email"
           value={user?.email ?? ''}
@@ -233,7 +264,7 @@ function UserTab({ profile, user, onSaved, darkMode }) {
         />
       </FormField>
 
-      <FormField label="Phone number" desc="The phone number associated with this account" darkMode={darkMode}>
+      <FormField label={t('settings.phone')} desc={t('settings.phoneDescription')} darkMode={darkMode}>
         <input
           type="tel"
           value={phone}
@@ -243,7 +274,7 @@ function UserTab({ profile, user, onSaved, darkMode }) {
         />
       </FormField>
 
-      <FormField label="Default organization" desc="The organization used by default when making requests with your user API keys" darkMode={darkMode}>
+      <FormField label={t('settings.defaultOrganization')} desc={t('settings.defaultOrganizationDescription')} darkMode={darkMode}>
         <div className="relative">
           <select
             value={defaultOrg}
@@ -328,6 +359,7 @@ function UserTab({ profile, user, onSaved, darkMode }) {
 }
 
 function SecurityTab({ userId, onSignOut, darkMode }) {
+  const { t } = useTranslation();
   const [apiKeys, setApiKeys] = useState([]);
   const [loadedKeys, setLoadedKeys] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
@@ -415,7 +447,7 @@ function SecurityTab({ userId, onSignOut, darkMode }) {
           <div className="flex items-center gap-3">
             <Key className={`w-4 h-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
             <div>
-              <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>Revoke API key</p>
+              <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('settings.revokeApiKey')}</p>
               {loadedKeys && apiKeys.length > 0 && (
                 <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
                   {apiKeys.filter(k => k.is_active).length} active key{apiKeys.filter(k => k.is_active).length !== 1 ? 's' : ''}
@@ -451,7 +483,7 @@ function SecurityTab({ userId, onSignOut, darkMode }) {
                   Create
                 </button>
                 <button onClick={() => setCreatingKey(false)} className={`text-sm px-2 py-2 transition-colors ${darkMode ? 'text-gray-500 hover:text-white' : 'text-gray-500 hover:text-gray-700'}`}>
-                  Cancel
+                  {t('common.cancel')}
                 </button>
               </div>
             ) : (
@@ -465,7 +497,7 @@ function SecurityTab({ userId, onSignOut, darkMode }) {
             )}
 
             {apiKeys.length === 0 ? (
-              <p className={`text-xs ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>No API keys yet.</p>
+              <p className={`text-xs ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>{t('settings.noApiKeys')}</p>
             ) : (
               <div className="space-y-2">
                 {apiKeys.map(key => (
@@ -476,14 +508,14 @@ function SecurityTab({ userId, onSignOut, darkMode }) {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`text-xs px-2 py-0.5 rounded-full ${key.is_active ? darkMode ? 'bg-emerald-500/15 text-emerald-400' : 'bg-emerald-100 text-emerald-700' : darkMode ? 'bg-red-500/15 text-red-400' : 'bg-red-100 text-red-700'}`}>
-                        {key.is_active ? 'Active' : 'Revoked'}
+                        {key.is_active ? t('common.active') : t('settings.revoked')}
                       </span>
                       {key.is_active && (
                         <button
                           onClick={() => revokeKey(key.id)}
                           className={`text-xs border rounded px-2 py-1 transition-colors ${darkMode ? 'text-gray-500 hover:text-yellow-400 border-[#2a2a2a] hover:border-yellow-400/30' : 'text-gray-500 hover:text-yellow-600 border-gray-200 hover:border-yellow-300'}`}
                         >
-                          Revoke
+                          {t('settings.revoke')}
                         </button>
                       )}
                       <button
@@ -504,15 +536,15 @@ function SecurityTab({ userId, onSignOut, darkMode }) {
           <div className="flex items-center gap-3">
             <Shield className={`w-4 h-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
             <div>
-              <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>Multi-factor authentication</p>
-              <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{mfaEnabled ? 'Enabled' : 'Not enabled'}</p>
+              <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('settings.multiFactor')}</p>
+              <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{mfaEnabled ? t('settings.enabled') : t('settings.notEnabled')}</p>
             </div>
           </div>
           <button
             onClick={() => setMfaEnabled(v => !v)}
             className={`text-sm border rounded-lg px-4 py-2 transition-colors ${darkMode ? 'text-white bg-[#1e1e1e] hover:bg-[#2a2a2a] border-[#2a2a2a]' : 'text-gray-700 bg-white hover:bg-gray-50 border-gray-300'}`}
           >
-            {mfaEnabled ? 'Disable MFA' : 'Enable MFA'}
+            {mfaEnabled ? t('settings.disableMfa') : t('settings.enableMfa')}
           </button>
         </div> */}
 
@@ -520,15 +552,15 @@ function SecurityTab({ userId, onSignOut, darkMode }) {
           <div className="flex items-center gap-3">
             <LogOut className={`w-4 h-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
             <div>
-              <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>Log out</p>
-              <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>End the current session</p>
+              <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('settings.logout')}</p>
+              <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{t('settings.endSession')}</p>
             </div>
           </div>
           <button
             onClick={onSignOut}
             className={`text-sm border rounded-lg px-4 py-2 transition-colors ${darkMode ? 'text-white bg-[#1e1e1e] hover:bg-[#2a2a2a] border-[#2a2a2a]' : 'text-gray-700 bg-white hover:bg-gray-50 border-gray-300'}`}
           >
-            Log out
+            {t('settings.logout')}
           </button>
         </div>
       </div>

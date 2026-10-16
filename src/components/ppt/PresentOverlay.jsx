@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import SlideCanvas from './SlideCanvas';
 import { ChevronLeft, ChevronRight, X, Maximize2 } from 'lucide-react';
 
@@ -11,6 +12,7 @@ export default function PresentOverlay({
   currentTheme = 'midnight',
   currentSeedHex = '#0EA5E9',
 }) {
+  const { t } = useTranslation();
   useEffect(() => {
     if (!isOpen) return;
 
@@ -41,14 +43,14 @@ export default function PresentOverlay({
         <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 text-xs font-mono text-slate-300">
           <span>{currentIndex + 1} / {slides.length}</span>
           <span className="text-slate-600">•</span>
-          <span className="text-slate-400">Use Arrow Keys or Click</span>
+          <span className="text-slate-400">{t('ppt.useArrowKeys')}</span>
         </div>
 
         <button
           type="button"
           onClick={onClose}
           className="w-9 h-9 rounded-full bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-center text-slate-300 hover:text-white transition"
-          title="Exit Fullscreen (Esc)"
+          title={t('ppt.exitFullscreen')}
         >
           <X className="w-5 h-5" />
         </button>
@@ -72,7 +74,7 @@ export default function PresentOverlay({
         onClick={() => onNavigate(-1)}
         disabled={currentIndex === 0}
         className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-center text-slate-300 hover:text-white disabled:opacity-20 transition"
-        title="Previous Slide"
+        title={t('ppt.previous')}
       >
         <ChevronLeft className="w-6 h-6" />
       </button>
@@ -82,7 +84,7 @@ export default function PresentOverlay({
         onClick={() => onNavigate(1)}
         disabled={currentIndex === slides.length - 1}
         className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-center text-slate-300 hover:text-white disabled:opacity-20 transition"
-        title="Next Slide"
+        title={t('ppt.next')}
       >
         <ChevronRight className="w-6 h-6" />
       </button>

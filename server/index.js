@@ -74,6 +74,27 @@ function getSupabaseClient() {
     return createClient(url, key, { auth: { persistSession: false } });
 }
 
+async function getEnabledUserPlugins(userId) {
+    if (!userId) return [];
+
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+        throw new Error('Supabase service client is unavailable.');
+    }
+
+    const { data, error } = await supabase
+        .from('user_plugins')
+        .select('plugin_id, config')
+        .eq('user_id', userId)
+        .eq('enabled', true);
+
+    if (error) {
+        throw error;
+    }
+
+    return data || [];
+}
+
 async function recordUsage({ inputTokens, outputTokens, cachedTokens, latencyMs, model, userEmail, plan, prompt }) {
     const sb = getSupabaseClient();
     if (!sb) {
@@ -1269,13 +1290,26 @@ async function handleChat(req, res) {
     const { plan, email, userId } = await resolveUserPlan(req, body);
     const requestStart = Date.now();
 
+    let enabledPlugins;
+    try {
+        enabledPlugins = await getEnabledUserPlugins(userId);
+    } catch (error) {
+        console.error('[chat] failed to load enabled plugins:', error.message);
+        sendJson(res, 503, { error: 'Unable to verify plugin settings. Please try again.' }, req);
+        return;
+    }
+
+    const planLimits = getPlanLimits(plan);
+    const allowedPlugins = new Set(planLimits.allowedPlugins || []);
+    const permittedPlugins = enabledPlugins.filter(plugin => allowedPlugins.has(plugin.plugin_id));
+
     // Intercept Natural Language Chat-to-PPT generation intent (Option A)
-    if (isPptGenerationRequest(prompt)) {
+    if (isPptGenerationRequest(prompt) && permittedPlugins.some(plugin => plugin.plugin_id === 'ppt-generator')) {
         await handleChatToPpt({
             prompt,
             history: body.history,
             userEmail: email,
-            userId: body.userId || userId,
+            userId,
             res,
             req,
             requestStart,
@@ -1284,7 +1318,6 @@ async function handleChat(req, res) {
         return;
     }
 
-    const planLimits = getPlanLimits(plan);
     const selectedModel = normalizeModel(body.model || process.env.GROQ_MODEL || process.env.OPENAI_MODEL || 'openai/gpt-oss-20b');
 
     console.log('[chat] plan:', plan, '| model:', selectedModel, '| canUse:', canUseModel(plan, selectedModel), '| allowedModels:', JSON.stringify(getPlanLimits(plan).allowedModels));
@@ -1341,10 +1374,6 @@ async function handleChat(req, res) {
         return;
     }
 
-    const allowedPlugins = new Set(planLimits.allowedPlugins || []);
-    const permittedPlugins = Array.isArray(body.plugins)
-        ? body.plugins.filter(plugin => allowedPlugins.has(plugin.plugin_id))
-        : [];
     const { pluginContext, imageUrl } = await resolvePlugins(prompt, permittedPlugins, body.attachments);
 
     if (imageUrl) {

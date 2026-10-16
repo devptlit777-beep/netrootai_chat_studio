@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   Users, Zap, TrendingUp, LogOut, RefreshCw, Search, Shield,
   ChevronDown, ChevronUp, X, Clock, Activity, MessageSquare, Cpu, Mail, RotateCw,
@@ -16,11 +17,13 @@ function fmtDate(ts) { return new Date(ts).toLocaleString(undefined, { month: 's
 function fmtPlanDate(ts) { return ts ? new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'; }
 
 function StatusBadge({ status }) {
+  const { t } = useTranslation();
   const active = status === 'active';
-  return <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${active ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>{active ? 'Active' : 'Expired'}</span>;
+  return <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${active ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>{active ? t('admin.active') : t('admin.expired')}</span>;
 }
 
 export default function AdminPage() {
+  const { t } = useTranslation();
   const { theme } = useTheme();
   const dark = theme === 'dark';
   const navigate = useNavigate();
@@ -52,7 +55,7 @@ export default function AdminPage() {
       sessionStorage.setItem('admin_authed', '1');
       setAuthed(true);
     } else {
-      setLoginErr('Invalid admin credentials.');
+      setLoginErr(t('admin.invalidCredentials'));
     }
   }
 
@@ -88,8 +91,8 @@ export default function AdminPage() {
         body: JSON.stringify({ email: user.email }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Unable to send notification.');
-      setNotificationMessage(`Notification sent to ${user.email}.`);
+      if (!response.ok) throw new Error(data.error || t('admin.unableSendNotification'));
+      setNotificationMessage(t('common.notificationSent', { email: user.email }));
     } catch (error) {
       setNotificationMessage(error.message);
     } finally {
@@ -99,7 +102,7 @@ export default function AdminPage() {
 
   async function reactivateUser(event, user) {
     event.stopPropagation();
-    if (!window.confirm(`Reactivate ${user.email} for one month?`)) return;
+    if (!window.confirm(t('common.reactivateConfirmation', { email: user.email }))) return;
     setReactivatingEmail(user.email);
     setNotificationMessage('');
     try {
@@ -109,8 +112,8 @@ export default function AdminPage() {
         body: JSON.stringify({ email: user.email }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Unable to reactivate user.');
-      setNotificationMessage(`${user.email} activated on Free until ${fmtPlanDate(data.current_period_end)}.`);
+      if (!response.ok) throw new Error(data.error || t('common.unableReactivate'));
+      setNotificationMessage(t('common.reactivatedUntil', { email: user.email, date: fmtPlanDate(data.current_period_end) }));
       await fetchData();
     } catch (error) {
       setNotificationMessage(error.message);
@@ -183,20 +186,20 @@ export default function AdminPage() {
               <Shield className="w-7 h-7 text-blue-500" />
             </div>
           </div>
-          <h1 className={`text-xl font-bold text-center mb-1 ${dark ? 'text-white' : 'text-gray-900'}`}>Admin Dashboard</h1>
-          <p className={`text-sm text-center mb-7 ${dark ? 'text-gray-500' : 'text-gray-500'}`}>Restricted access</p>
+          <h1 className={`text-xl font-bold text-center mb-1 ${dark ? 'text-white' : 'text-gray-900'}`}>{t('admin.dashboard')}</h1>
+          <p className={`text-sm text-center mb-7 ${dark ? 'text-gray-500' : 'text-gray-500'}`}>{t('admin.restrictedAccess')}</p>
           <form onSubmit={handleLogin} className="space-y-4">
-            <input type="email" placeholder="Admin email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)}
+            <input type="email" placeholder={t('admin.emailPlaceholder')} value={loginEmail} onChange={e => setLoginEmail(e.target.value)}
               className={`w-full border rounded-lg px-4 py-2.5 text-sm outline-none ${dark ? 'bg-[#1a1a28] border-white/10 text-white placeholder-gray-500 focus:border-blue-500/60' : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-blue-500'}`} required />
-            <input type="password" placeholder="Admin password" value={loginPw} onChange={e => setLoginPw(e.target.value)}
+            <input type="password" placeholder={t('admin.passwordPlaceholder')} value={loginPw} onChange={e => setLoginPw(e.target.value)}
               className={`w-full border rounded-lg px-4 py-2.5 text-sm outline-none ${dark ? 'bg-[#1a1a28] border-white/10 text-white placeholder-gray-500 focus:border-blue-500/60' : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-blue-500'}`} required />
             {loginErr && <p className="text-red-400 text-sm">{loginErr}</p>}
             <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg text-sm transition-colors">
-              Sign in as Admin
+              {t('admin.signIn')}
             </button>
           </form>
           <button onClick={() => navigate('/login')} className={`mt-4 w-full text-center text-sm ${dark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'}`}>
-            ← Back to user login
+            {t('admin.backToLogin')}
           </button>
         </div>
       </div>
@@ -214,16 +217,16 @@ export default function AdminPage() {
             <Shield className="w-5 h-5 text-blue-500" />
           </div> */}
           <div>
-            <h1 className="font-bold text-lg leading-none">Admin Dashboard</h1>
+            <h1 className="font-bold text-lg leading-none">{t('admin.dashboard')}</h1>
             <p className={`text-xs mt-0.5 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>NetRoot AI</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={fetchData} disabled={loading} className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-colors ${dark ? 'border-[#333] text-gray-400 hover:text-white' : 'border-gray-200 text-gray-500 hover:text-gray-700'}`}>
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> {t('admin.refresh')}
           </button>
           <button onClick={handleLogout} className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 transition-colors">
-            <LogOut className="w-3.5 h-3.5" /> Logout
+            <LogOut className="w-3.5 h-3.5" /> {t('admin.logout')}
           </button>
         </div>
       </div>
@@ -232,11 +235,11 @@ export default function AdminPage() {
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 mb-8">
           {[
-            { icon: Users, label: 'Total Users', value: users.length, color: 'blue' },
-            { icon: Zap, label: 'Pro Users', value: proUsers, color: 'purple' },
-            { icon: Clock, label: 'Expired Plans', value: expiredUsers, color: 'red' },
-            { icon: TrendingUp, label: 'Total Tokens (30d)', value: fmt(usageData?.totalTokens || 0), color: 'emerald' },
-            { icon: Activity, label: 'Avg Latency (30d)', value: usageData?.averageLatencyMs ? fmtMs(usageData.averageLatencyMs) : '—', color: 'orange' },
+            { icon: Users, label: t('admin.totalUsers'), value: users.length, color: 'blue' },
+            { icon: Zap, label: t('admin.proUsers'), value: proUsers, color: 'purple' },
+            { icon: Clock, label: t('admin.expiredPlans'), value: expiredUsers, color: 'red' },
+            { icon: TrendingUp, label: t('admin.totalTokens30d'), value: fmt(usageData?.totalTokens || 0), color: 'emerald' },
+            { icon: Activity, label: t('admin.avgLatency30d'), value: usageData?.averageLatencyMs ? fmtMs(usageData.averageLatencyMs) : '—', color: 'orange' },
           ].map(({ icon: Icon, label, value, color }) => (
             <div key={label} className={`rounded-2xl border p-5 ${dark ? 'bg-[#111] border-[#222]' : 'bg-white border-gray-200'}`}>
               <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-3 ${dark ? `bg-${color}-500/10` : `bg-${color}-50`}`}>
@@ -251,14 +254,14 @@ export default function AdminPage() {
         {/* Users table */}
         <div className={`rounded-2xl border ${dark ? 'bg-[#111] border-[#222]' : 'bg-white border-gray-200'}`}>
           <div className={`flex items-center justify-between px-5 py-4 border-b ${dark ? 'border-[#222]' : 'border-gray-100'}`}>
-            <h2 className="font-semibold">All Users <span className={`text-sm font-normal ml-1 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>— click a row to see queries</span></h2>
+            <h2 className="font-semibold">{t('admin.allUsers')} <span className={`text-sm font-normal ml-1 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{t('admin.clickRowForQueries')}</span></h2>
             <div className={`flex items-center gap-2 border rounded-lg px-3 py-1.5 ${dark ? 'bg-[#1a1a1a] border-[#333]' : 'bg-gray-50 border-gray-200'}`}>
               <Search className={`w-3.5 h-3.5 ${dark ? 'text-gray-500' : 'text-gray-400'}`} />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search users..."
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t('admin.searchUsers')}
                 className={`bg-transparent text-sm outline-none w-44 ${dark ? 'text-white placeholder-gray-600' : 'text-gray-900 placeholder-gray-400'}`} />
             </div>
           </div>
-          {notificationMessage && <p className={`px-5 py-2 text-xs ${notificationMessage.startsWith('Notification sent') ? 'text-emerald-400' : 'text-red-400'}`}>{notificationMessage}</p>}
+          {notificationMessage && <p className={`px-5 py-2 text-xs ${notificationMessage.startsWith(t('common.notificationSentPrefix')) ? 'text-emerald-400' : 'text-red-400'}`}>{notificationMessage}</p>}
 
           {loading ? (
             <div className="flex items-center justify-center py-16"><RefreshCw className="w-6 h-6 animate-spin text-blue-500" /></div>
@@ -269,15 +272,15 @@ export default function AdminPage() {
                   <tr className={`border-b ${dark ? 'border-[#222]' : 'border-gray-100'}`}>
                     {[
                       { label: '#', field: null, w: 'w-10' },
-                      { label: 'Email', field: 'email' },
-                      { label: 'Name', field: 'name' },
-                      { label: 'Plan', field: 'plan' },
-                      { label: 'Status', field: 'status' },
-                      { label: 'Plan End', field: 'end_date' },
-                      { label: 'Renewal', field: null },
-                      { label: 'Tokens (30d)', field: 'tokens' },
-                      { label: 'Joined', field: 'created_at' },
-                      { label: 'Action', field: null },
+                      { label: t('admin.email'), field: 'email' },
+                      { label: t('admin.name'), field: 'name' },
+                      { label: t('admin.plan'), field: 'plan' },
+                      { label: t('admin.status'), field: 'status' },
+                      { label: t('admin.planEnd'), field: 'end_date' },
+                      { label: t('admin.renewal'), field: null },
+                      { label: t('admin.tokens30d'), field: 'tokens' },
+                      { label: t('admin.joined'), field: 'created_at' },
+                      { label: t('admin.action'), field: null },
                     ].map(({ label, field, w }) => (
                       <th key={label} onClick={() => field && toggleSort(field)}
                         className={`text-left px-5 py-3 font-medium ${dark ? 'text-gray-500' : 'text-gray-500'} ${field ? 'cursor-pointer select-none' : ''} ${w || ''}`}>
@@ -288,7 +291,7 @@ export default function AdminPage() {
                 </thead>
                 <tbody>
                   {filtered.length === 0 ? (
-                    <tr><td colSpan={10} className={`text-center py-12 ${dark ? 'text-gray-600' : 'text-gray-400'}`}>No users found</td></tr>
+                    <tr><td colSpan={10} className={`text-center py-12 ${dark ? 'text-gray-600' : 'text-gray-400'}`}>{t('admin.noUsersFound')}</td></tr>
                   ) : filtered.map((u, i) => (
                     <tr key={u.id} onClick={() => openUser(u)}
                       className={`border-b last:border-0 cursor-pointer transition-colors ${dark ? 'border-[#1a1a1a] hover:bg-white/[0.03]' : 'border-gray-50 hover:bg-blue-50/40'} ${selectedUser?.id === u.id ? dark ? 'bg-blue-500/5' : 'bg-blue-50' : ''}`}>
@@ -302,7 +305,7 @@ export default function AdminPage() {
                       </td>
                       <td className="px-5 py-3.5"><StatusBadge status={u.plan_status} /></td>
                       <td className={`px-5 py-3.5 text-xs whitespace-nowrap ${dark ? 'text-gray-400' : 'text-gray-600'}`}>{fmtPlanDate(u.current_period_end)}</td>
-                      <td className={`px-5 py-3.5 text-xs font-medium whitespace-nowrap ${u.auto_renew ? 'text-emerald-400' : dark ? 'text-gray-500' : 'text-gray-500'}`}>{u.plan === 'free' ? 'Not applicable' : u.auto_renew ? `Every ${u.interval_months || 1} mo` : 'Ends at period end'}</td>
+                      <td className={`px-5 py-3.5 text-xs font-medium whitespace-nowrap ${u.auto_renew ? 'text-emerald-400' : dark ? 'text-gray-500' : 'text-gray-500'}`}>{u.plan === 'free' ? t('admin.notApplicable') : u.auto_renew ? t('admin.everyMonths', { count: u.interval_months || 1 }) : t('admin.endsAtPeriodEnd')}</td>
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-2">
                           <div className={`h-1.5 w-20 rounded-full overflow-hidden ${dark ? 'bg-white/5' : 'bg-gray-100'}`}>
@@ -321,19 +324,19 @@ export default function AdminPage() {
                               onClick={event => reactivateUser(event, u)}
                               disabled={reactivatingEmail === u.email}
                               className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-emerald-500/20 disabled:cursor-wait disabled:opacity-60"
-                              title="Activate Free plan for one month"
+                              title={t('admin.activateFreeTitle')}
                             >
                               <RotateCw className="h-3.5 w-3.5" />
-                              {reactivatingEmail === u.email ? 'Activating...' : 'Activate Free'}
+                              {reactivatingEmail === u.email ? t('admin.activating') : t('admin.activateFree')}
                             </button>
                             <button
                               onClick={event => notifyExpiredUser(event, u)}
                               disabled={notifyingEmail === u.email}
                               className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20 disabled:cursor-wait disabled:opacity-60"
-                              title="Send expired-plan notification"
+                              title={t('admin.sendExpiredNotice')}
                             >
                               <Mail className="h-3.5 w-3.5" />
-                              {notifyingEmail === u.email ? 'Sending...' : 'Notify'}
+                              {notifyingEmail === u.email ? t('admin.sending') : t('admin.notify')}
                             </button>
                           </div>
                         )}
@@ -359,7 +362,7 @@ export default function AdminPage() {
             <div className={`flex items-center justify-between px-6 py-4 border-b sticky top-0 z-10 ${dark ? 'bg-[#0e0e0e] border-[#222]' : 'bg-white border-gray-100'}`}>
               <div>
                 <p className="font-semibold">{selectedUser.email}</p>
-                <p className={`text-xs mt-0.5 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{selectedUser.full_name || 'No name'} · <span className={selectedUser.plan === 'pro' ? 'text-purple-400' : dark ? 'text-gray-500' : 'text-gray-400'}>{selectedUser.plan || 'free'}</span></p>
+                <p className={`text-xs mt-0.5 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{selectedUser.full_name || t('admin.noName')} · <span className={selectedUser.plan === 'pro' ? 'text-purple-400' : dark ? 'text-gray-500' : 'text-gray-400'}>{selectedUser.plan || 'free'}</span></p>
               </div>
               <button onClick={closeDetail} className={`w-8 h-8 flex items-center justify-center rounded-lg ${dark ? 'hover:bg-white/5 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
                 <X className="w-4 h-4" />
@@ -375,10 +378,10 @@ export default function AdminPage() {
                 {/* Summary stats */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
-                    { label: 'Tokens 24h', value: fmt(detail.tokens24h) },
-                    { label: 'Tokens 30d', value: fmt(detail.tokens30d) },
-                    { label: 'Requests 30d', value: fmt(detail.requests30d) },
-                    { label: 'Avg Latency', value: detail.avgLatencyMs ? fmtMs(detail.avgLatencyMs) : '—' },
+                    { label: t('admin.tokens24h'), value: fmt(detail.tokens24h) },
+                    { label: t('admin.tokens30dShort'), value: fmt(detail.tokens30d) },
+                    { label: t('admin.requests30d'), value: fmt(detail.requests30d) },
+                    { label: t('admin.avgLatency'), value: detail.avgLatencyMs ? fmtMs(detail.avgLatencyMs) : '—' },
                   ].map(({ label, value }) => (
                     <div key={label} className={`rounded-xl border p-3 ${dark ? 'bg-[#111] border-[#222]' : 'bg-gray-50 border-gray-200'}`}>
                       <p className={`text-xs ${dark ? 'text-gray-500' : 'text-gray-500'}`}>{label}</p>
@@ -391,8 +394,8 @@ export default function AdminPage() {
                 <div className={`rounded-xl border p-4 ${dark ? 'bg-[#111] border-[#222]' : 'bg-gray-50 border-gray-200'}`}>
                   <div className="flex items-center justify-between mb-4">
                     <div>
-                      <p className={`text-xs font-semibold uppercase tracking-wider ${dark ? 'text-gray-500' : 'text-gray-400'}`}>Daily Token Usage</p>
-                      <p className={`text-xs mt-1 ${dark ? 'text-gray-600' : 'text-gray-400'}`}>Last 7 days</p>
+                      <p className={`text-xs font-semibold uppercase tracking-wider ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{t('admin.dailyTokenUsage')}</p>
+                      <p className={`text-xs mt-1 ${dark ? 'text-gray-600' : 'text-gray-400'}`}>{t('admin.last7Days')}</p>
                     </div>
                     <TrendingUp className="w-4 h-4 text-blue-500" />
                   </div>
@@ -426,7 +429,7 @@ export default function AdminPage() {
                 {/* Per-model breakdown */}
                 {Object.keys(detail.perModel || {}).length > 0 && (
                   <div>
-                    <p className={`text-xs font-semibold uppercase tracking-wider mb-2 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>Model Usage (30d)</p>
+                    <p className={`text-xs font-semibold uppercase tracking-wider mb-2 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{t('admin.modelUsage30d')}</p>
                     <div className="space-y-2">
                       {Object.entries(detail.perModel).sort((a, b) => b[1].tokens - a[1].tokens).map(([model, stats]) => (
                         <div key={model} className={`flex items-center justify-between rounded-lg px-3 py-2 ${dark ? 'bg-[#111] border border-[#222]' : 'bg-gray-50 border border-gray-200'}`}>
@@ -448,17 +451,17 @@ export default function AdminPage() {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <p className={`text-xs font-semibold uppercase tracking-wider ${dark ? 'text-gray-500' : 'text-gray-400'}`}>
-                      Recent Queries ({filteredQueries.length})
+                      {t('admin.recentQueries', { count: filteredQueries.length })}
                     </p>
                     <div className={`flex items-center gap-2 border rounded-lg px-2.5 py-1 ${dark ? 'bg-[#1a1a1a] border-[#333]' : 'bg-gray-50 border-gray-200'}`}>
                       <Search className={`w-3 h-3 ${dark ? 'text-gray-500' : 'text-gray-400'}`} />
-                      <input value={querySearch} onChange={e => setQuerySearch(e.target.value)} placeholder="Filter queries..."
+                      <input value={querySearch} onChange={e => setQuerySearch(e.target.value)} placeholder={t('admin.filterQueries')}
                         className={`bg-transparent text-xs outline-none w-32 ${dark ? 'text-white placeholder-gray-600' : 'text-gray-900 placeholder-gray-400'}`} />
                     </div>
                   </div>
 
                   {filteredQueries.length === 0 ? (
-                    <p className={`text-sm text-center py-8 ${dark ? 'text-gray-600' : 'text-gray-400'}`}>No queries found</p>
+                    <p className={`text-sm text-center py-8 ${dark ? 'text-gray-600' : 'text-gray-400'}`}>{t('admin.noQueriesFound')}</p>
                   ) : (
                     <div className="space-y-2">
                       {filteredQueries.map((q, i) => (
@@ -467,7 +470,7 @@ export default function AdminPage() {
                           <div className="flex items-start gap-2 mb-3">
                             <MessageSquare className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${dark ? 'text-blue-400' : 'text-blue-500'}`} />
                             <p className={`text-sm leading-relaxed ${dark ? 'text-gray-200' : 'text-gray-800'}`}>
-                              {getQueryText(q) || <span className={dark ? 'text-gray-600 italic' : 'text-gray-400 italic'}>No prompt recorded for this historical request</span>}
+                              {getQueryText(q) || <span className={dark ? 'text-gray-600 italic' : 'text-gray-400 italic'}>{t('admin.noPromptRecorded')}</span>}
                             </p>
                           </div>
 
