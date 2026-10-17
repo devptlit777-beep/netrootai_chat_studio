@@ -82,3 +82,18 @@ export function createBlankSlide(idx = 1) {
     seed_color: '#0EA5E9',
   };
 }
+
+export function getActiveDeckStorageKey(userId) {
+  return userId ? `netroot_active_working_deck_${userId}` : 'netroot_active_working_deck_guest';
+}
+
+export function getSavedSlidesStorageKey(userId) {
+  return userId ? `netroot_saved_slides_${userId}` : 'netroot_saved_slides_guest';
+}
+
+export function clearLegacyGlobalPptStorage() {
+  try {
+    localStorage.removeItem('netroot_active_working_deck');
+    localStorage.removeItem('netroot_saved_slides');
+  } catch {}
+}

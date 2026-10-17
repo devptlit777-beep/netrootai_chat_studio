@@ -155,12 +155,21 @@ function getTodayUserUsage(userEmail) {
 }
 
 async function getTodayUserUsageAsync(userEmail) {
-    const cutoff = Date.now() - 86400000;
+    if (!userEmail) return 0;
+    const todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
+    const cutoff = todayMidnight.getTime();
     const entries = await queryUsage({ userEmail, since: cutoff });
-    return entries.reduce((sum, e) => sum + e.inputTokens + e.outputTokens, 0);
+    // Exclude PPT Studio and Image models so PPT tokens never count against chat models' daily token pool
+    const chatEntries = entries.filter(e => {
+        const m = String(e.model || '').toLowerCase();
+        return m !== 'ppt-studio' && m !== 'ppt-generator' && m !== 'black-forest-labs/flux.1-schnell';
+    });
+    return chatEntries.reduce((sum, e) => sum + e.inputTokens + e.outputTokens, 0);
 }
 
 async function getCurrentMonthImageUsageAsync(userEmail, modelName) {
+    if (!userEmail) return 0;
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
     const entries = await queryUsage({ userEmail, since: monthStart });
@@ -169,23 +178,33 @@ async function getCurrentMonthImageUsageAsync(userEmail, modelName) {
 
 async function getUserLifetimePptCount(sb, userId, userEmail) {
     if (!sb) return 0;
+    let count = 0;
     try {
         if (userId) {
             const { data } = await sb.from('profiles').select('lifetime_ppt_count').eq('id', userId).maybeSingle();
             if (data && typeof data.lifetime_ppt_count === 'number') {
-                return data.lifetime_ppt_count;
+                count = Math.max(count, data.lifetime_ppt_count);
             }
         }
     } catch {}
     try {
-        if (userEmail) {
-            const { count } = await sb.from('usage_logs').select('id', { count: 'exact', head: true })
-                .eq('user_email', String(userEmail).toLowerCase())
-                .in('model', ['ppt-generator', 'ppt-studio']);
-            if (typeof count === 'number') return count;
+        if (userId) {
+            const { count: deckCount } = await sb.from('user_decks').select('id', { count: 'exact', head: true }).eq('user_id', userId);
+            if (typeof deckCount === 'number' && deckCount > count) {
+                count = deckCount;
+                await sb.from('profiles').update({ lifetime_ppt_count: count }).eq('id', userId).catch(() => {});
+            }
         }
     } catch {}
-    return 0;
+    try {
+        if (userEmail && count === 0) {
+            const { count: usageCount } = await sb.from('usage_logs').select('id', { count: 'exact', head: true })
+                .eq('user_email', String(userEmail).toLowerCase())
+                .in('model', ['ppt-generator', 'ppt-studio']);
+            if (typeof usageCount === 'number') count = Math.max(count, usageCount);
+        }
+    } catch {}
+    return count;
 }
 
 async function incrementUserLifetimePptCount(sb, userId, currentCount = 0) {
@@ -321,11 +340,14 @@ async function handleUsage(req, res, userEmail = null) {
         'groq/compound': { dailyLimit: null, contextWindow: 131072, displayName: 'Compound' },
         'groq/compound-mini': { dailyLimit: null, contextWindow: 131072, displayName: 'Compound Mini' },
         'black-forest-labs/FLUX.1-schnell': { dailyLimit: 100000, contextWindow: 0, displayName: 'FLUX.1 Schnell' },
-        'ppt-studio': { dailyLimit: 100000, contextWindow: 131072, displayName: 'NetRoot AI PPT Studio' },
-        'ppt-generator': { dailyLimit: 100000, contextWindow: 131072, displayName: 'NetRoot AI PPT Generator' },
+        'ppt-studio': { dailyLimit: null, contextWindow: 131072, displayName: 'NetRoot AI PPT Studio' },
+        'ppt-generator': { dailyLimit: null, contextWindow: 131072, displayName: 'NetRoot AI PPT Studio' },
     };
     const modelInfo = MODEL_LIMITS[modelId] || { dailyLimit: 200000, contextWindow: 131072, displayName: modelId };
-    const todayEntries = entries.filter(e => e.ts >= Date.now() - 86400000);
+    const todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
+    const todayStartMs = todayMidnight.getTime();
+    const todayEntries = entries.filter(e => e.ts >= todayStartMs);
     const tokensUsedToday = todayEntries.reduce((s, e) => s + e.inputTokens + e.outputTokens, 0);
 
     // Per-model token usage for today
@@ -859,29 +881,6 @@ async function handlePptProxy(req, res) {
         }
     }
 
-    // 2. Daily Token Limit Check for AI Generation Actions
-    const isAiAction = ['/api/generate', '/api/generate-outline', '/api/regenerate-slide', '/api/copilot-edit-slide', '/api/restyle-text', '/api/suggest-point'].includes(cleanPath);
-
-    if (isAiAction && email) {
-        let estimatedTokens = 350;
-        if (cleanPath === '/api/generate') {
-            const count = Number(body.num_slides || 5);
-            estimatedTokens = Math.max(500, count * 250);
-        } else if (cleanPath === '/api/generate-outline') {
-            estimatedTokens = 400;
-        } else if (cleanPath === '/api/copilot-edit-slide' || cleanPath === '/api/regenerate-slide') {
-            estimatedTokens = 350;
-        }
-
-        const alreadyUsedToday = await getTodayUserUsageAsync(email);
-        if (!canUseTokens(plan, alreadyUsedToday, estimatedTokens)) {
-            sendJson(res, 429, {
-                error: `You have reached your daily token limit for the ${plan} plan. Your limits reset tomorrow.`,
-            }, req);
-            return;
-        }
-    }
-
     // 3. Proxy to Python ppt-service
     try {
         const fetchOptions = {
@@ -969,19 +968,19 @@ function isPptGenerationRequest(text) {
     // 0. Direct command shortcuts like /ppt, pptgen, ppt on...
     if (/^(?:\/ppt\b|pptgen\b|generate-ppt\b)/i.test(t)) return true;
     if (/^slides\s+on\b/i.test(t)) return true;
-    if (/^make\s+(?:a\s+)?ppt\b/i.test(t)) return true;
+    if (/^make\s+(?:a\s+)?(?:ppt|slides|presentation)\b/i.test(t)) return true;
 
-    // 1. Negative filter: If the user is asking for suggestions, topics, ideas, or explanations, do not trigger PPT generation
-    const isInformationalQuery = /(?:suggest|ideas?|topics?|list\b|recommend|what\s+is|what\s+are|how\s+to|explain)/i.test(t);
-    if (isInformationalQuery) return false;
-
-    // 2. Must contain PPT or presentation terminology
+    // 1. Must contain PPT or presentation terminology
     const hasPptNoun = /(?:ppt|pptx|presentation|pitch\s*deck|slides?|powerpoint)/i.test(t);
     if (!hasPptNoun) return false;
 
-    // 3. Must contain an explicit creation action verb
-    const hasCreationVerb = /(?:create|make|generate|build|prepare|design|convert|pptgen)/i.test(t);
+    // 2. Must contain an explicit creation action verb
+    const hasCreationVerb = /(?:create|make|generate|build|prepare|design|convert|give\s+me|show\s+me|pptgen)/i.test(t);
     if (!hasCreationVerb) return false;
+
+    // 3. Negative filter: ONLY block purely advisory/exploratory questions like "suggest topics", "presentation ideas", "how to make a good presentation"
+    const isPurelyAdvisory = /(?:suggest\s+(?:topics?|ideas?)|ideas?\s+for|what\s+is\s+a\b|how\s+to\s+(?:make|create|build|design|present)|explain\s+what\b|tips\s+for)/i.test(t);
+    if (isPurelyAdvisory) return false;
 
     return true;
 }
@@ -1058,10 +1057,18 @@ async function handleChatToPpt({ prompt, history, userEmail, userId, res, req, r
     try {
         const sb = getSupabaseClient();
         const isPro = plan === 'pro' || plan === 'enterprise';
+        let effectiveUserId = userId;
+        if (!effectiveUserId && userEmail && sb) {
+            try {
+                const { data: { users } } = await sb.auth.admin.listUsers({ page: 1, perPage: 1000 });
+                const found = users?.find(u => u.email?.toLowerCase() === String(userEmail).toLowerCase());
+                if (found?.id) effectiveUserId = found.id;
+            } catch {}
+        }
         let lifetimeCount = 0;
 
         if (!isPro) {
-            lifetimeCount = await getUserLifetimePptCount(sb, userId, userEmail);
+            lifetimeCount = await getUserLifetimePptCount(sb, effectiveUserId, userEmail);
             if (lifetimeCount >= 2) {
                 const upgradeNotice = {
                     title: "NetRoot AI PPT Studio",
@@ -1082,14 +1089,6 @@ async function handleChatToPpt({ prompt, history, userEmail, userId, res, req, r
         }
 
         const slideCount = extractSlideCount(prompt);
-        const estimatedTokens = estimateRequestTokens(prompt) + slideCount * 200;
-        const alreadyUsedToday = await getTodayUserUsageAsync(userEmail);
-        if (!canUseTokens(plan, alreadyUsedToday, estimatedTokens)) {
-            sendJson(res, 429, {
-                error: `You have reached your daily token limit for the ${plan} plan. Upgrade to Pro or wait until your limit resets tomorrow.`,
-            }, req);
-            return;
-        }
 
         const groqApiKey = process.env.GROQ_API_KEY;
         console.log(`[ppt-flow] Triggered natural PPT flow: ${slideCount} slides requested. User: ${userEmail || 'anon'}`);
@@ -1148,8 +1147,8 @@ async function handleChatToPpt({ prompt, history, userEmail, userId, res, req, r
             }
         }
 
-        if (!isPro && userId) {
-            await incrementUserLifetimePptCount(sb, userId, lifetimeCount);
+        if (!isPro && effectiveUserId) {
+            await incrementUserLifetimePptCount(sb, effectiveUserId, lifetimeCount);
         }
 
         // 4. Record usage

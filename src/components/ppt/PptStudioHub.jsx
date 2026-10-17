@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlan } from '../../contexts/PlanContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { THEME_OPTIONS, PPT_API_BASE } from './pptConstants';
+import { THEME_OPTIONS, PPT_API_BASE, getActiveDeckStorageKey, getSavedSlidesStorageKey, clearLegacyGlobalPptStorage } from './pptConstants';
 import {
   Sparkles,
   ArrowRight,
@@ -60,9 +60,10 @@ export default function PptStudioHub({
   const [inlineOutline, setInlineOutline] = useState(null);
   const [outlineError, setOutlineError] = useState('');
 
-  // Load user presentations from Supabase and LocalStorage (seamlessly merged)
+  // Load user presentations strictly isolated per authenticated user
   const loadSavedDecks = async () => {
     setLoadingDecks(true);
+    clearLegacyGlobalPptStorage();
     let cloudDecks = [];
     try {
       if (user?.id) {
@@ -81,10 +82,14 @@ export default function PptStudioHub({
     }
 
     try {
-      const local = JSON.parse(localStorage.getItem('netroot_saved_slides') || '[]');
+      const activeKey = getActiveDeckStorageKey(user?.id);
+      const savedKey = getSavedSlidesStorageKey(user?.id);
+
+      // Only read local saved decks for unauthenticated guest, never leak another user's decks
+      const local = user?.id ? [] : JSON.parse(localStorage.getItem(savedKey) || '[]');
       let activeDeck = null;
       try {
-        const act = JSON.parse(localStorage.getItem('netroot_active_working_deck') || '{}');
+        const act = JSON.parse(localStorage.getItem(activeKey) || '{}');
         if (act.id && Array.isArray(act.slides) && act.slides.length > 0) {
           activeDeck = {
             id: act.id,
@@ -92,16 +97,39 @@ export default function PptStudioHub({
             slides: act.slides,
             theme: act.currentTheme || 'midnight',
             seed_color: act.currentSeed || '#0EA5E9',
-            updated_at: new Date().toISOString(),
+            updated_at: act.updated_at || new Date().toISOString(),
           };
         }
       } catch {}
 
       const combinedMap = new Map();
-      cloudDecks.forEach((d) => d.id && combinedMap.set(d.id, d));
-      local.forEach((d) => d.id && !combinedMap.has(d.id) && combinedMap.set(d.id, d));
-      if (activeDeck && !combinedMap.has(activeDeck.id)) {
-        combinedMap.set(activeDeck.id, activeDeck);
+      const existingTitles = new Set();
+
+      // 1. Cloud decks are authoritative for logged-in user
+      cloudDecks.forEach((d) => {
+        if (d && d.id) {
+          combinedMap.set(d.id, d);
+          if (d.title) existingTitles.add(d.title.trim().toLowerCase());
+        }
+      });
+
+      // 2. Local decks (scoped to this session only)
+      local.forEach((d) => {
+        if (!d || !d.id) return;
+        const normTitle = (d.title || '').trim().toLowerCase();
+        if (combinedMap.has(d.id) || (normTitle && existingTitles.has(normTitle))) {
+          return;
+        }
+        combinedMap.set(d.id, d);
+        if (normTitle) existingTitles.add(normTitle);
+      });
+
+      // 3. Active session deck (only if it belongs to this user and not already in combinedMap)
+      if (activeDeck && activeDeck.id) {
+        const activeTitle = (activeDeck.title || '').trim().toLowerCase();
+        if (!combinedMap.has(activeDeck.id) && !existingTitles.has(activeTitle)) {
+          combinedMap.set(activeDeck.id, activeDeck);
+        }
       }
 
       setSavedDecks(Array.from(combinedMap.values()));
@@ -242,7 +270,7 @@ export default function PptStudioHub({
     const updated = savedDecks.filter((d) => d.id !== deckId);
     setSavedDecks(updated);
     try {
-      localStorage.setItem('netroot_saved_slides', JSON.stringify(updated));
+      localStorage.setItem(getSavedSlidesStorageKey(user?.id), JSON.stringify(updated));
     } catch {}
 
     if (onDeleteDeck) {
@@ -290,23 +318,15 @@ export default function PptStudioHub({
           {activeSlidesCount > 0 && (
             <button
               type="button"
-              onClick={() => {
-                if (isFreeLimitReached) {
-                  navigate('/pricing');
-                  return;
-                }
-                onResumeActiveDeck();
-              }}
+              onClick={onResumeActiveDeck}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition border cursor-pointer ${
-                isFreeLimitReached
-                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20'
-                  : darkMode
+                darkMode
                   ? 'bg-sky-500/10 border-sky-500/30 text-sky-400 hover:bg-sky-500/20'
                   : 'bg-sky-50 border-sky-200 text-sky-600 hover:bg-sky-100'
               }`}
             >
               <Play className="w-3.5 h-3.5 fill-current" />
-              <span>Resume Active Deck ({activeSlidesCount} slides)</span>
+              <span>Resume Active Deck ({activeSlidesCount} {activeSlidesCount === 1 ? 'slide' : 'slides'})</span>
             </button>
           )}
 
@@ -385,7 +405,11 @@ export default function PptStudioHub({
                     setPrompt(e.target.value);
                     if (inlineOutline) setInlineOutline(null);
                   }}
-                  placeholder="e.g. Series A investor pitch deck for an autonomous enterprise AI platform covering problem, market size, product demo, unit economics, and roadmap..."
+                  placeholder={
+                    isFreeLimitReached
+                      ? "🔒 Free lifetime limit reached (2/2). Upgrade to Pro to create more presentations."
+                      : "e.g. Series A investor pitch deck for an autonomous enterprise AI platform covering problem, market size, product demo, unit economics, and roadmap..."
+                  }
                   className={`w-full p-4 rounded-xl text-sm sm:text-base font-medium outline-none transition border resize-none leading-relaxed ${
                     isFreeLimitReached
                       ? 'opacity-60 cursor-not-allowed bg-black/40 text-slate-400 border-amber-500/20'
@@ -650,24 +674,27 @@ export default function PptStudioHub({
 
           {activeSlidesCount > 0 && (
             <div
-              onClick={() => {
-                if (isFreeLimitReached) {
-                  navigate('/pricing');
-                  return;
-                }
-                onResumeActiveDeck();
-              } else {
-                setPrompt('Series A Investor Pitch Deck');
-              }
-            }}
-            className={`p-5 rounded-2xl border transition-all duration-200 flex items-start gap-4 cursor-pointer group ${
-              darkMode
-                ? 'bg-[#151518]/70 border-white/10 hover:border-purple-500/50 hover:bg-[#1a1a20]'
-                : 'bg-white border-slate-200 hover:border-purple-400 hover:shadow-md'
-            }`}
-          >
-            <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-              <Play className="w-5 h-5 fill-current" />
+              onClick={onResumeActiveDeck}
+              className={`p-5 rounded-2xl border transition-all duration-200 flex items-start gap-4 cursor-pointer group ${
+                darkMode
+                  ? 'bg-[#151518]/70 border-white/10 hover:border-purple-500/50 hover:bg-[#1a1a20]'
+                  : 'bg-white border-slate-200 hover:border-purple-400 hover:shadow-md'
+              }`}
+            >
+              <div className="w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform bg-purple-500/10 border-purple-500/20 text-purple-400">
+                <Play className="w-5 h-5 fill-current" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold flex items-center gap-1.5">
+                    <span>Resume Active Session</span>
+                    <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+                  </h3>
+                </div>
+                <p className={`text-xs mt-1 leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                  {`Continue working on "${activeDeckTitle || 'Untitled Presentation'}" (${activeSlidesCount} ${activeSlidesCount === 1 ? 'slide' : 'slides'} ready in editor).`}
+                </p>
+              </div>
             </div>
             <div>
               <h3 className="text-sm font-bold flex items-center gap-1.5">

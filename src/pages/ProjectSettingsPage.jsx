@@ -224,7 +224,7 @@ const ALL_MODELS = [
     id: 'ppt-studio',
     name: 'NetRoot AI PPT Studio',
     desc: 'Executive 16:9 presentation generation & AI slide editing • ~850–1,200 tokens/deck',
-    rpm: 20, tpm: 6000, dailyTokens: 100000, contextWindow: 131072,
+    rpm: 20, tpm: 6000, dailyTokens: null, contextWindow: 131072,
     usageWeight: 0.15,
   },
 ];
@@ -373,8 +373,9 @@ function LimitsTab({ darkMode, onUpgrade }) {
       <div className="space-y-3">
         {ALL_MODELS.filter(m => allowedModels.includes(m.id)).map(model => {
           const isFlux = model.id === 'black-forest-labs/FLUX.1-schnell';
+          const isPpt = model.id === 'ppt-studio';
           const usedValue = isFlux ? imageUsageThisMonth : (perModelTokens[model.id] || 0);
-          const effectiveLimit = isFlux ? getModelImageLimit(plan, model.id) : planLimit;
+          const effectiveLimit = isFlux ? getModelImageLimit(plan, model.id) : isPpt ? null : planLimit;
 
           const rawPct =
             effectiveLimit && effectiveLimit > 0
@@ -540,9 +541,14 @@ function LimitsTab({ darkMode, onUpgrade }) {
                     </div>
                   </div>
                 ) : (
-                  <p className={`text-xs ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-                    {t('project.noDailyLimit')}
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                      Tokens used today
+                    </span>
+                    <span className={`text-xs font-mono font-medium ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                      {usedValue.toLocaleString()} tokens • No daily limit
+                    </span>
+                  </div>
                 )}
               </div>
 
