@@ -1575,7 +1575,7 @@ async function handleChat(req, res) {
     const permittedPlugins = enabledPlugins.filter(plugin => allowedPlugins.has(plugin.plugin_id));
 
     // Intercept Natural Language Chat-to-PPT generation intent (Option A)
-    if (isPptGenerationRequest(prompt) && permittedPlugins.some(plugin => plugin.plugin_id === 'ppt-generator')) {
+    if (isPptGenerationRequest(prompt)) {
         await handleChatToPpt({
             prompt,
             history: body.history,

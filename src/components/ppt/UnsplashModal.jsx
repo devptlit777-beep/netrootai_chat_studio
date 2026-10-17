@@ -1,10 +1,7 @@
 import React, { useState } from 'react';
-<<<<<<< HEAD
 import { useTranslation } from 'react-i18next';
-=======
 import { useAuth } from '../../contexts/AuthContext';
 import { PPT_API_BASE } from './pptConstants';
->>>>>>> 806306b7a37e545d96f582656b0a5eb47c8d972a
 import {
   Search,
   X,
@@ -20,11 +17,8 @@ export default function UnsplashModal({
   initialQuery = '',
   onSelectImage,
 }) {
-<<<<<<< HEAD
   const { t } = useTranslation();
-=======
   const { user } = useAuth();
->>>>>>> 806306b7a37e545d96f582656b0a5eb47c8d972a
   const [query, setQuery] = useState(initialQuery || 'enterprise cloud technology');
   const [candidates, setCandidates] = useState([]);
   const [isSearching, setIsSearching] = useState(false);

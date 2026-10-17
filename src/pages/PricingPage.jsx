@@ -41,10 +41,10 @@ export default function PricingPage() {
     const proModelsCount = planLimits.pro?.allowedModels?.length || DEFAULT_PLAN_LIMITS.pro.allowedModels.length;
     const fluxImageLimit = getModelImageLimit('pro', 'black-forest-labs/FLUX.1-schnell');
     const proFeatures = [
-<<<<<<< HEAD
         t('plans.tokensPerDay', { count: proLimit.toLocaleString() }),
         t('plans.modelsAvailable', { count: proModelsCount }),
         t('plans.fluxImages', { count: fluxImageLimit }),
+        'Unlimited AI presentations & edits',
         t('plans.allPlugins'),
         t('plans.emailSupport'),
         t('plans.usageAnalytics'),
@@ -52,24 +52,9 @@ export default function PricingPage() {
     const freeFeatures = [
         t('plans.tokensPerDay', { count: freeLimit.toLocaleString() }),
         t('plans.modelsAvailable', { count: freeModelsCount }),
+        '2 AI presentations lifetime',
         t('plans.basicPlugins'),
         t('plans.communitySupport'),
-=======
-        `${proLimit.toLocaleString()} tokens / day`,
-        `${proModelsCount} model${proModelsCount === 1 ? '' : 's'} available`,
-        `FLUX image generation: ${fluxImageLimit} images / month`,
-        'Unlimited AI presentations & edits',
-        'All plugins + priority queue',
-        'Email support',
-        'Usage analytics',
-    ];
-    const freeFeatures = [
-        `${freeLimit.toLocaleString()} tokens / day`,
-        `${freeModelsCount} model${freeModelsCount === 1 ? '' : 's'} available`,
-        '2 AI presentations lifetime',
-        'Basic plugins',
-        'Community support',
->>>>>>> 806306b7a37e545d96f582656b0a5eb47c8d972a
     ];
 
     async function handleUpgrade() {
