@@ -83,7 +83,7 @@ export default function PptStudioPage() {
   const navigate = useNavigate();
   const { theme } = useTheme();
   const { user } = useAuth();
-  const { plan, lifetimePptCount = 0, featureAccess } = usePlan();
+  const { plan, lifetimePptCount = 0, featureAccess, refresh: refreshPlan } = usePlan();
   const darkMode = theme === 'dark';
 
   const isPro = plan === 'pro' || plan === 'enterprise' || Boolean(featureAccess?.['ppt-studio']);
@@ -728,6 +728,7 @@ export default function PptStudioPage() {
         `Successfully generated ${cleanSlides.length} slides!`,
         'success'
       );
+      refreshPlan?.();
     } catch (err) {
       showToast(err.message || 'Error generating presentation', 'error');
     } finally {
@@ -942,10 +943,6 @@ export default function PptStudioPage() {
           onStartBlankDeck={handleStartNewSlides}
           onSelectDeck={handleSelectDeck}
           onResumeActiveDeck={() => {
-            if (isFreeLimitReached) {
-              navigate('/pricing');
-              return;
-            }
             setViewMode('editor');
           }}
           onDeleteDeck={handleDeleteDeckFromStorage}

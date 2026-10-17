@@ -292,26 +292,15 @@ export default function PptStudioHub({
           {activeSlidesCount > 0 && (
             <button
               type="button"
-              onClick={() => {
-                if (isFreeLimitReached) {
-                  navigate('/pricing');
-                  return;
-                }
-                onResumeActiveDeck();
-              }}
+              onClick={onResumeActiveDeck}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition border cursor-pointer ${
-                isFreeLimitReached
-                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20'
-                  : darkMode
+                darkMode
                   ? 'bg-sky-500/10 border-sky-500/30 text-sky-400 hover:bg-sky-500/20'
                   : 'bg-sky-50 border-sky-200 text-sky-600 hover:bg-sky-100'
               }`}
             >
               <Play className="w-3.5 h-3.5 fill-current" />
               <span>Resume Active Deck ({activeSlidesCount} {activeSlidesCount === 1 ? 'slide' : 'slides'})</span>
-              {isFreeLimitReached && (
-                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400">PRO 🔒</span>
-              )}
             </button>
           )}
 
@@ -413,7 +402,7 @@ export default function PptStudioHub({
                   }}
                   placeholder={
                     isFreeLimitReached
-                      ? "🔒 Free lifetime limit reached (3/3). Upgrade to Pro to create more presentations."
+                      ? "🔒 Free lifetime limit reached (2/2). Upgrade to Pro to create more presentations."
                       : "e.g. Series A investor pitch deck for an autonomous enterprise AI platform covering problem, market size, product demo, unit economics, and roadmap..."
                   }
                   className={`w-full p-4 rounded-xl text-sm sm:text-base font-medium outline-none transition border resize-none leading-relaxed ${
@@ -702,26 +691,14 @@ export default function PptStudioHub({
 
           {activeSlidesCount > 0 && (
             <div
-              onClick={() => {
-                if (isFreeLimitReached) {
-                  navigate('/pricing');
-                  return;
-                }
-                onResumeActiveDeck();
-              }}
+              onClick={onResumeActiveDeck}
               className={`p-5 rounded-2xl border transition-all duration-200 flex items-start gap-4 cursor-pointer group ${
-                isFreeLimitReached
-                  ? 'bg-amber-500/5 border-amber-500/30 hover:border-amber-500/50'
-                  : darkMode
+                darkMode
                   ? 'bg-[#151518]/70 border-white/10 hover:border-purple-500/50 hover:bg-[#1a1a20]'
                   : 'bg-white border-slate-200 hover:border-purple-400 hover:shadow-md'
               }`}
             >
-              <div className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform ${
-                isFreeLimitReached
-                  ? 'bg-amber-500/10 border-amber-500/20 text-amber-400'
-                  : 'bg-purple-500/10 border-purple-500/20 text-purple-400'
-              }`}>
+              <div className="w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform bg-purple-500/10 border-purple-500/20 text-purple-400">
                 <Play className="w-5 h-5 fill-current" />
               </div>
               <div className="flex-1 min-w-0">
@@ -730,16 +707,9 @@ export default function PptStudioHub({
                     <span>Resume Active Session</span>
                     <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
                   </h3>
-                  {isFreeLimitReached && (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                      PRO 🔒
-                    </span>
-                  )}
                 </div>
                 <p className={`text-xs mt-1 leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                  {isFreeLimitReached
-                    ? 'Free presentation limit reached (2/2). Upgrade to Pro to resume editing your presentation.'
-                    : `Continue working on "${activeDeckTitle || 'Untitled Presentation'}" (${activeSlidesCount} ${activeSlidesCount === 1 ? 'slide' : 'slides'} ready in editor).`}
+                  {`Continue working on "${activeDeckTitle || 'Untitled Presentation'}" (${activeSlidesCount} ${activeSlidesCount === 1 ? 'slide' : 'slides'} ready in editor).`}
                 </p>
               </div>
             </div>

@@ -134,12 +134,16 @@ function getTodayUserUsage(userEmail) {
 }
 
 async function getTodayUserUsageAsync(userEmail) {
-    const cutoff = Date.now() - 86400000;
+    if (!userEmail) return 0;
+    const todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
+    const cutoff = todayMidnight.getTime();
     const entries = await queryUsage({ userEmail, since: cutoff });
     return entries.reduce((sum, e) => sum + e.inputTokens + e.outputTokens, 0);
 }
 
 async function getCurrentMonthImageUsageAsync(userEmail, modelName) {
+    if (!userEmail) return 0;
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
     const entries = await queryUsage({ userEmail, since: monthStart });
@@ -304,7 +308,10 @@ async function handleUsage(req, res, userEmail = null) {
         'ppt-generator': { dailyLimit: 100000, contextWindow: 131072, displayName: 'NetRoot AI PPT Generator' },
     };
     const modelInfo = MODEL_LIMITS[modelId] || { dailyLimit: 200000, contextWindow: 131072, displayName: modelId };
-    const todayEntries = entries.filter(e => e.ts >= Date.now() - 86400000);
+    const todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
+    const todayStartMs = todayMidnight.getTime();
+    const todayEntries = entries.filter(e => e.ts >= todayStartMs);
     const tokensUsedToday = todayEntries.reduce((s, e) => s + e.inputTokens + e.outputTokens, 0);
 
     // Per-model token usage for today
@@ -823,19 +830,19 @@ function isPptGenerationRequest(text) {
     // 0. Direct command shortcuts like /ppt, pptgen, ppt on...
     if (/^(?:\/ppt\b|pptgen\b|generate-ppt\b)/i.test(t)) return true;
     if (/^slides\s+on\b/i.test(t)) return true;
-    if (/^make\s+(?:a\s+)?ppt\b/i.test(t)) return true;
+    if (/^make\s+(?:a\s+)?(?:ppt|slides|presentation)\b/i.test(t)) return true;
 
-    // 1. Negative filter: If the user is asking for suggestions, topics, ideas, or explanations, do not trigger PPT generation
-    const isInformationalQuery = /(?:suggest|ideas?|topics?|list\b|recommend|what\s+is|what\s+are|how\s+to|explain)/i.test(t);
-    if (isInformationalQuery) return false;
-
-    // 2. Must contain PPT or presentation terminology
+    // 1. Must contain PPT or presentation terminology
     const hasPptNoun = /(?:ppt|pptx|presentation|pitch\s*deck|slides?|powerpoint)/i.test(t);
     if (!hasPptNoun) return false;
 
-    // 3. Must contain an explicit creation action verb
-    const hasCreationVerb = /(?:create|make|generate|build|prepare|design|convert|pptgen)/i.test(t);
+    // 2. Must contain an explicit creation action verb
+    const hasCreationVerb = /(?:create|make|generate|build|prepare|design|convert|give\s+me|show\s+me|pptgen)/i.test(t);
     if (!hasCreationVerb) return false;
+
+    // 3. Negative filter: ONLY block purely advisory/exploratory questions like "suggest topics", "presentation ideas", "how to make a good presentation"
+    const isPurelyAdvisory = /(?:suggest\s+(?:topics?|ideas?)|ideas?\s+for|what\s+is\s+a\b|how\s+to\s+(?:make|create|build|design|present)|explain\s+what\b|tips\s+for)/i.test(t);
+    if (isPurelyAdvisory) return false;
 
     return true;
 }
@@ -912,10 +919,18 @@ async function handleChatToPpt({ prompt, history, userEmail, userId, res, req, r
     try {
         const sb = getSupabaseClient();
         const isPro = plan === 'pro' || plan === 'enterprise';
+        let effectiveUserId = userId;
+        if (!effectiveUserId && userEmail && sb) {
+            try {
+                const { data: { users } } = await sb.auth.admin.listUsers({ page: 1, perPage: 1000 });
+                const found = users?.find(u => u.email?.toLowerCase() === String(userEmail).toLowerCase());
+                if (found?.id) effectiveUserId = found.id;
+            } catch {}
+        }
         let lifetimeCount = 0;
 
         if (!isPro) {
-            lifetimeCount = await getUserLifetimePptCount(sb, userId, userEmail);
+            lifetimeCount = await getUserLifetimePptCount(sb, effectiveUserId, userEmail);
             if (lifetimeCount >= 2) {
                 const upgradeNotice = {
                     title: "NetRoot AI PPT Studio",
@@ -1002,8 +1017,8 @@ async function handleChatToPpt({ prompt, history, userEmail, userId, res, req, r
             }
         }
 
-        if (!isPro && userId) {
-            await incrementUserLifetimePptCount(sb, userId, lifetimeCount);
+        if (!isPro && effectiveUserId) {
+            await incrementUserLifetimePptCount(sb, effectiveUserId, lifetimeCount);
         }
 
         // 4. Record usage

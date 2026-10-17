@@ -1171,8 +1171,46 @@ function getFallbackAvatar(email) {
   return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed)}&backgroundColor=3b82f6,06b6d4`;
 }
 
+function ChatCodeBlock({ language, code, darkMode }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className={`my-4 rounded-xl overflow-hidden border ${darkMode ? 'bg-[#0d1117] border-white/10' : 'bg-gray-900 border-gray-800'} shadow-md`}>
+      <div className={`flex items-center justify-between px-4 py-1.5 text-xs font-mono border-b ${darkMode ? 'bg-white/5 border-white/10 text-gray-400' : 'bg-gray-800 border-gray-700 text-gray-300'}`}>
+        <span className="uppercase text-[11px] font-bold tracking-wider text-sky-400">{language || 'code'}</span>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="inline-flex items-center gap-1.5 text-[11px] hover:text-white transition-colors cursor-pointer"
+        >
+          {copied ? (
+            <>
+              <Check className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-emerald-400 font-semibold">Copied!</span>
+            </>
+          ) : (
+            <>
+              <Copy className="w-3.5 h-3.5" />
+              <span>Copy code</span>
+            </>
+          )}
+        </button>
+      </div>
+      <pre className="p-4 overflow-x-auto text-xs font-mono leading-relaxed text-gray-200">
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
+}
+
 export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
-  const { plan, accessExpired, lifetimePptCount = 0 } = usePlan();
+  const { plan, accessExpired, lifetimePptCount = 0, refresh: refreshPlan } = usePlan();
   const isPro = plan === 'pro' || plan === 'enterprise';
   const isFreeLimitReached = !isPro && lifetimePptCount >= 2;
   const { profile, user, session } = useAuth();
@@ -1196,6 +1234,7 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
   const [voiceError, setVoiceError] = useState('');
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [copiedChat, setCopiedChat] = useState(false);
+  const [copiedMsgId, setCopiedMsgId] = useState(null);
   const { threadId } = useParams();
   const navigate = useNavigate();
   const messagesEndRef = useRef(null);
@@ -1650,6 +1689,10 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
         }
       }
 
+      if (data.pptDeck || data.pptLocked) {
+        refreshPlan?.();
+      }
+
       const aiMsg = {
         id: crypto.randomUUID(),
         thread_id: thread.id,
@@ -2021,56 +2064,70 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
                           remarkPlugins={[remarkGfm]}
                           components={{
                             h1: ({ children }) => (
-                              <h1 className={`text-4xl font-bold mt-8 mb-4 border-b pb-2 ${darkMode ? 'text-white border-gray-800' : 'text-gray-900 border-gray-200'}`}>{children}</h1>
+                              <h1 className={`text-2xl font-bold mt-6 mb-3 pb-1.5 border-b ${darkMode ? 'text-white border-gray-800' : 'text-gray-900 border-gray-200'}`}>{children}</h1>
                             ),
                             h2: ({ children }) => (
-                              <h2 className={`text-3xl font-semibold mt-7 mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</h2>
+                              <h2 className={`text-xl font-bold mt-5 mb-2.5 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</h2>
                             ),
                             h3: ({ children }) => (
-                              <h3 className={`text-2xl font-semibold mt-6 mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</h3>
+                              <h3 className={`text-lg font-semibold mt-4 mb-2 ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>{children}</h3>
                             ),
                             h4: ({ children }) => (
-                              <h4 className={`text-xl font-semibold mt-5 mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</h4>
+                              <h4 className={`text-base font-semibold mt-3 mb-1.5 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{children}</h4>
                             ),
                             p: ({ children }) => (
-                              <p className={`leading-8 mb-4 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{children}</p>
+                              <p className={`leading-7 mb-3.5 text-sm sm:text-base ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{children}</p>
                             ),
                             strong: ({ children }) => (
-                              <strong className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</strong>
+                              <strong className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</strong>
                             ),
                             em: ({ children }) => (
                               <em className={`italic ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{children}</em>
                             ),
                             ul: ({ children }) => (
-                              <ul className={`list-disc pl-6 my-4 space-y-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{children}</ul>
+                              <ul className={`list-disc pl-5 my-3 space-y-1.5 text-sm sm:text-base ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{children}</ul>
                             ),
                             ol: ({ children }) => (
-                              <ol className={`list-decimal pl-6 my-4 space-y-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{children}</ol>
+                              <ol className={`list-decimal pl-5 my-3 space-y-1.5 text-sm sm:text-base ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{children}</ol>
                             ),
                             li: ({ children }) => (
-                              <li className="leading-7">{children}</li>
+                              <li className="leading-6">{children}</li>
                             ),
                             blockquote: ({ children }) => (
-                              <blockquote className={`border-l-4 border-green-500 p-4 rounded-r-lg italic my-5 ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-50 text-gray-700'}`}>{children}</blockquote>
+                              <blockquote className={`border-l-4 border-blue-500 pl-4 py-2.5 pr-3 rounded-r-xl my-4 text-sm leading-relaxed ${darkMode ? 'bg-blue-500/10 text-gray-200' : 'bg-blue-50/80 text-gray-800'}`}>{children}</blockquote>
                             ),
                             hr: () => (
-                              <hr className={`my-8 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`} />
+                              <hr className={`my-6 ${darkMode ? 'border-gray-800' : 'border-gray-200'}`} />
                             ),
                             a: ({ href, children }) => (
-                              <a href={href} target="_blank" rel="noopener noreferrer" className={`${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-500'} underline`}>{children}</a>
+                              <a href={href} target="_blank" rel="noopener noreferrer" className={`${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-500'} underline font-medium`}>{children}</a>
                             ),
                             table: ({ children }) => (
-                              <div className="overflow-x-auto my-6"><table className={`w-full border rounded-lg overflow-hidden ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>{children}</table></div>
+                              <div className="overflow-x-auto my-5 rounded-xl border border-white/10 shadow-sm"><table className={`w-full text-sm border-collapse ${darkMode ? 'border-gray-800' : 'border-gray-200'}`}>{children}</table></div>
                             ),
-                            thead: ({ children }) => (<thead className={`${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>{children}</thead>),
-                            tbody: ({ children }) => (<tbody className={`${darkMode ? 'bg-gray-900' : 'bg-white'}`}>{children}</tbody>),
-                            tr: ({ children }) => (<tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>{children}</tr>),
-                            th: ({ children }) => (<th className={`px-4 py-3 text-left font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</th>),
-                            td: ({ children }) => (<td className={`px-4 py-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{children}</td>),
-                            img: ({ src, alt }) => (<img src={src} alt={alt} className="rounded-xl my-5 max-w-full shadow-lg" />),
-                            code({ inline, children }) {
-                              if (inline) return (<code className={`${darkMode ? 'bg-gray-800 text-green-400' : 'bg-gray-100 text-green-600'} px-2 py-1 rounded text-sm`}>{children}</code>);
-                              return (<pre className={`${darkMode ? 'bg-[#0d1117] text-green-400' : 'bg-gray-100 text-green-700'} rounded-xl p-5 overflow-x-auto my-5`}><code>{children}</code></pre>);
+                            thead: ({ children }) => (<thead className={`${darkMode ? 'bg-white/5 border-b border-white/10' : 'bg-gray-100 border-b border-gray-200'}`}>{children}</thead>),
+                            tbody: ({ children }) => (<tbody className={`${darkMode ? 'bg-transparent' : 'bg-white'}`}>{children}</tbody>),
+                            tr: ({ children }) => (<tr className={`border-b ${darkMode ? 'border-gray-800/80' : 'border-gray-100'}`}>{children}</tr>),
+                            th: ({ children }) => (<th className={`px-4 py-2.5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{children}</th>),
+                            td: ({ children }) => (<td className={`px-4 py-2.5 text-xs ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{children}</td>),
+                            img: ({ src, alt }) => (<img src={src} alt={alt} className="rounded-xl my-4 max-w-full shadow-lg" />),
+                            code({ inline, className, children }) {
+                              const match = /language-(\w+)/.exec(className || '');
+                              const codeString = String(children).replace(/\n$/, '');
+                              if (!inline && (match || String(children).includes('\n'))) {
+                                return (
+                                  <ChatCodeBlock
+                                    language={match ? match[1] : ''}
+                                    code={codeString}
+                                    darkMode={darkMode}
+                                  />
+                                );
+                              }
+                              return (
+                                <code className={`${darkMode ? 'bg-white/10 text-emerald-400 font-mono' : 'bg-gray-100 text-emerald-600 font-mono'} px-1.5 py-0.5 rounded text-xs font-semibold`}>
+                                  {children}
+                                </code>
+                              );
                             },
                           }}
                         >
@@ -2130,35 +2187,35 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
                       )}
                     </div>
 
-                    {/* Quick action button for assistant messages to convert discussion to PPT */}
-                    {msg.role === 'assistant' && !pptDeck && text.trim().length > 60 && (
-                      <div className="flex items-center gap-2 mt-1 px-1">
+                    {/* Minimal action button for assistant messages */}
+                    {msg.role === 'assistant' && text.trim().length > 0 && (
+                      <div className="flex items-center gap-1.5 mt-2 px-1">
                         <button
+                          type="button"
                           onClick={() => {
-                            if (isFreeLimitReached) {
-                              navigate('/pricing');
-                              return;
-                            }
-                            setInput("Create a 5-slide presentation from this discussion");
-                            textareaRef.current?.focus();
+                            navigator.clipboard.writeText(text);
+                            setCopiedMsgId(msg.id);
+                            setTimeout(() => setCopiedMsgId(null), 2000);
                           }}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-all ${
-                            darkMode
-                              ? 'bg-blue-500/10 border-blue-500/25 text-blue-400 hover:bg-blue-500/20 hover:border-blue-500/40'
-                              : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100'
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                            copiedMsgId === msg.id
+                              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                              : darkMode
+                              ? 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent hover:border-white/10'
+                              : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100 border border-transparent hover:border-gray-200'
                           }`}
-                          title={
-                            isFreeLimitReached
-                              ? "Free limit reached (3/3). Upgrade to Pro to create more presentations"
-                              : "Convert this discussion to an AI presentation"
-                          }
+                          title="Copy response to clipboard"
                         >
-                          <Presentation className="w-3.5 h-3.5" />
-                          <span>📽️ Make PPT from this</span>
-                          {!isPro && (
-                            <span className="ml-0.5 px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                              {isFreeLimitReached ? "PRO" : `${lifetimePptCount}/2 Free`}
-                            </span>
+                          {copiedMsgId === msg.id ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              <span className="text-[11px] font-semibold text-emerald-400">Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              <span className="text-[11px]">Copy</span>
+                            </>
                           )}
                         </button>
                       </div>
