@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlan } from '../../contexts/PlanContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { THEME_OPTIONS, PPT_API_BASE } from './pptConstants';
+import { THEME_OPTIONS, PPT_API_BASE, getActiveDeckStorageKey, getSavedSlidesStorageKey, clearLegacyGlobalPptStorage } from './pptConstants';
 import {
   Sparkles,
   ArrowRight,
@@ -62,9 +62,10 @@ export default function PptStudioHub({
   const [inlineOutline, setInlineOutline] = useState(null);
   const [outlineError, setOutlineError] = useState('');
 
-  // Load user presentations from Supabase and LocalStorage (seamlessly merged)
+  // Load user presentations strictly isolated per authenticated user
   const loadSavedDecks = async () => {
     setLoadingDecks(true);
+    clearLegacyGlobalPptStorage();
     let cloudDecks = [];
     try {
       if (user?.id) {
@@ -83,10 +84,14 @@ export default function PptStudioHub({
     }
 
     try {
-      const local = JSON.parse(localStorage.getItem('netroot_saved_slides') || '[]');
+      const activeKey = getActiveDeckStorageKey(user?.id);
+      const savedKey = getSavedSlidesStorageKey(user?.id);
+
+      // Only read local saved decks for unauthenticated guest, never leak another user's decks
+      const local = user?.id ? [] : JSON.parse(localStorage.getItem(savedKey) || '[]');
       let activeDeck = null;
       try {
-        const act = JSON.parse(localStorage.getItem('netroot_active_working_deck') || '{}');
+        const act = JSON.parse(localStorage.getItem(activeKey) || '{}');
         if (act.id && Array.isArray(act.slides) && act.slides.length > 0) {
           activeDeck = {
             id: act.id,
@@ -94,16 +99,39 @@ export default function PptStudioHub({
             slides: act.slides,
             theme: act.currentTheme || 'midnight',
             seed_color: act.currentSeed || '#0EA5E9',
-            updated_at: new Date().toISOString(),
+            updated_at: act.updated_at || new Date().toISOString(),
           };
         }
       } catch {}
 
       const combinedMap = new Map();
-      cloudDecks.forEach((d) => d.id && combinedMap.set(d.id, d));
-      local.forEach((d) => d.id && !combinedMap.has(d.id) && combinedMap.set(d.id, d));
-      if (activeDeck && !combinedMap.has(activeDeck.id)) {
-        combinedMap.set(activeDeck.id, activeDeck);
+      const existingTitles = new Set();
+
+      // 1. Cloud decks are authoritative for logged-in user
+      cloudDecks.forEach((d) => {
+        if (d && d.id) {
+          combinedMap.set(d.id, d);
+          if (d.title) existingTitles.add(d.title.trim().toLowerCase());
+        }
+      });
+
+      // 2. Local decks (scoped to this session only)
+      local.forEach((d) => {
+        if (!d || !d.id) return;
+        const normTitle = (d.title || '').trim().toLowerCase();
+        if (combinedMap.has(d.id) || (normTitle && existingTitles.has(normTitle))) {
+          return;
+        }
+        combinedMap.set(d.id, d);
+        if (normTitle) existingTitles.add(normTitle);
+      });
+
+      // 3. Active session deck (only if it belongs to this user and not already in combinedMap)
+      if (activeDeck && activeDeck.id) {
+        const activeTitle = (activeDeck.title || '').trim().toLowerCase();
+        if (!combinedMap.has(activeDeck.id) && !existingTitles.has(activeTitle)) {
+          combinedMap.set(activeDeck.id, activeDeck);
+        }
       }
 
       setSavedDecks(Array.from(combinedMap.values()));
@@ -244,7 +272,7 @@ export default function PptStudioHub({
     const updated = savedDecks.filter((d) => d.id !== deckId);
     setSavedDecks(updated);
     try {
-      localStorage.setItem('netroot_saved_slides', JSON.stringify(updated));
+      localStorage.setItem(getSavedSlidesStorageKey(user?.id), JSON.stringify(updated));
     } catch {}
 
     if (onDeleteDeck) {

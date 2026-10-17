@@ -18,6 +18,9 @@ import {
   stripMarkdown,
   THEME_SEEDS,
   PPT_API_BASE,
+  getActiveDeckStorageKey,
+  getSavedSlidesStorageKey,
+  clearLegacyGlobalPptStorage,
 } from '../components/ppt/pptConstants';
 import {
   ChevronLeft,
@@ -91,9 +94,11 @@ export default function PptStudioPage() {
   const maxDeckAiEdits = 5;
   const isFreeLimitReached = !isPro && lifetimePptCount >= maxFreePpt;
 
+  const activeStorageKey = getActiveDeckStorageKey(user?.id);
+
   const [currentDeckAiEdits, setCurrentDeckAiEdits] = useState(() => {
     try {
-      const active = localStorage.getItem('netroot_active_working_deck');
+      const active = localStorage.getItem(activeStorageKey);
       if (active) {
         const parsed = JSON.parse(active);
         return Number(parsed.ai_edits_count || 0);
@@ -105,7 +110,7 @@ export default function PptStudioPage() {
 
   const [hasActiveSession, setHasActiveSession] = useState(() => {
     try {
-      const active = localStorage.getItem('netroot_active_working_deck');
+      const active = localStorage.getItem(activeStorageKey);
       if (active) {
         const parsed = JSON.parse(active);
         return Boolean(
@@ -122,7 +127,7 @@ export default function PptStudioPage() {
 
   const [slides, setSlides] = useState(() => {
     try {
-      const active = localStorage.getItem('netroot_active_working_deck');
+      const active = localStorage.getItem(activeStorageKey);
       if (active) {
         const parsed = JSON.parse(active);
         if (Array.isArray(parsed.slides) && parsed.slides.length > 0) return parsed.slides;
@@ -136,7 +141,7 @@ export default function PptStudioPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [deckTitle, setDeckTitle] = useState(() => {
     try {
-      const active = localStorage.getItem('netroot_active_working_deck');
+      const active = localStorage.getItem(activeStorageKey);
       if (active) {
         const parsed = JSON.parse(active);
         if (parsed.deckTitle && parsed.deckTitle !== 'NetRoot AI Enterprise Studio') {
@@ -148,7 +153,7 @@ export default function PptStudioPage() {
   });
   const [currentTheme, setCurrentTheme] = useState(() => {
     try {
-      const active = localStorage.getItem('netroot_active_working_deck');
+      const active = localStorage.getItem(activeStorageKey);
       if (active) {
         const parsed = JSON.parse(active);
         if (parsed.currentTheme) return parsed.currentTheme;
@@ -158,7 +163,7 @@ export default function PptStudioPage() {
   });
   const [currentSeed, setCurrentSeed] = useState(() => {
     try {
-      const active = localStorage.getItem('netroot_active_working_deck');
+      const active = localStorage.getItem(activeStorageKey);
       if (active) {
         const parsed = JSON.parse(active);
         if (parsed.currentSeed) return parsed.currentSeed;
@@ -171,7 +176,7 @@ export default function PptStudioPage() {
   // Cloud & Presentation Persistence state
   const [currentDeckId, setCurrentDeckId] = useState(() => {
     try {
-      const active = localStorage.getItem('netroot_active_working_deck');
+      const active = localStorage.getItem(activeStorageKey);
       if (active) {
         const parsed = JSON.parse(active);
         if (parsed.id) return parsed.id;
@@ -246,12 +251,13 @@ export default function PptStudioPage() {
     }
   }, [historyIndex, history]);
 
-  // Sync active working draft immediately to localStorage only if there is an active session
+  // Sync active working draft immediately to user-scoped localStorage
   useEffect(() => {
     if (!hasActiveSession || slides.length === 0) return;
+    const activeKey = getActiveDeckStorageKey(user?.id);
     try {
       localStorage.setItem(
-        'netroot_active_working_deck',
+        activeKey,
         JSON.stringify({
           id: currentDeckId,
           slides,
@@ -262,43 +268,48 @@ export default function PptStudioPage() {
         })
       );
     } catch (e) {}
-  }, [hasActiveSession, slides, deckTitle, currentTheme, currentSeed, currentDeckId, currentDeckAiEdits]);
+  }, [hasActiveSession, slides, deckTitle, currentTheme, currentSeed, currentDeckId, currentDeckAiEdits, user?.id]);
 
-  // Restore user's latest cloud presentation only if no active draft is loaded
+  // Restore user's isolated presentations when user logs in or switches account
   useEffect(() => {
+    clearLegacyGlobalPptStorage();
+    if (!user?.id) {
+      setHasActiveSession(false);
+      setCurrentDeckId(null);
+      setSlides(INITIAL_DECK);
+      setDeckTitle('Untitled Presentation');
+      return;
+    }
+
     async function restoreRecentDeck() {
+      // 1. Check user-scoped active working deck
+      const activeKey = getActiveDeckStorageKey(user.id);
       try {
-        const active = localStorage.getItem('netroot_active_working_deck');
+        const active = localStorage.getItem(activeKey);
         if (active) {
           const parsed = JSON.parse(active);
-          if (Array.isArray(parsed.slides) && parsed.slides.length > 0) return;
+          if (Array.isArray(parsed.slides) && parsed.slides.length > 0) {
+            setSlides(parsed.slides);
+            setDeckTitle(parsed.deckTitle || 'Untitled Presentation');
+            if (parsed.currentTheme) setCurrentTheme(parsed.currentTheme);
+            if (parsed.currentSeed) setCurrentSeed(parsed.currentSeed);
+            setCurrentDeckId(parsed.id || null);
+            setCurrentDeckAiEdits(Number(parsed.ai_edits_count || 0));
+            setHasActiveSession(true);
+            setHistory([parsed.slides]);
+            setHistoryIndex(0);
+            return;
+          }
         }
       } catch {}
 
-      if (!user?.id) return;
-
-      try {
-        const { data, error } = await supabase
-          .from('user_decks')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('updated_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (!error && data && Array.isArray(data.slides) && data.slides.length > 0) {
-          setSlides(data.slides);
-          setDeckTitle(data.title || 'Untitled Presentation');
-          if (data.theme) setCurrentTheme(data.theme);
-          if (data.seed_color) setCurrentSeed(data.seed_color);
-          setCurrentDeckId(data.id);
-          setHistory([data.slides]);
-          setHistoryIndex(0);
-        }
-      } catch (err) {
-        console.warn('Could not restore recent cloud deck:', err);
-      }
+      // Clean session state if user has no in-progress working draft
+      setHasActiveSession(false);
+      setCurrentDeckId(null);
+      setSlides(INITIAL_DECK);
+      setDeckTitle('Untitled Presentation');
     }
+
     restoreRecentDeck();
   }, [user?.id]);
 
@@ -330,17 +341,38 @@ export default function PptStudioPage() {
             .single();
 
           if (!error && data?.id) {
+            const savedCloudId = data.id;
             if (!deckId || String(deckId).startsWith('local_')) {
-              setCurrentDeckId(data.id);
+              setCurrentDeckId(savedCloudId);
             }
+            // Clean up old local copy so it never appears as duplicate in My Slides
+            const savedKey = getSavedSlidesStorageKey(user?.id);
+            const activeKey = getActiveDeckStorageKey(user?.id);
+            try {
+              const localDecks = JSON.parse(localStorage.getItem(savedKey) || '[]');
+              const filtered = localDecks.filter(
+                (d) => d.id !== deckId && d.id !== savedCloudId && (d.title || '').trim().toLowerCase() !== (titleToSave || '').trim().toLowerCase()
+              );
+              localStorage.setItem(savedKey, JSON.stringify(filtered));
+            } catch {}
+            // Sync active working deck ID
+            try {
+              const active = JSON.parse(localStorage.getItem(activeKey) || '{}');
+              if (active) {
+                active.id = savedCloudId;
+                localStorage.setItem(activeKey, JSON.stringify(active));
+              }
+            } catch {}
             setSaveStatus('saved');
-            return data.id;
+            setIsDirty(false);
+            return savedCloudId;
           }
         }
 
-        // Local backup fallback
+        // Local backup fallback for offline / guest
+        const savedKey = getSavedSlidesStorageKey(user?.id);
         const localId = deckId || 'local_deck_' + Date.now();
-        const localDecks = JSON.parse(localStorage.getItem('netroot_saved_slides') || '[]');
+        const localDecks = JSON.parse(localStorage.getItem(savedKey) || '[]');
         const existingIdx = localDecks.findIndex((d) => d.id === localId);
         const localItem = { ...payload, id: localId };
         if (existingIdx >= 0) {
@@ -348,9 +380,10 @@ export default function PptStudioPage() {
         } else {
           localDecks.unshift(localItem);
         }
-        localStorage.setItem('netroot_saved_slides', JSON.stringify(localDecks));
+        localStorage.setItem(savedKey, JSON.stringify(localDecks));
         if (!deckId) setCurrentDeckId(localId);
         setSaveStatus('saved');
+        setIsDirty(false);
         return localId;
       } catch (err) {
         console.warn('[PptStudioPage] Auto-save notice:', err);
@@ -367,7 +400,7 @@ export default function PptStudioPage() {
       return;
     }
     if (viewMode !== 'editor') return;
-    if (!isDirty && !currentDeckId) return; // Do not auto-save untouched brand new blank deck to My Slides!
+    if (!isDirty) return; // Only auto-save if user actually modified the presentation!
 
     const timer = setTimeout(() => {
       saveDeckToCloud(slides, deckTitle, currentTheme, currentSeed, currentDeckId);
@@ -378,6 +411,8 @@ export default function PptStudioPage() {
   // Handle deck deletion from Hub or MySlides without ghost re-saves
   const handleDeleteDeckFromStorage = useCallback(
     (deckId) => {
+      const activeKey = getActiveDeckStorageKey(user?.id);
+      const savedKey = getSavedSlidesStorageKey(user?.id);
       if (currentDeckId === deckId || !currentDeckId) {
         setCurrentDeckId(null);
         setDeckTitle('Untitled Presentation');
@@ -390,25 +425,25 @@ export default function PptStudioPage() {
         setIsDirty(false);
         setHasActiveSession(false);
         try {
-          localStorage.removeItem('netroot_active_working_deck');
+          localStorage.removeItem(activeKey);
         } catch {}
       }
 
       try {
-        const local = JSON.parse(localStorage.getItem('netroot_saved_slides') || '[]');
+        const local = JSON.parse(localStorage.getItem(savedKey) || '[]');
         const filtered = local.filter((d) => d.id !== deckId);
-        localStorage.setItem('netroot_saved_slides', JSON.stringify(filtered));
+        localStorage.setItem(savedKey, JSON.stringify(filtered));
         if (filtered.length === 0 && (!currentDeckId || currentDeckId === deckId)) {
           setHasActiveSession(false);
           try {
-            localStorage.removeItem('netroot_active_working_deck');
+            localStorage.removeItem(activeKey);
           } catch {}
         }
       } catch {}
 
       showToast('Presentation deleted successfully', 'info');
     },
-    [currentDeckId]
+    [currentDeckId, user?.id]
   );
 
   const handleSelectDeck = (deck) => {
@@ -425,12 +460,13 @@ export default function PptStudioPage() {
     setCurrentDeckId(deck.id);
     setHistory([clean]);
     setHistoryIndex(0);
-    setIsDirty(true);
+    setIsDirty(false);
     setHasActiveSession(true);
     setViewMode('editor');
+    const activeKey = getActiveDeckStorageKey(user?.id);
     try {
       localStorage.setItem(
-        'netroot_active_working_deck',
+        activeKey,
         JSON.stringify({
           id: deck.id,
           slides: clean,
@@ -448,9 +484,12 @@ export default function PptStudioPage() {
   useEffect(() => {
     if (!queryDeckId) return;
 
+    const activeKey = getActiveDeckStorageKey(user?.id);
+    const savedKey = getSavedSlidesStorageKey(user?.id);
+
     // 1. Check active working deck
     try {
-      const active = localStorage.getItem('netroot_active_working_deck');
+      const active = localStorage.getItem(activeKey);
       if (active) {
         const parsed = JSON.parse(active);
         if (parsed.id === queryDeckId && Array.isArray(parsed.slides) && parsed.slides.length > 0) {
@@ -463,7 +502,7 @@ export default function PptStudioPage() {
 
     // 2. Check saved slides in localStorage
     try {
-      const saved = JSON.parse(localStorage.getItem('netroot_saved_slides') || '[]');
+      const saved = JSON.parse(localStorage.getItem(savedKey) || '[]');
       const found = saved.find((d) => d.id === queryDeckId);
       if (found && Array.isArray(found.slides) && found.slides.length > 0) {
         handleSelectDeck(found);
@@ -475,11 +514,11 @@ export default function PptStudioPage() {
     // 3. Check Supabase user_decks
     async function loadCloudDeck() {
       try {
-        const { data, error } = await supabase
-          .from('user_decks')
-          .select('*')
-          .eq('id', queryDeckId)
-          .maybeSingle();
+        let query = supabase.from('user_decks').select('*').eq('id', queryDeckId);
+        if (user?.id) {
+          query = query.eq('user_id', user.id);
+        }
+        const { data, error } = await query.maybeSingle();
 
         if (!error && data && Array.isArray(data.slides) && data.slides.length > 0) {
           handleSelectDeck(data);
@@ -490,7 +529,7 @@ export default function PptStudioPage() {
       }
     }
     loadCloudDeck();
-  }, [queryDeckId]);
+  }, [queryDeckId, user?.id]);
 
   const handleStartNewSlides = () => {
     if (isFreeLimitReached) {
@@ -583,6 +622,8 @@ export default function PptStudioPage() {
     }));
     setSlides(updated);
     pushHistory(updated);
+    setIsDirty(true);
+    setHasActiveSession(true);
     showToast(`Applied ${themeId} theme to presentation`, 'success');
   };
 
@@ -594,6 +635,8 @@ export default function PptStudioPage() {
     }));
     setSlides(updated);
     pushHistory(updated);
+    setIsDirty(true);
+    setHasActiveSession(true);
   };
 
   // Reordering slides via Drag & Drop
@@ -605,6 +648,8 @@ export default function PptStudioPage() {
     setSlides(next);
     setCurrentIndex(toIdx);
     pushHistory(next);
+    setIsDirty(true);
+    setHasActiveSession(true);
     showToast(`Moved slide #${fromIdx + 1} to #${toIdx + 1}`, 'info');
   };
 
@@ -616,6 +661,8 @@ export default function PptStudioPage() {
     setSlides(next);
     setCurrentIndex(idx + 1);
     pushHistory(next);
+    setIsDirty(true);
+    setHasActiveSession(true);
     showToast(`Duplicated slide #${idx + 1}`, 'success');
   };
 
@@ -629,6 +676,8 @@ export default function PptStudioPage() {
     setSlides(next);
     setCurrentIndex(Math.min(idx, next.length - 1));
     pushHistory(next);
+    setIsDirty(true);
+    setHasActiveSession(true);
     showToast(`Deleted slide #${idx + 1}`, 'info');
   };
 
@@ -660,6 +709,8 @@ export default function PptStudioPage() {
     next[idx] = { ...next[idx], theme_mode: nextMode };
     setSlides(next);
     pushHistory(next);
+    setIsDirty(true);
+    setHasActiveSession(true);
   };
 
   // Full AI Generation

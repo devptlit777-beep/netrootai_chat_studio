@@ -17,6 +17,7 @@ import {
   Sparkles,
   ArrowRight,
 } from 'lucide-react';
+import { getActiveDeckStorageKey, getSavedSlidesStorageKey, clearLegacyGlobalPptStorage } from './pptConstants';
 
 export default function MySlidesModal({
   isOpen = false,
@@ -62,10 +63,14 @@ export default function MySlidesModal({
     }
 
     try {
-      const local = JSON.parse(localStorage.getItem('netroot_saved_slides') || '[]');
+      clearLegacyGlobalPptStorage();
+      const activeKey = getActiveDeckStorageKey(user?.id);
+      const savedKey = getSavedSlidesStorageKey(user?.id);
+
+      const local = user?.id ? [] : JSON.parse(localStorage.getItem(savedKey) || '[]');
       let activeDeck = null;
       try {
-        const act = JSON.parse(localStorage.getItem('netroot_active_working_deck') || '{}');
+        const act = JSON.parse(localStorage.getItem(activeKey) || '{}');
         if (act.id && Array.isArray(act.slides) && act.slides.length > 0) {
           activeDeck = {
             id: act.id,
@@ -73,7 +78,7 @@ export default function MySlidesModal({
             slides: act.slides,
             theme: act.currentTheme || 'midnight',
             seed_color: act.currentSeed || '#0EA5E9',
-            updated_at: new Date().toISOString(),
+            updated_at: act.updated_at || new Date().toISOString(),
           };
         }
       } catch {}
@@ -111,7 +116,8 @@ export default function MySlidesModal({
       // Also clean local
       setDecks((prev) => {
         const updated = prev.filter((d) => d.id !== deckId);
-        localStorage.setItem('netroot_saved_slides', JSON.stringify(updated));
+        const savedKey = getSavedSlidesStorageKey(user?.id);
+        localStorage.setItem(savedKey, JSON.stringify(updated));
         return updated;
       });
 
@@ -151,7 +157,8 @@ export default function MySlidesModal({
         const newLocal = { ...duplicateData, id: 'local_' + Date.now() };
         setDecks((prev) => {
           const updated = [newLocal, ...prev];
-          localStorage.setItem('netroot_saved_slides', JSON.stringify(updated));
+          const savedKey = getSavedSlidesStorageKey(user?.id);
+          localStorage.setItem(savedKey, JSON.stringify(updated));
           return updated;
         });
       }

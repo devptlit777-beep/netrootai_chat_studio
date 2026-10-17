@@ -1128,6 +1128,7 @@ import API_BASE from '../lib/api';
 import { DEFAULT_PLAN_LIMITS, fetchPlanLimits, normalizePlan } from '../lib/planLimits';
 import { copyChatContext, downloadAsWord, downloadAsPdf, downloadAsPpt } from '../lib/chatExport';
 import PptChatDeckCard from '../components/ppt/PptChatDeckCard';
+import { getActiveDeckStorageKey, getSavedSlidesStorageKey } from '../components/ppt/pptConstants';
 
 const PLUGIN_ICONS = {
   'web-search': '🌐', 'calculator': '🧮', 'pdf-search': '📄', 'arxiv': '📚', 'code-runner': '⚡',
@@ -1664,14 +1665,16 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
       }
       if (data.pptDeck) {
         try {
-          localStorage.setItem('netroot_active_working_deck', JSON.stringify({
+          const activeKey = getActiveDeckStorageKey(user?.id);
+          const savedKey = getSavedSlidesStorageKey(user?.id);
+          localStorage.setItem(activeKey, JSON.stringify({
             id: data.pptDeck.deckId,
             slides: data.pptDeck.slides,
             deckTitle: data.pptDeck.title,
             currentTheme: data.pptDeck.theme || 'midnight',
             currentSeed: data.pptDeck.seed_color || '#0EA5E9',
           }));
-          const saved = JSON.parse(localStorage.getItem('netroot_saved_slides') || '[]');
+          const saved = JSON.parse(localStorage.getItem(savedKey) || '[]');
           const idx = saved.findIndex(d => d.id === data.pptDeck.deckId);
           const item = {
             id: data.pptDeck.deckId,
@@ -1683,7 +1686,7 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
           };
           if (idx >= 0) saved[idx] = item;
           else saved.unshift(item);
-          localStorage.setItem('netroot_saved_slides', JSON.stringify(saved));
+          localStorage.setItem(savedKey, JSON.stringify(saved));
         } catch (e) {
           console.warn('Could not cache ppt deck:', e);
         }
@@ -1816,7 +1819,8 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
       try {
         pptDeck = JSON.parse(pptMatch[1]);
         if (pptDeck?.deckId && Array.isArray(pptDeck?.slides) && pptDeck.slides.length > 0) {
-          const saved = JSON.parse(localStorage.getItem('netroot_saved_slides') || '[]');
+          const savedKey = getSavedSlidesStorageKey(user?.id);
+          const saved = JSON.parse(localStorage.getItem(savedKey) || '[]');
           if (!saved.some((d) => d.id === pptDeck.deckId)) {
             saved.unshift({
               id: pptDeck.deckId,
@@ -1826,7 +1830,7 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
               seed_color: pptDeck.seed_color || '#0EA5E9',
               updated_at: new Date().toISOString(),
             });
-            localStorage.setItem('netroot_saved_slides', JSON.stringify(saved));
+            localStorage.setItem(savedKey, JSON.stringify(saved));
           }
         }
       } catch {}

@@ -105,6 +105,16 @@ export function AuthProvider({ children }) {
   }
 
   async function signOut() {
+    try {
+      localStorage.removeItem('netroot_active_working_deck');
+      localStorage.removeItem('netroot_saved_slides');
+      localStorage.removeItem('netroot_active_working_deck_guest');
+      localStorage.removeItem('netroot_saved_slides_guest');
+      if (user?.id) {
+        localStorage.removeItem(`netroot_active_working_deck_${user.id}`);
+        localStorage.removeItem(`netroot_saved_slides_${user.id}`);
+      }
+    } catch {}
     await supabase.auth.signOut({ scope: 'local' });
   }
 
