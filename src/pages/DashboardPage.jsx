@@ -2070,68 +2070,6 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
                           </div>
                         ) : text.trim() ? (
                           <ReactMarkdown
-                            remarkPlugins={[remarkGfm]}
-                            components={{
-                              h1: ({ children }) => (
-                                <h1 className={`text-4xl font-bold mt-8 mb-4 border-b pb-2 ${darkMode ? 'text-white border-gray-800' : 'text-gray-900 border-gray-200'}`}>{children}</h1>
-                              ),
-                              h2: ({ children }) => (
-                                <h2 className={`text-3xl font-semibold mt-7 mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</h2>
-                              ),
-                              h3: ({ children }) => (
-                                <h3 className={`text-2xl font-semibold mt-6 mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</h3>
-                              ),
-                              h4: ({ children }) => (
-                                <h4 className={`text-xl font-semibold mt-5 mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</h4>
-                              ),
-                              p: ({ children }) => (
-                                <p className={`leading-8 mb-4 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{children}</p>
-                              ),
-                              strong: ({ children }) => (
-                                <strong className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</strong>
-                              ),
-                              em: ({ children }) => (
-                                <em className={`italic ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{children}</em>
-                              ),
-                              ul: ({ children }) => (
-                                <ul className={`list-disc pl-6 my-4 space-y-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{children}</ul>
-                              ),
-                              ol: ({ children }) => (
-                                <ol className={`list-decimal pl-6 my-4 space-y-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{children}</ol>
-                              ),
-                              li: ({ children }) => (
-                                <li className="leading-7">{children}</li>
-                              ),
-                              blockquote: ({ children }) => (
-                                <blockquote className={`border-l-4 border-green-500 p-4 rounded-r-lg italic my-5 ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-50 text-gray-700'}`}>{children}</blockquote>
-                              ),
-                              hr: () => (
-                                <hr className={`my-8 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`} />
-                              ),
-                              a: ({ href, children }) => (
-                                <a href={href} target="_blank" rel="noopener noreferrer" className={`${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-500'} underline`}>{children}</a>
-                              ),
-                              table: ({ children }) => (
-                                <div className="overflow-x-auto my-6"><table className={`w-full border rounded-lg overflow-hidden ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>{children}</table></div>
-                              ),
-                              thead: ({ children }) => (<thead className={`${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>{children}</thead>),
-                              tbody: ({ children }) => (<tbody className={`${darkMode ? 'bg-gray-900' : 'bg-white'}`}>{children}</tbody>),
-                              tr: ({ children }) => (<tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>{children}</tr>),
-                              th: ({ children }) => (<th className={`px-4 py-3 text-left font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</th>),
-                              td: ({ children }) => (<td className={`px-4 py-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{children}</td>),
-                              img: ({ src, alt }) => (<img src={src} alt={alt} className="rounded-xl my-5 max-w-full shadow-lg" />),
-                              code({ inline, children }) {
-                                if (inline) return (<code className={`${darkMode ? 'bg-gray-800 text-green-400' : 'bg-gray-100 text-green-600'} px-2 py-1 rounded text-sm`}>{children}</code>);
-                                return (<pre className={`${darkMode ? 'bg-[#0d1117] text-green-400' : 'bg-gray-100 text-green-700'} rounded-xl p-5 overflow-x-auto my-5`}><code>{children}</code></pre>);
-                              },
-                            }}
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            Download image
-                          </a>
-                        </div>
-                      ) : text.trim() ? (
-                        <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
                           components={{
                             h1: ({ children }) => (

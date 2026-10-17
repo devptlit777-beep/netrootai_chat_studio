@@ -696,18 +696,7 @@ export default function PptStudioHub({
                 </p>
               </div>
             </div>
-            <div>
-              <h3 className="text-sm font-bold flex items-center gap-1.5">
-                <span>{activeSlidesCount > 0 ? 'Resume Active Session' : 'Quick Pitch Deck Template'}</span>
-                <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
-              </h3>
-              <p className={`text-xs mt-1 leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                {activeSlidesCount > 0
-                  ? `Continue working on "${activeDeckTitle || 'Untitled Presentation'}" (${activeSlidesCount} slides ready in editor).`
-                  : 'Load a pre-architected 5-slide investor deck structure ready for quick custom points.'}
-              </p>
-            </div>
-          </div>
+          )}
         </section>
 
         {/* My Slides / Saved Presentations Section */}
