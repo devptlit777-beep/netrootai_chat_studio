@@ -1141,8 +1141,14 @@ const EXAMPLES = [
   { title: 'Describe health symptoms', prompt: 'What symptoms are you experiencing?' },
   { title: 'Identify tough topics', prompt: 'What topic do you find difficult?' },
   { title: 'Suggest design improvements', prompt: 'What changes would improve this design?' },
-  { title: 'Learn about KPI & Matrix, Trace', prompt: 'Explain KPI & Matrix Trace in Netroot AI and how to use them.' },
-  { title: 'Learn about log management', prompt: 'How does log management work in Netroot AI?' },
+  {
+    title: "Learn about analytics",
+    prompt: "Explain the analytics features in Netroot AI and how to use them to monitor performance."
+  },
+  {
+    title: "Learn about ppt management",
+    prompt: "How does pipeline tracking (PPT) and management work in Netroot AI?"
+  }
 ];
 const ALL_MODELS = [
   { id: 'openai/gpt-oss-20b', label: 'GPT OSS 20B', tag: '🥈 Fast' },
@@ -1635,7 +1641,6 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
           attachments: attachmentsSnapshot,
           history: [...messages, userMsg],
           model,
-          plugins: enabledPlugins,
           email: user?.email,
           userId: user?.id,
         }),
@@ -1810,7 +1815,7 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
 
     const imgMatch = text.match(/^__IMAGES__(.*?)__IMAGES__([\s\S]*)$/);
     if (imgMatch) {
-      try { images = JSON.parse(imgMatch[1]); } catch {}
+      try { images = JSON.parse(imgMatch[1]); } catch { }
       text = imgMatch[2];
     }
 
@@ -1866,7 +1871,7 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Search threads..."
+                placeholder={t('dashboard.searchThreads')}
                 className={`bg-transparent text-sm outline-none w-40 ${darkMode ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'}`}
               />
               <button onClick={() => { setShowSearch(false); setSearchQuery(''); }}>
@@ -1898,7 +1903,7 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
                 className={`flex items-center gap-1.5 border rounded-lg px-3 py-1.5 text-sm transition-all ${darkMode ? 'bg-[#1a1a1a] border-[#2a2a2a] hover:border-[#3a3a3a] text-gray-400 hover:text-gray-200' : 'bg-white border-gray-300 hover:border-gray-400 text-gray-500 hover:text-gray-700'}`}
               >
                 <Download className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Export</span>
+                <span className="hidden sm:inline">{t('dashboard.export')}</span>
                 <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showExportMenu ? 'rotate-180' : ''}`} />
               </button>
 
@@ -1950,14 +1955,14 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
       </header>
       {accessExpired && (
         <div className="mx-6 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
-          <div><strong className={darkMode ? 'text-amber-300' : 'text-amber-800'}>Your one-month free plan is complete.</strong><span className={darkMode ? 'text-amber-200/80' : 'text-amber-700'}> Upgrade to Pro to continue using Netroot AI.</span></div>
-          <button onClick={() => navigate('/pricing')} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500">Upgrade to Pro</button>
+          <div><strong className={darkMode ? 'text-amber-300' : 'text-amber-800'}>{t('dashboard.freePlanComplete')}</strong><span className={darkMode ? 'text-amber-200/80' : 'text-amber-700'}>{t('dashboard.upgradeToContinue')}</span></div>
+          <button onClick={() => navigate('/pricing')} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500">{t('dashboard.upgrade')}</button>
         </div>
       )}
       {/* <div className={`mx-6 mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-xl border p-3 ${darkMode ? 'border-[#242424] bg-[#141414]' : 'border-gray-200 bg-white'}`}>
-        <div><p className="text-xs text-gray-500">My tokens today</p><p className="mt-1 text-lg font-semibold">{tokensUsedToday.toLocaleString()}</p></div>
-        <div><p className="text-xs text-gray-500">Current model usage</p><p className="mt-1 text-lg font-semibold">{modelUsed.toLocaleString()}</p></div>
-        <div><p className="text-xs text-gray-500">Daily plan limit</p><p className="mt-1 text-lg font-semibold">{planTokenLimit?.toLocaleString() || 'Unlimited'}</p></div>
+        <div><p className="text-xs text-gray-500">{t('dashboard.myTokensToday')}</p><p className="mt-1 text-lg font-semibold">{tokensUsedToday.toLocaleString()}</p></div>
+        <div><p className="text-xs text-gray-500">{t('dashboard.currentModelUsage')}</p><p className="mt-1 text-lg font-semibold">{modelUsed.toLocaleString()}</p></div>
+        <div><p className="text-xs text-gray-500">{t('dashboard.dailyPlanLimit')}</p><p className="mt-1 text-lg font-semibold">{planTokenLimit?.toLocaleString() || t('dashboard.unlimited')}</p></div>
       </div> */}
 
       <div className="flex flex-1 overflow-hidden">
@@ -2030,34 +2035,96 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
                           : 'bg-white border border-slate-200 text-slate-900'
                         }`}>
 
-                      {/* Attached images */}
-                      {images.length > 0 && (
-                        <div className={`flex flex-wrap gap-2 ${text.trim() ? 'mb-2' : ''}`}>
-                          {images.map((img, i) => (
-                            <img
-                              key={i}
-                              src={img.url}
-                              alt={img.name}
-                              className="rounded-xl max-w-[260px] max-h-[260px] object-cover shadow"
-                            />
-                          ))}
-                        </div>
-                      )}
+                        {/* Attached images */}
+                        {images.length > 0 && (
+                          <div className={`flex flex-wrap gap-2 ${text.trim() ? 'mb-2' : ''}`}>
+                            {images.map((img, i) => (
+                              <img
+                                key={i}
+                                src={img.url}
+                                alt={img.name}
+                                className="rounded-xl max-w-[260px] max-h-[260px] object-cover shadow"
+                              />
+                            ))}
+                          </div>
+                        )}
 
-                      {msg.role === 'assistant' && msg.content.startsWith('__IMAGE__') ? (
-                        <div className="space-y-2">
-                          <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>🎨 Generated image</p>
-                          <img
-                            src={msg.content.replace('__IMAGE__', '')}
-                            alt="Generated"
-                            className="rounded-2xl max-w-full shadow-lg"
-                            onError={e => { e.target.style.display = 'none'; }}
-                          />
-                          <a
-                            href={msg.content.replace('__IMAGE__', '')}
-                            download={`netroot-ai-image-${msg.id}.png`}
-                            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${darkMode ? 'border-[#333] text-gray-300 hover:bg-white/10' : 'border-gray-200 text-gray-600 hover:bg-gray-100'}`}
-                            title="Download generated image"
+                        {msg.role === 'assistant' && msg.content.startsWith('__IMAGE__') ? (
+                          <div className="space-y-2">
+                            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>🎨 Generated image</p>
+                            <img
+                              src={msg.content.replace('__IMAGE__', '')}
+                              alt={t('dashboard.generatedImage')}
+                              className="rounded-2xl max-w-full shadow-lg"
+                              onError={e => { e.target.style.display = 'none'; }}
+                            />
+                            <a
+                              href={msg.content.replace('__IMAGE__', '')}
+                              download={`netroot-ai-image-${msg.id}.png`}
+                              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${darkMode ? 'border-[#333] text-gray-300 hover:bg-white/10' : 'border-gray-200 text-gray-600 hover:bg-gray-100'}`}
+                              title={t('dashboard.downloadGeneratedImage')}
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              {t('dashboard.downloadImage')}
+                            </a>
+                          </div>
+                        ) : text.trim() ? (
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              h1: ({ children }) => (
+                                <h1 className={`text-4xl font-bold mt-8 mb-4 border-b pb-2 ${darkMode ? 'text-white border-gray-800' : 'text-gray-900 border-gray-200'}`}>{children}</h1>
+                              ),
+                              h2: ({ children }) => (
+                                <h2 className={`text-3xl font-semibold mt-7 mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</h2>
+                              ),
+                              h3: ({ children }) => (
+                                <h3 className={`text-2xl font-semibold mt-6 mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</h3>
+                              ),
+                              h4: ({ children }) => (
+                                <h4 className={`text-xl font-semibold mt-5 mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</h4>
+                              ),
+                              p: ({ children }) => (
+                                <p className={`leading-8 mb-4 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{children}</p>
+                              ),
+                              strong: ({ children }) => (
+                                <strong className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</strong>
+                              ),
+                              em: ({ children }) => (
+                                <em className={`italic ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{children}</em>
+                              ),
+                              ul: ({ children }) => (
+                                <ul className={`list-disc pl-6 my-4 space-y-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{children}</ul>
+                              ),
+                              ol: ({ children }) => (
+                                <ol className={`list-decimal pl-6 my-4 space-y-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{children}</ol>
+                              ),
+                              li: ({ children }) => (
+                                <li className="leading-7">{children}</li>
+                              ),
+                              blockquote: ({ children }) => (
+                                <blockquote className={`border-l-4 border-green-500 p-4 rounded-r-lg italic my-5 ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-50 text-gray-700'}`}>{children}</blockquote>
+                              ),
+                              hr: () => (
+                                <hr className={`my-8 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`} />
+                              ),
+                              a: ({ href, children }) => (
+                                <a href={href} target="_blank" rel="noopener noreferrer" className={`${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-500'} underline`}>{children}</a>
+                              ),
+                              table: ({ children }) => (
+                                <div className="overflow-x-auto my-6"><table className={`w-full border rounded-lg overflow-hidden ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>{children}</table></div>
+                              ),
+                              thead: ({ children }) => (<thead className={`${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>{children}</thead>),
+                              tbody: ({ children }) => (<tbody className={`${darkMode ? 'bg-gray-900' : 'bg-white'}`}>{children}</tbody>),
+                              tr: ({ children }) => (<tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>{children}</tr>),
+                              th: ({ children }) => (<th className={`px-4 py-3 text-left font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{children}</th>),
+                              td: ({ children }) => (<td className={`px-4 py-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{children}</td>),
+                              img: ({ src, alt }) => (<img src={src} alt={alt} className="rounded-xl my-5 max-w-full shadow-lg" />),
+                              code({ inline, children }) {
+                                if (inline) return (<code className={`${darkMode ? 'bg-gray-800 text-green-400' : 'bg-gray-100 text-green-600'} px-2 py-1 rounded text-sm`}>{children}</code>);
+                                return (<pre className={`${darkMode ? 'bg-[#0d1117] text-green-400' : 'bg-gray-100 text-green-700'} rounded-xl p-5 overflow-x-auto my-5`}><code>{children}</code></pre>);
+                              },
+                            }}
                           >
                             <Download className="w-3.5 h-3.5" />
                             Download image
@@ -2254,10 +2321,10 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
             <div className={`flex-1 flex flex-col items-center justify-end pb-4 px-6 ${darkMode ? '' : 'bg-gray-50'}`}>
               <img key={avatarUrl} src={avatarUrl} alt="avatar" className="w-16 h-16 rounded-full object-cover border-2 mb-5" />
               <h1 className={`text-3xl font-bold mb-1.5 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                {getGreeting()}, {firstName}
+                {t(getGreeting())}, {firstName}
               </h1>
               <p className="text-xl font-semibold">
-                What's on <span className="text-[#3b82f6]">your mind?</span>
+                <span className="text-[#3b82f6]">{t('dashboard.whatsOnYourMind')}</span>
               </p>
             </div>
           )}
@@ -2300,7 +2367,7 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
                     value={input}
                     onChange={e => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="Ask AI a question..."
+                    placeholder={t('dashboard.askQuestion')}
                     rows={3}
                     className={`w-full bg-transparent px-5 pt-4 pb-2 outline-none resize-none text-sm leading-relaxed ${darkMode ? 'text-gray-200 placeholder-gray-600' : 'text-gray-800 placeholder-gray-400'}`}
                   />
@@ -2358,7 +2425,7 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
 
                       <button
                         onClick={() => imageInputRef.current?.click()}
-                        title="Upload image for vision analysis"
+                        title={t('dashboard.uploadVisionImage')}
                         className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors border ${darkMode ? 'text-purple-400 hover:text-purple-300 border-purple-500/30 bg-purple-500/10' : 'text-purple-600 hover:text-purple-700 border-purple-200 bg-purple-50'}`}
                       >
                         <Image className="w-3.5 h-3.5" />

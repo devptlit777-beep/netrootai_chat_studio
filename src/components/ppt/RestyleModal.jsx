@@ -1,15 +1,20 @@
 import React, { useState } from 'react';
+<<<<<<< HEAD
+import { useTranslation } from 'react-i18next';
+import { Wand2, X, Loader2, Check } from 'lucide-react';
+=======
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { PPT_API_BASE } from './pptConstants';
 import { Wand2, X, Loader2, Check, Sparkles } from 'lucide-react';
+>>>>>>> 806306b7a37e545d96f582656b0a5eb47c8d972a
 
-const PRESETS = [
-  'Make punchier and more concise',
-  'Executive C-suite tone',
-  'Add realistic enterprise metrics / percentages',
-  'Rephrase as actionable initiative',
-  'Highlight technical infrastructure & latency',
+const PRESET_KEYS = [
+  'ppt.presetConcise',
+  'ppt.presetExecutive',
+  'ppt.presetMetrics',
+  'ppt.presetActionable',
+  'ppt.presetTechnical',
 ];
 
 export default function RestyleModal({
@@ -21,9 +26,15 @@ export default function RestyleModal({
   deckId = null,
   isEditLimitReached = false,
 }) {
+<<<<<<< HEAD
+  const { t } = useTranslation();
+  const presets = PRESET_KEYS.map((key) => t(key));
+  const [instruction, setInstruction] = useState(presets[0]);
+=======
   const navigate = useNavigate();
   const { user } = useAuth();
   const [instruction, setInstruction] = useState(PRESETS[0]);
+>>>>>>> 806306b7a37e545d96f582656b0a5eb47c8d972a
   const [isRestyling, setIsRestyling] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -85,8 +96,13 @@ export default function RestyleModal({
               <Wand2 className="w-4 h-4" />
             </div>
             <div>
+<<<<<<< HEAD
+              <h2 className="text-sm font-bold text-white">{t('ppt.restyleWithAI')}</h2>
+              <p className="text-xs text-slate-400">{t('ppt.restyleDescription')}</p>
+=======
               <h2 className="text-sm font-bold text-white">Restyle with NetRoot AI</h2>
               <p className="text-xs text-slate-400">Rephrase or refine point tone</p>
+>>>>>>> 806306b7a37e545d96f582656b0a5eb47c8d972a
             </div>
           </div>
           <button
@@ -127,7 +143,7 @@ export default function RestyleModal({
           {/* Original Point */}
           <div>
             <span className="text-[10px] font-bold uppercase tracking-wider font-mono text-slate-400 block mb-1.5">
-              Current Text
+              {t('ppt.currentText')}
             </span>
             <div className="p-3 rounded-xl bg-[#18181b] border border-[#26262a] text-xs text-slate-200 leading-relaxed font-sans">
               "{originalText}"
@@ -137,10 +153,10 @@ export default function RestyleModal({
           {/* Quick Preset Buttons */}
           <div className={isEditLimitReached ? 'opacity-50 pointer-events-none' : ''}>
             <span className="text-[10px] font-bold uppercase tracking-wider font-mono text-slate-400 block mb-2">
-              Select Preset
+              {t('ppt.selectPreset')}
             </span>
             <div className="flex flex-col gap-1.5">
-              {PRESETS.map((p, i) => (
+              {presets.map((p, i) => (
                 <button
                   key={i}
                   type="button"
@@ -161,13 +177,31 @@ export default function RestyleModal({
           {/* Custom Instruction */}
           <div>
             <span className="text-[10px] font-bold uppercase tracking-wider font-mono text-slate-400 block mb-1.5">
-              Or Custom Instruction
+              {t('ppt.customInstruction')}
             </span>
             <div className="flex items-center gap-2">
               <input
                 type="text"
                 value={instruction}
                 onChange={(e) => setInstruction(e.target.value)}
+<<<<<<< HEAD
+                placeholder={t('ppt.restylePlaceholder')}
+                className="flex-1 bg-[#18181b] border border-[#2b2b30] focus:border-purple-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => handleExecuteRestyle(instruction)}
+                disabled={!instruction.trim() || isRestyling}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+              >
+                {isRestyling ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Check className="w-3.5 h-3.5" />
+                )}
+                <span>{t('ppt.apply')}</span>
+              </button>
+=======
                 disabled={isEditLimitReached || isRestyling}
                 placeholder="e.g. Simplify language, make it executive-level, add a metaphor..."
                 className="flex-1 bg-[#18181b] border border-[#2b2b30] focus:border-purple-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 outline-none disabled:opacity-50"
@@ -196,6 +230,7 @@ export default function RestyleModal({
                   <span>Apply</span>
                 </button>
               )}
+>>>>>>> 806306b7a37e545d96f582656b0a5eb47c8d972a
             </div>
           </div>
         </div>

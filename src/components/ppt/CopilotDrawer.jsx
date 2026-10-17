@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlan } from '../../contexts/PlanContext';
@@ -28,7 +27,6 @@ export default function CopilotDrawer({
   onQuickRegenerateCurrent,
   isRegenerating = false,
 }) {
-  const navigate = useNavigate();
   const { theme } = useTheme();
   const { user } = useAuth();
   const { plan, lifetimePptCount = 0, featureAccess } = usePlan();
@@ -119,7 +117,7 @@ export default function CopilotDrawer({
               NetRoot AI Assistant
             </h2>
             <p className={`text-[11px] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-              Slide #{slideIndex + 1} Assistant
+              {t('ppt.assistant', { index: slideIndex + 1 })}
             </p>
           </div>
         </div>
@@ -131,7 +129,7 @@ export default function CopilotDrawer({
               ? 'text-slate-400 hover:text-white hover:bg-white/5'
               : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
           }`}
-          title="Close NetRoot AI Assistant"
+          title="Close Slide AI"
         >
           <X className="w-4 h-4" />
         </button>
@@ -166,13 +164,13 @@ export default function CopilotDrawer({
           }`}
         >
           <div>
-            <span className="text-xs font-semibold block">Redo Slide Content</span>
+            <span className="text-xs font-semibold block">{t('ppt.redoSlideContent')}</span>
             <span
               className={`text-[11px] ${
                 darkMode ? 'text-purple-400/80' : 'text-purple-600'
               }`}
             >
-              Re-plan structure and text
+              {t('ppt.replanStructure')}
             </span>
           </div>
           <button
@@ -189,9 +187,6 @@ export default function CopilotDrawer({
           >
             <RefreshCw className={`w-3 h-3 ${isRegenerating ? 'animate-spin' : ''}`} />
             <span>Regen</span>
-            {isEditLimitReached && (
-              <span className="ml-1 px-1 py-0.2 rounded text-[9px] font-bold bg-amber-500/30 text-amber-300">PRO</span>
-            )}
           </button>
         </div>
 
@@ -236,17 +231,11 @@ export default function CopilotDrawer({
             value={instruction}
             disabled={isEditLimitReached || isLoading}
             onChange={(e) => setInstruction(e.target.value)}
-            placeholder={
-              isEditLimitReached
-                ? "🔒 AI editing limit reached (5/5). Upgrade to Pro for unlimited edits."
-                : "Ask NetRoot AI Assistant to update this slide..."
-            }
-            className={`w-full border rounded-xl p-3 text-xs outline-none resize-none transition ${
-              isEditLimitReached
-                ? 'opacity-60 cursor-not-allowed bg-black/40 text-slate-400 border-amber-500/20'
-                : darkMode
-                ? 'bg-[#18181b] border-[#2b2b30] text-white placeholder-slate-500 focus:border-purple-500'
-                : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-purple-500'
+            placeholder="Type your command or instruction for this slide..."
+            className={`w-full border focus:border-purple-500 rounded-xl p-3 text-xs outline-none resize-none transition ${
+              darkMode
+                ? 'bg-[#18181b] border-[#2b2b30] text-white placeholder-slate-500'
+                : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:bg-white'
             }`}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
@@ -255,29 +244,18 @@ export default function CopilotDrawer({
               }
             }}
           />
-          {isEditLimitReached ? (
-            <button
-              type="button"
-              onClick={() => navigate('/pricing')}
-              className="w-full mt-2 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-md shadow-purple-600/30 cursor-pointer"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-              <span>⚡ Upgrade to Pro for Unlimited AI Edits</span>
-            </button>
-          ) : (
-            <button
-              type="submit"
-              disabled={!instruction.trim() || isLoading}
-              className="absolute bottom-2.5 right-2.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition shadow-md shadow-purple-600/30 cursor-pointer"
-            >
-              {isLoading ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Send className="w-3.5 h-3.5" />
-              )}
-              <span>Apply</span>
-            </button>
-          )}
+          <button
+            type="submit"
+            disabled={!instruction.trim() || isLoading}
+            className="absolute bottom-2.5 right-2.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition shadow-md shadow-purple-600/30 cursor-pointer"
+          >
+            {isLoading ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Send className="w-3.5 h-3.5" />
+            )}
+            <span>Apply</span>
+          </button>
         </div>
       </form>
     </aside>

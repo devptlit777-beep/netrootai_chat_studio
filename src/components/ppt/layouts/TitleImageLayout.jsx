@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import EditableText from '../EditableText';
 import BulletList from './BulletList';
 import { Image as ImageIcon, Trash2, Sliders } from 'lucide-react';
@@ -14,6 +15,7 @@ export default function TitleImageLayout({
   onPushHistory,
   isGeneratingAI,
 }) {
+  const { t } = useTranslation();
   const hasImage = Boolean(slide.image_data);
   const currentScale = Math.round((slide.image_scale || 1.0) * 100);
 
@@ -78,7 +80,7 @@ export default function TitleImageLayout({
               {/* Source Badge */}
               {slide.attached_image_id ? (
                 <span className="absolute top-2.5 right-2.5 text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 z-10">
-                  📎 User Chart
+                  📎 {t('ppt.userChart')}
                 </span>
               ) : slide.image_query ? (
                 <span className="absolute top-2.5 right-2.5 text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 z-10 truncate max-w-[150px]">
@@ -96,7 +98,7 @@ export default function TitleImageLayout({
                     type="button"
                     onClick={() => adjustImageScale(-0.1)}
                     className="w-5 h-5 flex items-center justify-center rounded hover:bg-slate-700 font-bold"
-                    title="Scale down"
+                    title={t('ppt.scaleDown')}
                   >
                     −
                   </button>
@@ -107,7 +109,7 @@ export default function TitleImageLayout({
                     type="button"
                     onClick={() => adjustImageScale(0.1)}
                     className="w-5 h-5 flex items-center justify-center rounded hover:bg-slate-700 font-bold"
-                    title="Scale up"
+                    title={t('ppt.scaleUp')}
                   >
                     +
                   </button>
@@ -120,7 +122,7 @@ export default function TitleImageLayout({
                     onChange={(e) => handleSliderScale(e.target.value)}
                     onMouseUp={onPushHistory}
                     className="w-14 h-1 accent-sky-500 cursor-pointer"
-                    title="Image size"
+                    title={t('ppt.imageSize')}
                   />
                   <span className="w-px h-3.5 bg-slate-700 mx-0.5" />
                   <button
@@ -128,7 +130,7 @@ export default function TitleImageLayout({
                     onClick={onOpenPhotoModal}
                     className="text-sky-400 hover:text-sky-300 px-1 py-0.5 rounded text-[11px]"
                   >
-                    Replace
+                    {t('ppt.replace')}
                   </button>
                   <button
                     type="button"
@@ -150,11 +152,11 @@ export default function TitleImageLayout({
             <div
               onClick={onOpenPhotoModal}
               className="text-center text-slate-500 p-6 cursor-pointer hover:text-sky-400 hover:bg-white/5 rounded-xl transition flex flex-col items-center justify-center w-full h-full border border-dashed border-slate-700 hover:border-sky-500/50"
-              title="Click to add photo or visual"
+              title={t('ppt.addPhoto')}
             >
               <ImageIcon className="w-8 h-8 mb-2 opacity-40 text-sky-400" />
-              <p className="text-xs font-semibold">+ Add Visual</p>
-              <span className="text-[10px] text-slate-500 mt-1">Unsplash / Wikipedia search</span>
+              <p className="text-xs font-semibold">+ {t('ppt.addVisual')}</p>
+              <span className="text-[10px] text-slate-500 mt-1">{t('ppt.imageSources')}</span>
             </div>
           )}
         </div>

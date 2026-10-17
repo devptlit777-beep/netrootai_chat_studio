@@ -3,16 +3,17 @@ import { Check, Eye, EyeOff, X, Shield } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 const ADMIN_EMAIL = 'admin@netrootai.com';
 const ADMIN_PASSWORD = 'NetrootAdmin@2024';
 
 const passwordRules = [
-  { label: 'At least 8 characters', test: password => password.length >= 8 },
-  { label: 'One uppercase letter', test: password => /[A-Z]/.test(password) },
-  { label: 'One lowercase letter', test: password => /[a-z]/.test(password) },
-  { label: 'One number', test: password => /\d/.test(password) },
-  { label: 'One special character', test: password => /[^A-Za-z0-9]/.test(password) },
+  { key: 'auth.atLeast8Characters', test: password => password.length >= 8 },
+  { key: 'auth.oneUppercase', test: password => /[A-Z]/.test(password) },
+  { key: 'auth.oneLowercase', test: password => /[a-z]/.test(password) },
+  { key: 'auth.oneNumber', test: password => /\d/.test(password) },
+  { key: 'auth.oneSpecial', test: password => /[^A-Za-z0-9]/.test(password) },
 ];
 
 function isValidEmail(email) {
@@ -20,6 +21,7 @@ function isValidEmail(email) {
 }
 
 export default function LoginPage() {
+  const { t } = useTranslation();
   const { signIn, signUp, resetPassword } = useAuth();
   const { theme } = useTheme();
   const darkMode = theme === 'dark';
@@ -49,14 +51,14 @@ export default function LoginPage() {
         sessionStorage.setItem('admin_authed', '1');
         navigate('/admin');
       } else {
-        setError('Invalid admin credentials.');
+        setError(t('auth.invalidAdminCredentials'));
       }
       return;
     }
 
     const cleanEmail = email.trim().toLowerCase();
     if (!isValidEmail(cleanEmail)) {
-      setError('Enter a valid email address.');
+      setError(t('auth.enterValidEmail'));
       return;
     }
 
@@ -72,18 +74,18 @@ export default function LoginPage() {
       setLoading(true);
       const { error } = await resetPassword(cleanEmail);
       if (error) setError(error);
-      else setSuccess('If an account exists, a password reset email has been sent.');
+      else setSuccess(t('auth.resetSent'));
       setLoading(false);
       return;
     }
 
     // signup
     if (!fullName.trim()) {
-      setError('Full name is required');
+      setError(t('auth.fullNameRequired'));
       return;
     }
     if (!isStrongPassword) {
-      setError('Create a stronger password before signing up.');
+      setError(t('auth.strongerPassword'));
       return;
     }
     setLoading(true);
@@ -113,24 +115,24 @@ export default function LoginPage() {
           </div>
 
           <h1 className={`text-2xl font-semibold text-center mb-8 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-            {mode === 'admin' ? 'Admin Login' : mode === 'login' ? 'Welcome to Netrootai Assistant' : 'Create your account'}
+            {mode === 'admin' ? t('auth.adminLogin') : mode === 'login' ? t('auth.welcome') : t('auth.createAccount')}
           </h1>
 
           <form onSubmit={handleSubmit} className="space-y-5">
             {mode === 'admin' && (
               <div className={`flex items-center gap-2 text-sm rounded-lg px-3 py-2 ${darkMode ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' : 'bg-blue-50 text-blue-600 border border-blue-200'}`}>
                 <Shield className="w-4 h-4 shrink-0" />
-                Restricted admin access
+                {t('auth.restrictedAdmin')}
               </div>
             )}
             {mode === 'signup' && (
               <div>
-                <label className={`block text-sm font-medium mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Full name</label>
+                <label className={`block text-sm font-medium mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{t('auth.fullName')}</label>
                 <input
                   type="text"
                   value={fullName}
                   onChange={e => setFullName(e.target.value)}
-                  placeholder="Your full name"
+                  placeholder={t('auth.yourFullName')}
                   className={`w-full border rounded-lg px-4 py-2.5 outline-none transition-colors text-sm ${darkMode ? 'bg-[#1a1a28] border-[#3b82f6]/40 focus:border-[#3b82f6] text-white placeholder-gray-500' : 'bg-gray-50 border-gray-200 focus:border-blue-500 text-gray-900 placeholder-gray-400'}`}
                   required
                 />
@@ -138,7 +140,7 @@ export default function LoginPage() {
             )}
 
             <div>
-              <label className={`block text-sm font-medium mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Email address</label>
+              <label className={`block text-sm font-medium mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{t('common.email')}</label>
               <input
                 type="email"
                 value={email}
@@ -153,7 +155,7 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className={`block text-sm font-medium mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Password</label>
+              <label className={`block text-sm font-medium mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{t('common.password')}</label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
@@ -162,7 +164,7 @@ export default function LoginPage() {
                     setPassword(e.target.value);
                     if (mode === 'signup') setError(null);
                   }}
-                  placeholder={mode === 'signup' ? 'Create a strong password' : 'Password'}
+                  placeholder={mode === 'signup' ? t('auth.passwordStrong') : t('common.password')}
                   className={`w-full border rounded-lg px-4 py-2.5 outline-none transition-colors text-sm pr-11 ${darkMode ? 'bg-[#1a1a28] border-white/10 focus:border-[#3b82f6]/60 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-200 focus:border-blue-500 text-gray-900 placeholder-gray-400'}`}
                   required
                 />
@@ -177,7 +179,7 @@ export default function LoginPage() {
               {mode === 'signup' && (
                 <div className={`mt-3 rounded-lg border px-3 py-3 ${darkMode ? 'bg-white/[0.03] border-white/10' : 'bg-gray-50 border-gray-200'}`}>
                   <p className={`text-xs font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Password must include:
+                    {t('auth.passwordMustInclude')}
                   </p>
                   <div className="grid grid-cols-1 gap-1.5">
                     {passwordChecks.map(rule => (
@@ -186,7 +188,7 @@ export default function LoginPage() {
                         className={`flex items-center gap-2 text-xs ${rule.valid ? (darkMode ? 'text-emerald-400' : 'text-emerald-600') : (darkMode ? 'text-gray-500' : 'text-gray-500')}`}
                       >
                         {rule.valid ? <Check className="w-3.5 h-3.5 shrink-0" /> : <X className="w-3.5 h-3.5 shrink-0" />}
-                        <span>{rule.label}</span>
+                        <span>{t(rule.key)}</span>
                       </div>
                     ))}
                   </div>
@@ -206,50 +208,50 @@ export default function LoginPage() {
               disabled={loading || (mode === 'signup' && !isStrongPassword)}
               className="w-full bg-[#3b82f6] hover:bg-[#2563eb] disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg transition-colors text-sm mt-1"
             >
-              {loading ? 'Please wait...' : mode === 'admin' ? 'Sign in as Admin' : mode === 'login' ? 'Log in' : mode === 'signup' ? 'Create account' : 'Send reset email'}
+              {loading ? t('auth.wait') : mode === 'admin' ? t('auth.signInAsAdmin') : mode === 'login' ? t('auth.logIn') : mode === 'signup' ? t('auth.createAccount') : t('auth.sendResetEmail')}
             </button>
           </form>
 
           <div className="mt-5 text-center space-y-2">
             {mode === 'admin' ? (
               <button onClick={() => { setMode('login'); setEmail(''); setPassword(''); setError(null); }} className={`text-sm transition-colors ${darkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'}`}>
-                ← Back to user login
+                {t('auth.backToUserLogin')}
               </button>
             ) : mode === 'login' ? (
               <>
                 <button onClick={() => { setMode('reset'); setError(null); setSuccess(null); }} className={`text-sm transition-colors ${darkMode ? 'text-[#3b82f6] hover:text-[#60a5fa]' : 'text-blue-600 hover:text-blue-700'}`}>
-                  Forgot your password?
+                  {t('auth.forgotPassword')}
                 </button>
                 {mode === 'reset' && (
                   <p className={`text-sm mt-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                    Enter your email and we'll send a password reset link.{' '}
-                    <button onClick={() => { setMode('login'); setError(null); setSuccess(null); }} className={`ml-2 underline ${darkMode ? 'text-[#3b82f6]' : 'text-blue-600'}`}>Back to login</button>
+                    {t('auth.resetEmailInfo')}{' '}
+                    <button onClick={() => { setMode('login'); setError(null); setSuccess(null); }} className={`ml-2 underline ${darkMode ? 'text-[#3b82f6]' : 'text-blue-600'}`}>{t('auth.backToLogin')}</button>
                   </p>
                 )}
                 <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-600'}`}>
-                  Don't have an account?{' '}
+                  {t('auth.noAccount')}{' '}
                   <button
                     onClick={() => { setMode('signup'); setError(null); setSuccess(null); }}
                     className={`transition-colors ${darkMode ? 'text-[#3b82f6] hover:text-[#60a5fa]' : 'text-blue-600 hover:text-blue-700'}`}
                   >
-                    Sign up
+                    {t('auth.signUp')}
                   </button>
                 </p>
                 <button
                   onClick={() => { setMode('admin'); setEmail(''); setPassword(''); setError(null); }}
                   className={`text-xs transition-colors ${darkMode ? 'text-gray-600 hover:text-gray-400' : 'text-gray-400 hover:text-gray-600'}`}
                 >
-                  Admin login
+                  {t('auth.adminLoginLink')}
                 </button>
               </>
             ) : (
               <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-600'}`}>
-                Already have an account?{' '}
+                {t('auth.alreadyHaveAccount')}{' '}
                 <button
                   onClick={() => { setMode('login'); setError(null); setSuccess(null); }}
                   className={`transition-colors ${darkMode ? 'text-[#3b82f6] hover:text-[#60a5fa]' : 'text-blue-600 hover:text-blue-700'}`}
                 >
-                  Log in
+                  {t('auth.logIn')}
                 </button>
               </p>
             )}

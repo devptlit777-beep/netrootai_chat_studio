@@ -20,16 +20,18 @@ import PricingPage from './pages/PricingPage';
 import CheckoutSuccessPage from './pages/CheckoutSuccessPage';
 import { PlanProvider } from "./contexts/PlanContext";
 import Sidebar from "./components/Sidebar";
+import { useTranslation } from "react-i18next";
 
 function UpgradeRequired({ darkMode }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   return (
     <div className={`min-h-screen flex items-center justify-center px-6 ${darkMode ? "bg-[#0e0e0e] text-white" : "bg-gray-50 text-gray-900"}`}>
       <div className={`w-full max-w-md rounded-2xl border p-8 text-center ${darkMode ? "bg-[#111] border-[#2a2a2a]" : "bg-white border-gray-200"}`}>
-        <h1 className="text-xl font-bold">Upgrade to Pro to access this feature</h1>
+        <h1 className="text-xl font-bold">{t("dashboard.upgrade")}</h1>
         <p className={`mt-3 text-sm leading-6 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
-          NetRoot AI PPT Studio requires an active Pro plan. Upgrade now to unlock presentation generation, PowerPoint (.pptx) export, and 100,000 daily tokens.
+          Your one-month access period has ended. Chat remains available on the Free plan, but this feature requires an active Pro plan.
         </p>
         <button onClick={() => navigate("/pricing")} className="mt-6 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700">
           Upgrade to Pro

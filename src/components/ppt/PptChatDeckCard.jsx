@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { PPT_API_BASE, getActiveDeckStorageKey, getSavedSlidesStorageKey } from './pptConstants';
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react';
 
 export default function PptChatDeckCard({ pptDeck, darkMode = true }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuth();
   const [downloading, setDownloading] = useState(false);
@@ -22,7 +24,7 @@ export default function PptChatDeckCard({ pptDeck, darkMode = true }) {
 
   if (!pptDeck) return null;
 
-  const title = pptDeck.title || 'Untitled Presentation';
+  const title = pptDeck.title || t('ppt.untitledPresentation');
   const slideCount = pptDeck.slideCount || pptDeck.slides?.length || 5;
   const slides = pptDeck.slides || [];
   const theme = pptDeck.theme || 'midnight';
@@ -184,7 +186,7 @@ export default function PptChatDeckCard({ pptDeck, darkMode = true }) {
                 <span className="w-5 h-5 rounded bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-[10px] shrink-0">
                   {idx + 1}
                 </span>
-                <span className="font-medium truncate flex-1">{s.t || `Slide ${idx + 1}`}</span>
+                <span className="font-medium truncate flex-1">{s.t || `${t('ppt.slide', { count: idx + 1 })} ${idx + 1}`}</span>
                 {s.l && (
                   <span className="text-[10px] font-mono uppercase px-1.5 py-0.2 rounded bg-gray-500/15 text-gray-400 shrink-0">
                     {s.l}
@@ -203,7 +205,7 @@ export default function PptChatDeckCard({ pptDeck, darkMode = true }) {
           className="flex-1 min-w-[170px] inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 shadow-md hover:shadow-blue-500/25 active:scale-[0.98] transition-all"
         >
           <ExternalLink className="w-3.5 h-3.5" />
-          <span>Open in NetRoot AI PPT Studio</span>
+          <span>Open in PPT Studio</span>
         </button>
 
         <button
@@ -220,12 +222,12 @@ export default function PptChatDeckCard({ pptDeck, darkMode = true }) {
           {downloadSuccess ? (
             <>
               <Check className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Downloaded!</span>
+              <span>{t('ppt.downloaded')}</span>
             </>
           ) : (
             <>
               <Download className="w-3.5 h-3.5" />
-              <span>{downloading ? 'Preparing...' : 'Download PPTX'}</span>
+              <span>{downloading ? t('ppt.preparing') : t('ppt.downloadPptx')}</span>
             </>
           )}
         </button>

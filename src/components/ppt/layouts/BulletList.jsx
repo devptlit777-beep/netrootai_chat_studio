@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import EditableText from '../EditableText';
 import { getSemanticIcon, stripMarkdown } from '../pptConstants';
 import { Sparkles, Plus, X, Wand2 } from 'lucide-react';
@@ -13,6 +14,7 @@ export default function BulletList({
   onPushHistory,
   isGeneratingAI = false,
 }) {
+  const { t } = useTranslation();
   const handleItemChange = (idx, newText) => {
     const next = [...items];
     next[idx] = newText;
@@ -75,7 +77,11 @@ export default function BulletList({
               </span>
 
               {/* Semantic Icon */}
+<<<<<<< HEAD
+              <span className="text-sm select-none shrink-0 py-0.5" title={t('ppt.semanticIcon')}>
+=======
               <span className="text-sm select-none shrink-0 py-0.5" title="Point bullet">
+>>>>>>> 806306b7a37e545d96f582656b0a5eb47c8d972a
                 {icon}
               </span>
 
@@ -129,10 +135,10 @@ export default function BulletList({
                       });
                     }}
                     className="text-purple-400 hover:text-purple-200 hover:bg-purple-950/60 px-1.5 py-0.5 rounded text-[11px] font-semibold border border-purple-500/30 flex items-center gap-1 transition cursor-pointer shadow-sm"
-                    title="Restyle this point with AI"
+                    title={t('ppt.restylePointTitle')}
                   >
                     <Wand2 className="w-3 h-3 text-purple-400" />
-                    <span className="text-[10px] hidden sm:inline">Restyle</span>
+                    <span className="text-[10px] hidden sm:inline">{t('ppt.restylePoint')}</span>
                   </button>
                 )}
 
@@ -143,7 +149,7 @@ export default function BulletList({
                     handleDeleteItem(idx);
                   }}
                   className="text-slate-500 hover:text-rose-400 p-1 rounded text-xs transition"
-                  title="Delete point"
+                  title={t('ppt.deletePoint')}
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -161,7 +167,7 @@ export default function BulletList({
           className="text-[11px] sm:text-xs font-semibold text-sky-400 hover:text-sky-300 border border-dashed border-sky-500/40 hover:border-sky-400/80 rounded-lg px-2.5 py-1 flex items-center gap-1 transition cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" />
-          <span>Add Point</span>
+          <span>{t('ppt.addPoint')}</span>
         </button>
 
         {onGeneratePointWithAI && (
@@ -172,7 +178,7 @@ export default function BulletList({
             className="text-[11px] sm:text-xs font-semibold text-purple-300 hover:text-purple-100 bg-purple-950/40 hover:bg-purple-900/60 border border-purple-500/40 hover:border-purple-400 rounded-lg px-2.5 py-1 flex items-center gap-1 transition cursor-pointer shadow-sm disabled:opacity-50"
           >
             <Sparkles className={`w-3.5 h-3.5 ${isGeneratingAI ? 'animate-spin' : ''}`} />
-            <span>Auto-Generate with AI</span>
+            <span>{t('ppt.generateWithAI')}</span>
           </button>
         )}
       </div>

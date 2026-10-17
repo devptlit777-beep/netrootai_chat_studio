@@ -5,6 +5,7 @@ import { usePlan } from '../contexts/PlanContext';
 import { useAuth } from '../contexts/AuthContext';
 import API_BASE from '../lib/api';
 import { DEFAULT_PLAN_LIMITS, fetchPlanLimits, getModelImageLimit } from '../lib/planLimits';
+import { useTranslation } from 'react-i18next';
 
 const PRO_PLAN = {
     name: 'NetRoot AI Pro',
@@ -14,6 +15,7 @@ const PRO_PLAN = {
 };
 
 export default function PricingPage() {
+    const { t } = useTranslation();
     const { theme } = useTheme();
     const darkMode = theme === 'dark';
     const { plan } = usePlan();
@@ -39,6 +41,20 @@ export default function PricingPage() {
     const proModelsCount = planLimits.pro?.allowedModels?.length || DEFAULT_PLAN_LIMITS.pro.allowedModels.length;
     const fluxImageLimit = getModelImageLimit('pro', 'black-forest-labs/FLUX.1-schnell');
     const proFeatures = [
+<<<<<<< HEAD
+        t('plans.tokensPerDay', { count: proLimit.toLocaleString() }),
+        t('plans.modelsAvailable', { count: proModelsCount }),
+        t('plans.fluxImages', { count: fluxImageLimit }),
+        t('plans.allPlugins'),
+        t('plans.emailSupport'),
+        t('plans.usageAnalytics'),
+    ];
+    const freeFeatures = [
+        t('plans.tokensPerDay', { count: freeLimit.toLocaleString() }),
+        t('plans.modelsAvailable', { count: freeModelsCount }),
+        t('plans.basicPlugins'),
+        t('plans.communitySupport'),
+=======
         `${proLimit.toLocaleString()} tokens / day`,
         `${proModelsCount} model${proModelsCount === 1 ? '' : 's'} available`,
         `FLUX image generation: ${fluxImageLimit} images / month`,
@@ -53,6 +69,7 @@ export default function PricingPage() {
         '2 AI presentations lifetime',
         'Basic plugins',
         'Community support',
+>>>>>>> 806306b7a37e545d96f582656b0a5eb47c8d972a
     ];
 
     async function handleUpgrade() {
@@ -66,10 +83,10 @@ export default function PricingPage() {
                 body: JSON.stringify({ email: user.email, plan: 'pro', months, autoRenew: autoRenewChoice }),
             });
             const data = await res.json();
-            if (!res.ok) { setError(data.error || 'Failed to start checkout.'); return; }
+            if (!res.ok) { setError(data.error || t('plans.failureStartCheckout')); return; }
             window.location.href = data.url;
         } catch {
-            setError('Network error. Please try again.');
+            setError(t('plans.networkError'));
         } finally {
             setLoading(false);
         }
@@ -80,10 +97,10 @@ export default function PricingPage() {
             <div className="max-w-4xl mx-auto px-6 py-16">
                 <div className="text-center mb-14">
                     <h1 className={`text-4xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                        Simple, transparent pricing
+                        {t('plans.heading')}
                     </h1>
                     <p className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                        Start free, upgrade when you need more power.
+                        {t('plans.subtitle')}
                     </p>
                 </div>
 
@@ -94,23 +111,23 @@ export default function PricingPage() {
                 )}
 
                 <div className={`max-w-2xl mx-auto mb-6 rounded-2xl border px-5 py-4 ${darkMode ? 'border-[#2a2a2a] bg-[#141414]' : 'border-gray-200 bg-white'}`}>
-                    <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Choose your Pro duration</p>
+                    <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('plans.chooseDuration')}</p>
                     <div className="mt-3 flex flex-wrap gap-2">
-                        {[1, 2, 3, 6, 12].map(value => <button key={value} type="button" onClick={() => setMonths(value)} className={`px-3 py-2 rounded-lg text-sm font-semibold border ${months === value ? 'bg-blue-600 border-blue-500 text-white' : darkMode ? 'border-[#333] text-gray-400 hover:text-white' : 'border-gray-200 text-gray-600'}`}>{value} {value === 1 ? 'month' : 'months'}</button>)}
+                        {[1, 2, 3, 6, 12].map(value => <button key={value} type="button" onClick={() => setMonths(value)} className={`px-3 py-2 rounded-lg text-sm font-semibold border ${months === value ? 'bg-blue-600 border-blue-500 text-white' : darkMode ? 'border-[#333] text-gray-400 hover:text-white' : 'border-gray-200 text-gray-600'}`}>{value} {t(value === 1 ? 'common.month' : 'common.months')}</button>)}
                     </div>
                     <p className={`text-xs mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>${(19 * months).toFixed(2)} is billed every {months} month{months === 1 ? '' : 's'} until cancelled.</p>
-                    <label className={`mt-3 flex items-center gap-2 text-xs cursor-pointer ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}><input type="checkbox" checked={autoRenewChoice} onChange={event => setAutoRenewChoice(event.target.checked)} className="accent-blue-600" /> Auto-renew this plan when the selected term ends</label>
+                    <label className={`mt-3 flex items-center gap-2 text-xs cursor-pointer ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}><input type="checkbox" checked={autoRenewChoice} onChange={event => setAutoRenewChoice(event.target.checked)} className="accent-blue-600" /> {t('plans.autoRenew')}</label>
                 </div>
 
                 <div className={`max-w-2xl mx-auto mb-6 rounded-2xl border px-5 py-4 ${darkMode ? 'border-[#2a2a2a] bg-[#141414]' : 'border-gray-200 bg-white'}`}>
-                    <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Plan limits at a glance</p>
+                    <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('plans.limits')}</p>
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
                         <div className={`rounded-xl border p-3 ${darkMode ? 'border-[#2a2a2a] bg-[#1a1a1a]' : 'border-gray-200 bg-gray-50'}`}>
-                            <p className={`text-xs font-semibold uppercase tracking-wide ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Free</p>
+                            <p className={`text-xs font-semibold uppercase tracking-wide ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{t('common.free')}</p>
                             <p className={`mt-1 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{freeLimit.toLocaleString()} tokens/day • {freeModelsCount} model{freeModelsCount === 1 ? '' : 's'}</p>
                         </div>
                         <div className={`rounded-xl border p-3 ${darkMode ? 'border-blue-500/30 bg-blue-500/10' : 'border-blue-200 bg-blue-50'}`}>
-                            <p className={`text-xs font-semibold uppercase tracking-wide ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>Pro</p>
+                            <p className={`text-xs font-semibold uppercase tracking-wide ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>{t('common.pro')}</p>
                             <p className={`mt-1 text-sm ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>{proLimit.toLocaleString()} tokens/day • {proModelsCount} model{proModelsCount === 1 ? '' : 's'} • FLUX: {fluxImageLimit} images/month</p>
                         </div>
                     </div>
@@ -119,12 +136,12 @@ export default function PricingPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
                     <div className={`border rounded-2xl p-8 flex flex-col ${darkMode ? 'bg-[#141414] border-[#2a2a2a]' : 'bg-white border-gray-200'}`}>
                         <div className="mb-6">
-                            <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Free</h2>
-                            <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Get started at no cost</p>
+                            <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('common.free')}</h2>
+                            <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{t('plans.freeStart')}</p>
                         </div>
                         <div className="mb-6">
                             <span className={`text-4xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>$0</span>
-                            <span className={`text-sm ml-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>/month</span>
+                            <span className={`text-sm ml-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{t('plans.perMonth')}</span>
                         </div>
                         <ul className="space-y-3 mb-8 flex-1">
                             {freeFeatures.map((f) => (
@@ -138,7 +155,7 @@ export default function PricingPage() {
                             ? darkMode ? 'border-[#3a3a3a] text-gray-400 bg-[#1e1e1e]' : 'border-gray-300 text-gray-500 bg-gray-50'
                             : darkMode ? 'border-[#2a2a2a] text-gray-500' : 'border-gray-200 text-gray-400'
                             }`}>
-                            {plan === 'free' ? 'Current plan' : 'Free forever'}
+                            {plan === 'free' ? t('plans.currentPlan') : t('plans.freeForever')}
                         </div>
                     </div>
 
@@ -146,18 +163,18 @@ export default function PricingPage() {
                         <div className="absolute top-4 right-4">
                             <span className="flex items-center gap-1 text-xs font-semibold bg-blue-500 text-white px-2.5 py-1 rounded-full">
                                 <Star className="w-3 h-3" />
-                                Popular
+                                {t('plans.popular')}
                             </span>
                         </div>
                         <div className="mb-6">
                             <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{PRO_PLAN.name}</h2>
-                            <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{PRO_PLAN.description}</p>
+                            <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{t('plans.proDescription')}</p>
                         </div>
                         <div className="mb-6">
                             <span className={`text-4xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                 {PRO_PLAN.currencySymbol}{PRO_PLAN.price}
                             </span>
-                            <span className={`text-sm ml-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>/month</span>
+                            <span className={`text-sm ml-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{t('plans.perMonth')}</span>
                         </div>
                         <ul className="space-y-3 mb-8 flex-1">
                             {proFeatures.map((f) => (
@@ -169,7 +186,7 @@ export default function PricingPage() {
                         </ul>
                         {isCurrentPlan ? (
                             <div className={`text-center py-2.5 rounded-xl text-sm font-medium border ${darkMode ? 'border-blue-500/40 text-blue-400 bg-blue-500/10' : 'border-blue-300 text-blue-600 bg-blue-50'}`}>
-                                ✓ Current plan
+                                ✓ {t('plans.currentPlan')}
                             </div>
                         ) : (
                             <button
@@ -178,7 +195,7 @@ export default function PricingPage() {
                                 className="flex items-center justify-center gap-2 w-full bg-blue-500 hover:bg-blue-600 disabled:opacity-70 text-white font-semibold px-6 py-3 rounded-xl text-sm transition-colors"
                             >
                                 {loading
-                                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Redirecting…</>
+                                    ? <><Loader2 className="w-4 h-4 animate-spin" /> {t('plans.redirecting')}</>
                                     : <><Zap className="w-4 h-4" /> Upgrade to Pro</>}
                             </button>
                         )}

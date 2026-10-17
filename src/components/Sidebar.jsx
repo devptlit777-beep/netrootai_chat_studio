@@ -15,6 +15,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { usePlan } from "../contexts/PlanContext";
+import { useTranslation } from "react-i18next";
 
 const navItems = [
   { icon: Home, path: "/dashboard", label: "Home" },
@@ -24,7 +25,7 @@ const navItems = [
   { icon: Share2, path: "/shared", label: "Shared" },
   { icon: Database, path: "/plugins", label: "Plugins" },
   { icon: Sparkles, path: "/image-studio", label: "Image Studio" },
-  { icon: Presentation, path: "/ppt-studio", label: "NetRoot AI PPT Studio" },
+  { icon: Presentation, path: "/ppt-studio", label: "PPT Studio" },
 ];
 
 function getFallbackAvatar(email) {
@@ -35,6 +36,7 @@ function getFallbackAvatar(email) {
 }
 
 export default function Sidebar() {
+  const { t } = useTranslation();
   const { profile, user } = useAuth();
   const { theme } = useTheme();
   const { accessExpired, featureAccess, plan } = usePlan();
@@ -83,7 +85,7 @@ export default function Sidebar() {
               key={path}
               onClick={() => navigate(path)}
               title={label}
-              className={`w-10 h-10 relative flex items-center justify-center rounded-xl transition-all ${active
+              className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${active
                 ? darkMode
                   ? "bg-white/10 text-white"
                   : "bg-blue-50 text-blue-600"
@@ -105,7 +107,7 @@ export default function Sidebar() {
       <div className="flex flex-col items-center gap-2 mt-auto">
         <button
           onClick={() => navigate("/help")}
-          title="Docs & Help"
+          title={t("sidebar.docsHelp")}
           className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${location.pathname === "/help"
             ? darkMode
               ? "bg-white/10 text-white"
@@ -120,7 +122,7 @@ export default function Sidebar() {
 
         {canUse("project-settings") && <button
           onClick={() => navigate("/project-settings")}
-          title="Project Settings"
+          title={t("sidebar.projectSettings")}
           className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${location.pathname === "/project-settings"
             ? darkMode
               ? "bg-white/10 text-white"

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import EditableText from '../EditableText';
 import { stripMarkdown } from '../pptConstants';
 import { Plus, X } from 'lucide-react';
@@ -10,6 +11,7 @@ export default function StatsLayout({
   onUpdateSlide,
   onPushHistory,
 }) {
+  const { t } = useTranslation();
   const items = Array.isArray(slide.c) ? slide.c : [];
 
   const parseItem = (item) => {
@@ -115,7 +117,7 @@ export default function StatsLayout({
                       type="button"
                       onClick={() => handleDeleteStat(idx)}
                       className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 p-0.5 rounded transition"
-                      title="Delete stat"
+                      title={t('ppt.deleteStat')}
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -173,7 +175,7 @@ export default function StatsLayout({
           className="text-xs font-semibold text-sky-400 hover:text-sky-300 border border-dashed border-sky-500/40 hover:border-sky-400 rounded-lg px-3 py-1 flex items-center gap-1.5 transition"
         >
           <Plus className="w-3.5 h-3.5" />
-          <span>Add KPI Metric</span>
+          <span>{t('ppt.addMetric')}</span>
         </button>
       </div>
     </div>

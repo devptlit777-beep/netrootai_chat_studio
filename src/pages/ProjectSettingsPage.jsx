@@ -14,6 +14,7 @@ import TokenDashboard from '../components/TokenDashboard';
 import BillingTab from '../components/Billing';
 import API_BASE from '../lib/api';
 import { DEFAULT_PLAN_LIMITS, fetchPlanLimits, getModelImageLimit, normalizePlan } from '../lib/planLimits';
+import { useTranslation } from 'react-i18next';
 // import MembersTab from '../components/MembersTab';
 // import GroupsTab from '../components/GroupsTab';
 // import RolesTab from '../components/RolesTab';
@@ -23,6 +24,7 @@ import { DEFAULT_PLAN_LIMITS, fetchPlanLimits, getModelImageLimit, normalizePlan
 const TABS = ['general', 'limits', 'billing', 'api-keys', 'token-dashboard'];
 // const TABS = ['general', 'limits', 'billing', 'members', 'groups', 'roles', 'webhooks', 'evaluations', 'api-keys', 'token-dashboard'];
 export default function ProjectSettingsPage() {
+  const { t } = useTranslation();
   const { theme } = useTheme();
   const darkMode = theme === 'dark';
   const [searchParams] = useSearchParams();
@@ -36,7 +38,7 @@ export default function ProjectSettingsPage() {
       <div className="max-w-5xl mx-auto px-8 py-10">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
-          <h1 className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Project Settings</h1>
+          <h1 className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('project.title')}</h1>
           {/* {showOrgButton && (
             <button className={`flex items-center gap-2 text-sm border rounded-lg px-4 py-2 transition-colors ${darkMode ? 'border-[#3a3a3a] text-gray-300 hover:bg-white/5' : 'border-gray-300 text-gray-700 hover:bg-gray-100'}`}>
               <ExternalLink className="w-4 h-4" />
@@ -48,17 +50,17 @@ export default function ProjectSettingsPage() {
 
         {/* Tabs */}
         <div className={`flex gap-0 border-b mb-10 ${darkMode ? 'border-[#2a2a2a]' : 'border-gray-200'}`}>
-          {TABS.map(t => (
+          {TABS.map(tabKey => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-5 py-2.5 text-sm font-medium whitespace-nowrap capitalize transition-all relative ${tab === t
+              key={tabKey}
+              onClick={() => setTab(tabKey)}
+              className={`px-5 py-2.5 text-sm font-medium whitespace-nowrap capitalize transition-all relative ${tab === tabKey
                 ? darkMode ? 'text-white' : 'text-gray-900'
                 : darkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-500 hover:text-gray-700'
                 }`}
             >
-              {t}
-              {tab === t && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-white rounded-full" />}
+              {tabKey === 'api-keys' ? t('project.apiKeys') : tabKey === 'token-dashboard' ? t('project.tokenDashboard') : t(`project.${tabKey}`)}
+              {tab === tabKey && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-white rounded-full" />}
             </button>
           ))}
         </div>
@@ -80,6 +82,7 @@ export default function ProjectSettingsPage() {
 
 /* ─── General ─────────────────────────────────────────────────────────────── */
 function GeneralTab({ darkMode }) {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [projectName, setProjectName] = useState('Default project');
   const [serviceTier, setServiceTier] = useState('Default');
@@ -106,7 +109,7 @@ function GeneralTab({ darkMode }) {
 
   return (
     <div className="space-y-8 max-w-lg">
-      <Field label="Project name" darkMode={darkMode}>
+      <Field label={t('project.projectName')} darkMode={darkMode}>
         <input
           type="text"
           value={projectName}
@@ -115,7 +118,7 @@ function GeneralTab({ darkMode }) {
         />
       </Field>
 
-      <Field label="Project ID" darkMode={darkMode}>
+      <Field label={t('project.projectId')} darkMode={darkMode}>
         <div className="relative">
           <input
             type="text"
@@ -129,23 +132,23 @@ function GeneralTab({ darkMode }) {
         </div>
       </Field>
 
-      <Field label="Project Service Tier" darkMode={darkMode}>
+      <Field label={t('project.serviceTier')} darkMode={darkMode}>
         <div className="relative">
           <select
             value={serviceTier}
             onChange={e => setServiceTier(e.target.value)}
             className={`${inputCls(darkMode)} appearance-none cursor-pointer`}
           >
-            <option>Default</option>
-            <option>Flex</option>
-            <option>Scale</option>
+            <option>{t('project.default')}</option>
+            <option>{t('project.flex')}</option>
+            <option>{t('project.scale')}</option>
           </select>
           <div className={`absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </div>
         </div>
         <p className={`text-xs mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-          Controls the service_tier param for requests with non-specified or auto service tier. If the model doesn't support the selected tier, it will fallback to default.
+          {t('project.tierDescription')}
         </p>
       </Field>
 
@@ -156,7 +159,7 @@ function GeneralTab({ darkMode }) {
         >
           <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${disableUserKeys ? 'translate-x-5' : 'translate-x-0.5'}`} />
         </button>
-        <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Disable user API keys</span>
+        <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{t('project.disableUserKeys')}</span>
       </div>
 
       <div>
@@ -166,7 +169,7 @@ function GeneralTab({ darkMode }) {
           className={`flex items-center gap-2 font-medium px-5 py-2.5 rounded-lg text-sm transition-colors ${darkMode ? 'bg-[#f5f5f5] hover:bg-white text-black' : 'bg-gray-900 hover:bg-black text-white'}`}
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <Check className="w-4 h-4 text-emerald-600" /> : null}
-          {saved ? 'Saved!' : saving ? 'Saving...' : 'Save'}
+          {saved ? t('project.saved') : saving ? t('project.saving') : t('project.save')}
         </button>
       </div>
     </div>
@@ -234,6 +237,7 @@ function getVisibleModelIds(plan) {
 
 /* Limites tab  */
 function LimitsTab({ darkMode, onUpgrade }) {
+  const { t } = useTranslation();
   const { session } = useAuth();
   const { plan } = usePlan();
   const [usageData, setUsageData] = useState(null);
@@ -306,10 +310,17 @@ function LimitsTab({ darkMode, onUpgrade }) {
       <div className="flex items-center justify-between">
         <div>
           <h3 className={`text-base font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-            Model Rate Limits
+            {t('project.modelRateLimits')}
           </h3>
           <p className={`text-sm mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-            {plan === 'pro' ? `Pro includes ${proLimit.toLocaleString()} daily tokens, ${proModelsCount} model${proModelsCount === 1 ? '' : 's'}, and FLUX at 10 images/month.` : `Free includes ${freeLimit.toLocaleString()} daily tokens and ${freeModelsCount} model${freeModelsCount === 1 ? '' : 's'}. Upgrade to Pro for ${proLimit.toLocaleString()} daily tokens, ${proModelsCount} model${proModelsCount === 1 ? '' : 's'}, and FLUX at 10 images/month.`}
+            {plan === 'pro'
+              ? t('project.proIncludesLimits', { tokens: proLimit.toLocaleString(), models: proModelsCount })
+              : t('project.freeIncludesLimits', {
+                  tokens: freeLimit.toLocaleString(),
+                  models: freeModelsCount,
+                  proTokens: proLimit.toLocaleString(),
+                  proModels: proModelsCount,
+                })}
           </p>
         </div>
 
@@ -332,17 +343,17 @@ function LimitsTab({ darkMode, onUpgrade }) {
               : 'bg-gray-100 hover:bg-gray-200 border-gray-300 text-gray-800'
               }`}
           >
-            Allow / Block models
+            {t('project.allowBlockModels')}
           </button>
         </div>
       </div>
 
       <div className="flex items-center gap-5 flex-wrap">
         {[
-          ['bg-emerald-500', 'Under 60%'],
+          ['bg-emerald-500', t('project.under60')],
           ['bg-yellow-500', '60–85%'],
-          ['bg-red-500', 'Over 85%'],
-          ['bg-red-700', '100% — Blocked'],
+          ['bg-red-500', t('project.over85')],
+          ['bg-red-700', t('project.fullyBlocked')],
         ].map(([cls, label]) => (
           <div key={label} className="flex items-center gap-1.5">
             <span className={`w-2.5 h-2.5 rounded-full ${cls}`} />
@@ -354,7 +365,7 @@ function LimitsTab({ darkMode, onUpgrade }) {
 
         {loading && (
           <span className={`text-xs ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-            Loading usage…
+            {t('project.loadingUsage')}
           </span>
         )}
       </div>
@@ -407,10 +418,10 @@ function LimitsTab({ darkMode, onUpgrade }) {
 
                   <div className="text-center">
                     <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                      Daily limit reached
+                      {t('project.dailyLimitReached')}
                     </p>
                     <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {isFlux ? `${model.name} is blocked until the next month or you upgrade` : `${model.name} is blocked until midnight or you upgrade`}
+                      {t(isFlux ? 'project.modelBlockedUntilMonth' : 'project.modelBlockedUntilMidnight', { model: model.name })}
                     </p>
                   </div>
 
@@ -419,7 +430,7 @@ function LimitsTab({ darkMode, onUpgrade }) {
                     className="flex items-center gap-1.5 text-sm font-semibold bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-400 hover:to-purple-500 text-white px-5 py-2 rounded-lg transition-all shadow-lg"
                   >
                     <Zap className="w-3.5 h-3.5" />
-                    Upgrade to unlock
+                    {t('project.upgradeUnlock')}
                   </button>
                 </div>
               )}
@@ -465,19 +476,19 @@ function LimitsTab({ darkMode, onUpgrade }) {
 
                         {isBlocked && (
                           <span className="text-xs bg-red-700/20 text-red-500 border border-red-700/40 rounded-full px-2 py-0.5 font-medium">
-                            Blocked
+                            {t('project.blocked')}
                           </span>
                         )}
 
                         {isOver && (
                           <span className="text-xs bg-red-500/15 text-red-400 border border-red-500/25 rounded-full px-2 py-0.5 font-medium">
-                            Limit reached
+                            {t('project.limitReached')}
                           </span>
                         )}
 
                         {isWarn && (
                           <span className="text-xs bg-yellow-500/15 text-yellow-400 border border-yellow-500/25 rounded-full px-2 py-0.5 font-medium">
-                            Near limit
+                            {t('project.nearLimit')}
                           </span>
                         )}
                       </div>
@@ -503,7 +514,7 @@ function LimitsTab({ darkMode, onUpgrade }) {
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                        {isFlux ? 'Images this month' : 'Daily tokens'}
+                        {t(isFlux ? 'project.imagesThisMonth' : 'project.dailyTokens')}
                       </span>
 
                       <span
@@ -544,13 +555,13 @@ function LimitsTab({ darkMode, onUpgrade }) {
               {!isBlocked && isOver && (
                 <div className={`px-5 py-3 border-t flex items-center gap-3 ${darkMode ? 'border-[#2a2a2a] bg-red-500/5' : 'border-red-100 bg-red-50'}`}>
                   <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0" />
-                  <span className={`text-xs font-medium ${darkMode ? 'text-red-400' : 'text-red-600'}`}>{isFlux ? 'Monthly limit reached — upgrade to continue generating images.' : 'Daily limit reached — upgrade to continue using this model.'}</span>
+                  <span className={`text-xs font-medium ${darkMode ? 'text-red-400' : 'text-red-600'}`}>{t(isFlux ? 'project.monthlyLimitUpgrade' : 'project.dailyLimitUpgrade')}</span>
                 </div>
               )}
               {!isBlocked && isWarn && (
                 <div className={`px-5 py-3 border-t flex items-center gap-3 ${darkMode ? 'border-[#2a2a2a] bg-yellow-500/5' : 'border-yellow-100 bg-yellow-50'}`}>
                   <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
-                  <span className={`text-xs font-medium ${darkMode ? 'text-yellow-400' : 'text-yellow-700'}`}>{isFlux ? 'Approaching monthly image limit — consider upgrading your plan.' : 'Approaching daily limit — consider upgrading your plan.'}</span>
+                  <span className={`text-xs font-medium ${darkMode ? 'text-yellow-400' : 'text-yellow-700'}`}>{t(isFlux ? 'project.approachingMonthlyLimit' : 'project.approachingDailyLimit')}</span>
                 </div>
               )}
             </div>
@@ -594,6 +605,7 @@ function StatPill({ label, value, darkMode }) {
 
 /* ─── Model Select Modal ──────────────────────────────────────────────────── */
 function ModelSelectModal({ darkMode, mode, selected, onSave, onClose }) {
+  const { t } = useTranslation();
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState(selected);
 
@@ -609,10 +621,10 @@ function ModelSelectModal({ darkMode, mode, selected, onSave, onClose }) {
   function selectAll() { setDraft(ALL_MODELS.map(m => m.id)); }
   function clearAll() { setDraft([]); }
 
-  const title = mode === 'allow-block' ? 'Allow or block models' : 'Rate limit models';
+  const title = mode === 'allow-block' ? t('project.allowBlockModels') : t('project.rateLimitModels');
   const subtitle = mode === 'allow-block'
-    ? 'Choose which GPT-5 models are allowed in this project.'
-    : 'Select models to set custom rate limits for this project.';
+    ? t('project.chooseAllowedModels')
+    : t('project.chooseRateLimitedModels');
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -638,17 +650,17 @@ function ModelSelectModal({ darkMode, mode, selected, onSave, onClose }) {
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search models..."
+              placeholder={t('project.searchModels')}
               className={`bg-transparent outline-none text-sm flex-1 ${darkMode ? 'text-white placeholder-gray-600' : 'text-gray-900 placeholder-gray-400'}`}
             />
           </div>
           <div className="flex items-center justify-between">
             <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-              {draft.length} of {ALL_MODELS.length} selected
+              {t('project.selectModelCount', { selected: draft.length, total: ALL_MODELS.length })}
             </span>
             <div className="flex gap-3">
-              <button onClick={selectAll} className="text-xs text-blue-400 hover:text-blue-300 transition-colors">Select all</button>
-              <button onClick={clearAll} className={`text-xs transition-colors ${darkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-500 hover:text-gray-700'}`}>Clear all</button>
+              <button onClick={selectAll} className="text-xs text-blue-400 hover:text-blue-300 transition-colors">{t('project.selectAll')}</button>
+              <button onClick={clearAll} className={`text-xs transition-colors ${darkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-500 hover:text-gray-700'}`}>{t('project.clearAll')}</button>
             </div>
           </div>
         </div>
@@ -688,14 +700,14 @@ function ModelSelectModal({ darkMode, mode, selected, onSave, onClose }) {
 
                 {checked && (
                   <span className="shrink-0 text-xs bg-blue-500/15 text-blue-400 border border-blue-500/25 rounded-full px-2 py-0.5 font-medium">
-                    {mode === 'allow-block' ? 'Allowed' : 'Limited'}
+                    {mode === 'allow-block' ? t('project.allowed') : t('project.limited')}
                   </span>
                 )}
               </button>
             );
           })}
           {filtered.length === 0 && (
-            <p className={`text-sm text-center py-10 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>No models match your search.</p>
+            <p className={`text-sm text-center py-10 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>{t('project.noModelsMatch')}</p>
           )}
         </div>
 
@@ -704,13 +716,13 @@ function ModelSelectModal({ darkMode, mode, selected, onSave, onClose }) {
             onClick={onClose}
             className={`text-sm px-4 py-2 rounded-lg border transition-colors ${darkMode ? 'border-[#3a3a3a] text-gray-400 hover:text-white' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
           >
-            Cancel
+            {t('project.cancel')}
           </button>
           <button
             onClick={() => onSave(draft)}
             className="text-sm font-medium bg-white hover:bg-gray-100 text-black px-5 py-2 rounded-lg transition-colors"
           >
-            Save changes
+            {t('project.saveChanges')}
           </button>
         </div>
       </div>
@@ -800,8 +812,8 @@ function MembersTab({ darkMode }) {
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{name}</span>
-                  <span className="text-xs bg-green-500/15 text-green-400 border border-green-500/25 rounded px-1.5 py-0.5 font-medium">You</span>
-                  <span className={`text-xs border rounded px-2 py-0.5 font-medium ${darkMode ? 'border-[#3a3a3a] text-gray-300' : 'border-gray-300 text-gray-600'}`}>Organization Owner</span>
+                  <span className="text-xs bg-green-500/15 text-green-400 border border-green-500/25 rounded px-1.5 py-0.5 font-medium">{t('project.you')}</span>
+                  <span className={`text-xs border rounded px-2 py-0.5 font-medium ${darkMode ? 'border-[#3a3a3a] text-gray-300' : 'border-gray-300 text-gray-600'}`}>{t('project.organizationOwner')}</span>
                 </div>
                 <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{email}</p>
               </div>
@@ -824,10 +836,10 @@ function MembersTab({ darkMode }) {
             <div className={`p-6 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               <p className="font-semibold">{name}</p>
               <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{email}</p>
-              <p className="text-xs mt-3 text-green-400">Organization Owner</p>
+              <p className="text-xs mt-3 text-green-400">{t('project.organizationOwner')}</p>
             </div>
           ) : (
-            <p className="text-sm font-semibold">Select a member to view details.</p>
+            <p className="text-sm font-semibold">{t('project.selectMember')}</p>
           )}
         </div>
       </div>
@@ -836,17 +848,17 @@ function MembersTab({ darkMode }) {
       {showAddModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
           <div className={`w-full max-w-md mx-4 border rounded-2xl p-6 shadow-2xl ${darkMode ? 'bg-[#1a1a1a] border-[#2a2a2a]' : 'bg-white border-gray-200'}`}>
-            <h3 className={`font-semibold text-lg mb-5 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Add member</h3>
+            <h3 className={`font-semibold text-lg mb-5 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('project.addMember')}</h3>
             <div className="space-y-4">
-              <Field label="Email address" darkMode={darkMode}>
+              <Field label={t('common.email')} darkMode={darkMode}>
                 <input type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="email@example.com" className={inputCls(darkMode)} />
               </Field>
-              <Field label="Role" darkMode={darkMode}>
+              <Field label={t('project.role')} darkMode={darkMode}>
                 <div className="relative">
                   <select value={inviteRole} onChange={e => setInviteRole(e.target.value)} className={`${inputCls(darkMode)} appearance-none cursor-pointer`}>
-                    <option>Owner</option>
-                    <option>Member</option>
-                    <option>Viewer</option>
+                    <option value="Owner">{t('project.owner')}</option>
+                    <option value="Member">{t('project.member')}</option>
+                    <option value="Viewer">{t('project.viewer')}</option>
                   </select>
                   <div className={`absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -855,7 +867,7 @@ function MembersTab({ darkMode }) {
               </Field>
             </div>
             <div className="flex gap-2 mt-6 justify-end">
-              <button onClick={() => setShowAddModal(false)} className={`text-sm px-4 py-2 rounded-lg border transition-colors ${darkMode ? 'border-[#3a3a3a] text-gray-400 hover:text-white' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>Cancel</button>
+              <button onClick={() => setShowAddModal(false)} className={`text-sm px-4 py-2 rounded-lg border transition-colors ${darkMode ? 'border-[#3a3a3a] text-gray-400 hover:text-white' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>{t('common.cancel')}</button>
               <button
                 onClick={() => { if (inviteEmail) setShowAddModal(false); }}
                 className="text-sm font-medium bg-white hover:bg-gray-100 text-black px-4 py-2 rounded-lg transition-colors"
@@ -894,8 +906,8 @@ function GroupsTab({ darkMode }) {
       </div>
 
       <div className={`border rounded-xl flex flex-col items-center justify-center py-28 ${darkMode ? 'border-[#2a2a2a] bg-[#161616]' : 'border-gray-200 bg-white'}`}>
-        <p className={`text-base font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>No groups found</p>
-        <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Add an organization group to grant the group's members access to this project</p>
+        <p className={`text-base font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('project.noGroups')}</p>
+        <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{t('project.addGroupDescription')}</p>
       </div>
     </div>
   );
@@ -941,7 +953,7 @@ function RolesTab({ darkMode }) {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-0.5">
                 <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{role.name}</span>
-                <span className="text-xs bg-green-500/15 text-green-400 border border-green-500/25 rounded px-1.5 py-0.5 font-medium">Preset</span>
+                <span className="text-xs bg-green-500/15 text-green-400 border border-green-500/25 rounded px-1.5 py-0.5 font-medium">{t('project.preset')}</span>
               </div>
               <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{role.desc}</p>
             </div>
@@ -979,7 +991,7 @@ function WebhooksTab({ darkMode }) {
         <input type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://yourapp.com/webhooks" className={inputCls(darkMode)} />
       </Field>
       <div>
-        <label className={`block text-sm font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Events to send</label>
+        <label className={`block text-sm font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('project.eventsToSend')}</label>
         <div className="space-y-2.5">
           {allEvents.map(e => (
             <label key={e} className="flex items-center gap-3 cursor-pointer group" onClick={() => toggleEvent(e)}>
@@ -1003,8 +1015,8 @@ function EvaluationsTab({ darkMode }) {
   return (
     <div className={`flex flex-col items-center justify-center py-28 text-center border rounded-xl ${darkMode ? 'border-[#2a2a2a] bg-[#161616]' : 'border-gray-200 bg-white'}`}>
       <Users className={`w-10 h-10 mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`} />
-      <p className={`font-semibold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Evaluations</p>
-      <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Run evaluations to test model performance across your project.</p>
+      <p className={`font-semibold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('project.evaluations')}</p>
+      <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{t('project.evaluationsDescription')}</p>
     </div>
   );
 }

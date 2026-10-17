@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import API_BASE from '../lib/api';
+import { useTranslation } from 'react-i18next';
 import {
   Sparkles,
   Image as ImageIcon,
@@ -16,7 +17,8 @@ import {
   Share2,
 } from 'lucide-react';
 
-const VIDEO_MODEL = 'hpcai-tech/Open-Sora-v2';
+const VIDEO_MODEL = 'Agnes Video 2.5 Flash';
+const VIDEO_ASPECT_RATIOS = ['16:9', '9:16'];
 
 const SIZES = [
   { label: 'Square', value: '1024x1024', ratio: '1:1' },
@@ -36,6 +38,7 @@ const STYLES = [
 ];
 
 export default function ImageStudioPage() {
+  const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const { theme } = useTheme();
   const darkMode = theme === 'dark';
@@ -43,13 +46,13 @@ export default function ImageStudioPage() {
   const [prompt, setPrompt] = useState('');
   const [mode, setMode] = useState('image');
   const [selectedSize, setSelectedSize] = useState(SIZES[0].value);
+  const [selectedVideoAspectRatio, setSelectedVideoAspectRatio] = useState(VIDEO_ASPECT_RATIOS[0]);
   const [selectedStyle, setSelectedStyle] = useState(STYLES[0].value);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState(null);
   const [gallery, setGallery] = useState([]);
   const [loadingGallery, setLoadingGallery] = useState(true);
   const [previewImage, setPreviewImage] = useState(null);
-  const [videoResult, setVideoResult] = useState(null);
   const [shareMessage, setShareMessage] = useState('');
   const promptRef = useRef(null);
 
@@ -69,6 +72,10 @@ export default function ImageStudioPage() {
     loadGallery();
   }, [loadGallery]);
 
+  const visibleGallery = gallery.filter((item) => (
+    mode === 'video' ? isVideoRecord(item) : !isVideoRecord(item)
+  ));
+
   async function handleGenerate() {
     if (!prompt.trim() || !user) return;
 
@@ -87,20 +94,51 @@ export default function ImageStudioPage() {
         body: JSON.stringify({
           prompt: fullPrompt,
           size: selectedSize,
+          aspectRatio: selectedVideoAspectRatio,
           email: user.email,
         }),
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
+        const data = await response.json();
         throw new Error(data.error || 'Image generation failed');
       }
 
       if (mode === 'video') {
-        setVideoResult({ url: data.videoUrl, prompt: prompt.trim() });
+        const videoBlob = await response.blob();
+        if (!videoBlob.size) throw new Error('Video generation returned an empty video.');
+        const contentType = videoBlob.type || 'video/mp4';
+        if (!contentType.startsWith('video/')) throw new Error('Video generation returned an unsupported file type.');
+        const extension = contentType.includes('webm') ? 'webm' : 'mp4';
+        const storagePath = `${user.id}/${crypto.randomUUID()}.${extension}`;
+        const { error: uploadError } = await supabase.storage
+          .from('attachments')
+          .upload(storagePath, videoBlob, { cacheControl: '3600', contentType, upsert: false });
+        if (uploadError) throw new Error(`Could not save generated video: ${uploadError.message}`);
+
+        const { data: urlData } = supabase.storage.from('attachments').getPublicUrl(storagePath);
+        const { data: inserted, error: insertError } = await supabase
+          .from('image_studio')
+          .insert({
+            user_id: user.id,
+            prompt: prompt.trim(),
+            image_url: urlData.publicUrl,
+            size: selectedVideoAspectRatio,
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          const { error: cleanupError } = await supabase.storage.from('attachments').remove([storagePath]);
+          const cleanupMessage = cleanupError ? ` Video cleanup also failed: ${cleanupError.message}` : '';
+          throw new Error(`Could not add generated video to history: ${insertError.message}.${cleanupMessage}`);
+        }
+
+        setGallery((prev) => [inserted, ...prev]);
         setPrompt('');
-      } else if (data.imageUrl) {
+      } else {
+        const data = await response.json();
+        if (!data.imageUrl) return;
         const { data: inserted, error: insertError } = await supabase
           .from('image_studio')
           .insert({
@@ -131,8 +169,28 @@ export default function ImageStudioPage() {
   }
 
   async function handleDelete(id) {
-    setGallery((prev) => prev.filter((img) => img.id !== id));
-    await supabase.from('image_studio').delete().eq('id', id);
+    setError(null);
+    const item = gallery.find((entry) => entry.id === id);
+    if (!item) return;
+
+    if (isVideoRecord(item)) {
+      const storagePath = getAttachmentStoragePath(item.image_url, user.id);
+      if (storagePath) {
+        const { error: storageError } = await supabase.storage.from('attachments').remove([storagePath]);
+        if (storageError) {
+          setError(`Could not delete generated video: ${storageError.message}`);
+          return;
+        }
+      }
+    }
+
+    const { error: deleteError } = await supabase.from('image_studio').delete().eq('id', id);
+    if (deleteError) {
+      setError(`Could not delete item from history: ${deleteError.message}`);
+      return;
+    }
+
+    setGallery((prev) => prev.filter((entry) => entry.id !== id));
   }
 
   function handleDownload(url, filename) {
@@ -174,7 +232,7 @@ export default function ImageStudioPage() {
           await navigator.clipboard.write([
             new ClipboardItem({ [file.type]: blob }),
           ]);
-          setShareMessage('Image copied. Paste it into your social media post.');
+          setShareMessage(t('imageStudio.copied'));
           return;
         } catch {
           // Fall back to downloading when clipboard access is unavailable.
@@ -182,10 +240,10 @@ export default function ImageStudioPage() {
       }
 
       handleDownload(image.image_url, file.name);
-      setShareMessage('Image downloaded. Attach it to a post in your social media app.');
+      setShareMessage(t('imageStudio.downloaded'));
     } catch {
       handleDownload(image.image_url, `netrootai-image-${image.id}.png`);
-      setShareMessage('Image downloaded. Attach it to a post in your social media app.');
+      setShareMessage(t('imageStudio.downloaded'));
     }
   }
 
@@ -210,11 +268,11 @@ export default function ImageStudioPage() {
           </div>
           <div>
             <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-              Image Studio
+              {t('imageStudio.title')}
             </h1>
             <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
               {/* Generate images or videos from text descriptions */}
-              Generate images from text descriptions
+              {t('imageStudio.description')}
             </p>
           </div>
         </div>
@@ -225,20 +283,20 @@ export default function ImageStudioPage() {
             <div className="grid grid-cols-2 gap-2 mb-5">
               {['image', 'video'].map((value) => (
                 <button key={value} onClick={() => setMode(value)} className={`rounded-lg border py-2 text-sm font-semibold capitalize ${mode === value ? 'bg-blue-500 border-blue-500 text-white' : darkMode ? 'border-[#2a2a2a] text-gray-400' : 'border-gray-200 text-gray-600'}`}>
-                  {value}
+                  {t(`imageStudio.${value}`)}
                 </button>
               ))}
             </div>
-            {mode === 'video' && <p className={`mb-4 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Model: {VIDEO_MODEL}. An Open-Sora deployment is required; Hugging Face does not host this model.</p>}
+            {mode === 'video' && <p className={`mb-4 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{t('imageStudio.model')} {VIDEO_MODEL}</p>}
             <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              Description
+              {t('imageStudio.descriptionLabel')}
             </label>
             <textarea
               ref={promptRef}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={'A serene mountain lake at sunset with reflections of pine trees...'}
+              placeholder={t('imageStudio.promptPlaceholder')}
               rows={5}
               className={`w-full rounded-xl border px-4 py-3 text-sm outline-none resize-none transition-colors ${darkMode
                 ? 'bg-[#1a1a1a] border-[#2a2a2a] text-white placeholder-gray-600 focus:border-blue-500'
@@ -248,31 +306,36 @@ export default function ImageStudioPage() {
 
             {/* Size selector */}
             <label className={`block text-xs font-semibold uppercase tracking-wider mt-5 mb-2 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-              Aspect Ratio
+              {t('imageStudio.aspectRatio')}
             </label>
-            <div className="grid grid-cols-3 gap-2">
-              {SIZES.map((size) => (
+            <div className={`grid gap-2 ${mode === 'video' ? 'grid-cols-2' : 'grid-cols-3'}`}>
+              {(mode === 'video' ? VIDEO_ASPECT_RATIOS.map((ratio) => ({ label: ratio === '16:9' ? 'Landscape' : 'Portrait', value: ratio, ratio })) : SIZES).map((size) => {
+                const selected = mode === 'video'
+                  ? selectedVideoAspectRatio === size.value
+                  : selectedSize === size.value;
+                return (
                 <button
                   key={size.value}
-                  onClick={() => setSelectedSize(size.value)}
-                  className={`rounded-lg py-2 px-2 text-xs font-medium transition-all border ${selectedSize === size.value
+                  onClick={() => mode === 'video' ? setSelectedVideoAspectRatio(size.value) : setSelectedSize(size.value)}
+                  className={`rounded-lg py-2 px-2 text-xs font-medium transition-all border ${selected
                     ? 'bg-blue-500 text-white border-blue-500'
                     : darkMode
                       ? 'bg-[#1a1a1a] border-[#2a2a2a] text-gray-400 hover:border-[#444]'
                       : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
                     }`}
                 >
-                  <div className="font-semibold">{size.label}</div>
-                  <div className={selectedSize === size.value ? 'text-blue-100' : darkMode ? 'text-gray-600' : 'text-gray-400'}>
+                  <div className="font-semibold">{t(`imageStudio.sizes.${size.label}`)}</div>
+                  <div className={selected ? 'text-blue-100' : darkMode ? 'text-gray-600' : 'text-gray-400'}>
                     {size.ratio}
                   </div>
                 </button>
-              ))}
+                );
+              })}
             </div>
 
             {/* Style selector */}
             <label className={`block text-xs font-semibold uppercase tracking-wider mt-5 mb-2 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-              Style
+              {t('imageStudio.style')}
             </label>
             <div className="flex flex-wrap gap-2">
               {STYLES.map((style) => (
@@ -286,7 +349,7 @@ export default function ImageStudioPage() {
                       : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
                     }`}
                 >
-                  {style.label}
+                  {t(`imageStudio.styles.${style.label}`)}
                 </button>
               ))}
             </div>
@@ -300,18 +363,18 @@ export default function ImageStudioPage() {
               {generating ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Generating...
+                  {t('imageStudio.generating')}
                 </>
               ) : (
                 <>
                   <Wand2 className="w-4 h-4" />
-                  {mode === 'video' ? 'Generate Video' : 'Generate Image'}
+                  {t(mode === 'video' ? 'imageStudio.generateVideo' : 'imageStudio.generateImage')}
                 </>
               )}
             </button>
 
             <p className={`text-xs mt-3 text-center ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-              Press Ctrl+Enter to generate
+              {t('imageStudio.shortcut')}
             </p>
 
             {error && (
@@ -330,98 +393,104 @@ export default function ImageStudioPage() {
                   <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
                 </div>
                 <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                  Creating your {mode}...
+                  {t('imageStudio.creating', { mode: t(`imageStudio.${mode}`) })}
                 </p>
                 <p className={`text-xs mt-1 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-                  This usually takes 10-20 seconds
+                  {mode === 'video' ? t('imageStudio.videoWait') : t('imageStudio.imageWait')}
                 </p>
               </div>
             )}
 
-            {videoResult ? (
-              <div className={`rounded-2xl border overflow-hidden ${darkMode ? 'border-[#222] bg-[#111]' : 'border-gray-200 bg-white'}`}>
-                <video src={videoResult.url} controls className="w-full" />
-                <div className="flex items-center justify-between gap-3 p-4">
-                  <p className={`text-sm line-clamp-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{videoResult.prompt}</p>
-                  <a href={videoResult.url} download="open-sora-video.mp4" className="shrink-0 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500">
-                    <Download className="w-3.5 h-3.5" /> Download
-                  </a>
-                </div>
-              </div>
-            ) : loadingGallery ? (
+            {loadingGallery ? (
               <div className="flex items-center justify-center py-20">
                 <Loader2 className={`w-6 h-6 animate-spin ${darkMode ? 'text-gray-600' : 'text-gray-400'}`} />
               </div>
-            ) : gallery.length === 0 && !generating ? (
+            ) : visibleGallery.length === 0 && !generating ? (
               <div className={`rounded-2xl border flex flex-col items-center justify-center py-20 ${darkMode ? 'border-[#222] bg-[#111]' : 'border-gray-200 bg-white'}`}>
                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-4 ${darkMode ? 'bg-[#1a1a1a]' : 'bg-gray-100'}`}>
                   <ImageIcon className={`w-7 h-7 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`} />
                 </div>
                 <p className={`text-sm font-medium ${darkMode ? 'text-gray-500' : 'text-gray-600'}`}>
-                  No images yet
+                  {mode === 'video' ? t('imageStudio.noVideos') : t('imageStudio.noImages')}
                 </p>
                 <p className={`text-xs mt-1 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-                  Write a description and hit Generate to create your first image
+                  {t('imageStudio.firstCreate', { mode: t(`imageStudio.${mode}`) })}
                 </p>
               </div>
             ) : (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {gallery.map((img) => (
-                    <div
-                      key={img.id}
-                      className={`group rounded-2xl border overflow-hidden transition-all hover:shadow-lg ${darkMode ? 'border-[#222] bg-[#111]' : 'border-gray-200 bg-white'}`}
-                    >
-                      <div className="relative cursor-pointer" onClick={() => setPreviewImage(img)}>
-                        <img
-                          src={img.image_url}
-                          alt={img.prompt}
-                          className="w-full aspect-square object-cover transition-transform group-hover:scale-[1.02]"
-                          loading="lazy"
-                        />
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-end justify-center pb-3 opacity-0 group-hover:opacity-100">
-                          <span className="text-white text-xs font-medium bg-black/50 rounded-full px-3 py-1">
-                            Click to view
-                          </span>
+                  {visibleGallery.map((img) => {
+                    const isVideo = isVideoRecord(img);
+                    const extension = getVideoExtension(img.image_url);
+                    return (
+                      <div
+                        key={img.id}
+                        className={`group rounded-2xl border overflow-hidden transition-all hover:shadow-lg ${darkMode ? 'border-[#222] bg-[#111]' : 'border-gray-200 bg-white'}`}
+                      >
+                        {isVideo ? (
+                          <video
+                            src={img.image_url}
+                            controls
+                            preload="metadata"
+                            aria-label={img.prompt}
+                            className="w-full aspect-square object-cover"
+                          />
+                        ) : (
+                          <div className="relative cursor-pointer" onClick={() => setPreviewImage(img)}>
+                            <img
+                              src={img.image_url}
+                              alt={img.prompt}
+                              className="w-full aspect-square object-cover transition-transform group-hover:scale-[1.02]"
+                              loading="lazy"
+                            />
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-end justify-center pb-3 opacity-0 group-hover:opacity-100">
+                              <span className="text-white text-xs font-medium bg-black/50 rounded-full px-3 py-1">
+                                {t('imageStudio.clickToView')}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                        <div className="p-3">
+                          <p className={`text-xs line-clamp-2 leading-relaxed ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                            {img.prompt}
+                          </p>
+                          <div className="flex items-center justify-between mt-2.5">
+                            <div className={`flex items-center gap-1 text-[11px] ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                              <Clock className="w-3 h-3" />
+                              {formatDate(img.created_at, i18n.resolvedLanguage)}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              {!isVideo && (
+                                <button
+                                  onClick={() => handleShare(img)}
+                                  title={t('imageStudio.shareImage')}
+                                  aria-label={t('imageStudio.shareImage')}
+                                  className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${darkMode ? 'text-gray-500 hover:text-white hover:bg-white/5' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'}`}
+                                >
+                                  <Share2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleDownload(img.image_url, `${isVideo ? 'video' : 'image'}-${img.id}.${extension || 'png'}`)}
+                                title={t('imageStudio.download')}
+                                className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${darkMode ? 'text-gray-500 hover:text-white hover:bg-white/5' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'}`}
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(img.id)}
+                                title={t('imageStudio.delete')}
+                                className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${darkMode ? 'text-gray-500 hover:text-red-400 hover:bg-red-500/10' : 'text-gray-400 hover:text-red-500 hover:bg-red-50'}`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                      <div className="p-3">
-                        <p className={`text-xs line-clamp-2 leading-relaxed ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                          {img.prompt}
-                        </p>
-                        <div className="flex items-center justify-between mt-2.5">
-                          <div className={`flex items-center gap-1 text-[11px] ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-                            <Clock className="w-3 h-3" />
-                            {formatDate(img.created_at)}
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => handleShare(img)}
-                              title="Share image"
-                              aria-label="Share image"
-                              className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${darkMode ? 'text-gray-500 hover:text-white hover:bg-white/5' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'}`}
-                            >
-                              <Share2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDownload(img.image_url, `image-${img.id}.png`)}
-                              title="Download"
-                              className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${darkMode ? 'text-gray-500 hover:text-white hover:bg-white/5' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'}`}
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(img.id)}
-                              title="Delete"
-                              className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${darkMode ? 'text-gray-500 hover:text-red-400 hover:bg-red-500/10' : 'text-gray-400 hover:text-red-500 hover:bg-red-50'}`}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -456,14 +525,14 @@ export default function ImageStudioPage() {
                 className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
               >
                 <Share2 className="w-4 h-4" />
-                Share
+                {t('imageStudio.share')}
               </button>
               <button
                 onClick={() => handleDownload(previewImage.image_url, `image-${previewImage.id}.png`)}
                 className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
               >
                 <Download className="w-4 h-4" />
-                Download
+                {t('imageStudio.download')}
               </button>
             </div>
           </div>
@@ -473,10 +542,27 @@ export default function ImageStudioPage() {
   );
 }
 
-function formatDate(iso) {
+function formatDate(iso, locale) {
   const d = new Date(iso);
-  return d.toLocaleDateString(undefined, {
+  return d.toLocaleDateString(locale, {
     month: 'short',
     day: 'numeric',
   });
+}
+
+function getVideoExtension(url) {
+  const pathname = new URL(url, window.location.origin).pathname.toLowerCase();
+  return pathname.match(/\.(mp4|webm)$/)?.[1] || null;
+}
+
+function isVideoRecord(item) {
+  return Boolean(getVideoExtension(item.image_url));
+}
+
+function getAttachmentStoragePath(url, userId) {
+  const pathname = new URL(url, window.location.origin).pathname;
+  const prefix = '/storage/v1/object/public/attachments/';
+  if (!pathname.startsWith(prefix)) return null;
+  const storagePath = decodeURIComponent(pathname.slice(prefix.length));
+  return storagePath.startsWith(`${userId}/`) ? storagePath : null;
 }
