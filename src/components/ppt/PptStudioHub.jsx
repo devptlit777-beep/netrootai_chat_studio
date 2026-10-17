@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlan } from '../../contexts/PlanContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useTranslation } from 'react-i18next';
 import { THEME_OPTIONS, PPT_API_BASE, getActiveDeckStorageKey, getSavedSlidesStorageKey, clearLegacyGlobalPptStorage } from './pptConstants';
 import {
   Sparkles,
@@ -37,6 +39,8 @@ export default function PptStudioHub({
   activeSlidesCount = 0,
   isGeneratingDeck = false,
 }) {
+  const { t: translate, i18n } = useTranslation();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { plan, lifetimePptCount = 0, featureAccess } = usePlan();
   const { theme, toggleTheme } = useTheme();
@@ -304,7 +308,7 @@ export default function PptStudioHub({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold font-mono tracking-wider text-sky-500 uppercase">
-                Slide Studio
+                NetRoot AI PPT Studio
               </span>
               <span className={`text-xs ${darkMode ? 'text-slate-600' : 'text-slate-300'}`}>/</span>
               <span className="text-xs font-semibold text-slate-400">{translate('ppt.workspaceHub')}</span>
@@ -661,27 +665,48 @@ export default function PptStudioHub({
             <div className="w-10 h-10 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
               <Plus className="w-5 h-5" />
             </div>
-            <div>
-              <h3 className="text-sm font-bold flex items-center gap-1.5">
-                <span>Blank Presentation</span>
-                <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
-              </h3>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-bold flex items-center gap-1.5">
+                  <span>Blank Presentation</span>
+                  <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+                </h3>
+                {isFreeLimitReached && (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    PRO 🔒
+                  </span>
+                )}
+              </div>
               <p className={`text-xs mt-1 leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                Start fresh with an empty canvas. Choose custom bento layouts, add bullet points, and edit content freely.
+                {isFreeLimitReached
+                  ? 'Free presentation limit reached (2/2). Upgrade to Pro to create blank or AI presentations.'
+                  : 'Start fresh with an empty canvas. Add custom bullet points and write content freely.'}
               </p>
             </div>
           </div>
 
           {activeSlidesCount > 0 && (
             <div
-              onClick={onResumeActiveDeck}
+              onClick={() => {
+                if (isFreeLimitReached) {
+                  navigate('/pricing');
+                  return;
+                }
+                onResumeActiveDeck();
+              }}
               className={`p-5 rounded-2xl border transition-all duration-200 flex items-start gap-4 cursor-pointer group ${
-                darkMode
+                isFreeLimitReached
+                  ? 'bg-amber-500/5 border-amber-500/30 hover:border-amber-500/50'
+                  : darkMode
                   ? 'bg-[#151518]/70 border-white/10 hover:border-purple-500/50 hover:bg-[#1a1a20]'
                   : 'bg-white border-slate-200 hover:border-purple-400 hover:shadow-md'
               }`}
             >
-              <div className="w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform bg-purple-500/10 border-purple-500/20 text-purple-400">
+              <div className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform ${
+                isFreeLimitReached
+                  ? 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                  : 'bg-purple-500/10 border-purple-500/20 text-purple-400'
+              }`}>
                 <Play className="w-5 h-5 fill-current" />
               </div>
               <div className="flex-1 min-w-0">
@@ -690,9 +715,16 @@ export default function PptStudioHub({
                     <span>Resume Active Session</span>
                     <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
                   </h3>
+                  {isFreeLimitReached && (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                      PRO 🔒
+                    </span>
+                  )}
                 </div>
                 <p className={`text-xs mt-1 leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                  {`Continue working on "${activeDeckTitle || 'Untitled Presentation'}" (${activeSlidesCount} ${activeSlidesCount === 1 ? 'slide' : 'slides'} ready in editor).`}
+                  {isFreeLimitReached
+                    ? 'Free presentation limit reached (2/2). Upgrade to Pro to resume editing your presentation.'
+                    : `Continue working on "${activeDeckTitle || 'Untitled Presentation'}" (${activeSlidesCount} ${activeSlidesCount === 1 ? 'slide' : 'slides'} ready in editor).`}
                 </p>
               </div>
             </div>

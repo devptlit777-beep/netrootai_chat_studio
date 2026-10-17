@@ -1129,6 +1129,7 @@ import { DEFAULT_PLAN_LIMITS, fetchPlanLimits, normalizePlan } from '../lib/plan
 import { copyChatContext, downloadAsWord, downloadAsPdf, downloadAsPpt } from '../lib/chatExport';
 import PptChatDeckCard from '../components/ppt/PptChatDeckCard';
 import { getActiveDeckStorageKey, getSavedSlidesStorageKey } from '../components/ppt/pptConstants';
+import { useTranslation } from 'react-i18next';
 
 const PLUGIN_ICONS = {
   'web-search': '🌐', 'calculator': '🧮', 'pdf-search': '📄', 'arxiv': '📚', 'code-runner': '⚡',
@@ -1217,6 +1218,7 @@ function ChatCodeBlock({ language, code, darkMode }) {
 }
 
 export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
+  const { t } = useTranslation();
   const { plan, accessExpired, lifetimePptCount = 0, refresh: refreshPlan } = usePlan();
   const isPro = plan === 'pro' || plan === 'enterprise';
   const isFreeLimitReached = !isPro && lifetimePptCount >= 2;

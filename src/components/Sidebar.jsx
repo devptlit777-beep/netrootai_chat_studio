@@ -25,7 +25,7 @@ const navItems = [
   { icon: Share2, path: "/shared", label: "Shared" },
   { icon: Database, path: "/plugins", label: "Plugins" },
   { icon: Sparkles, path: "/image-studio", label: "Image Studio" },
-  { icon: Presentation, path: "/ppt-studio", label: "PPT Studio" },
+  { icon: Presentation, path: "/ppt-studio", label: "NetRoot AI PPT Studio" },
 ];
 
 function getFallbackAvatar(email) {
@@ -85,7 +85,7 @@ export default function Sidebar() {
               key={path}
               onClick={() => navigate(path)}
               title={label}
-              className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${active
+              className={`w-10 h-10 relative flex items-center justify-center rounded-xl transition-all ${active
                 ? darkMode
                   ? "bg-white/10 text-white"
                   : "bg-blue-50 text-blue-600"

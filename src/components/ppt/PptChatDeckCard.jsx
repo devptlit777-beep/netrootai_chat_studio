@@ -205,7 +205,7 @@ export default function PptChatDeckCard({ pptDeck, darkMode = true }) {
           className="flex-1 min-w-[170px] inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 shadow-md hover:shadow-blue-500/25 active:scale-[0.98] transition-all"
         >
           <ExternalLink className="w-3.5 h-3.5" />
-          <span>Open in PPT Studio</span>
+          <span>Open in NetRoot AI PPT Studio</span>
         </button>
 
         <button

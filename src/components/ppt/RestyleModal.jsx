@@ -88,7 +88,7 @@ export default function RestyleModal({
               <Wand2 className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white">{t('ppt.restyleWithAI')}</h2>
+              <h2 className="text-sm font-bold text-white">{t('ppt.restyleWithAI', 'Restyle with NetRoot AI')}</h2>
               <p className="text-xs text-slate-400">{t('ppt.restyleDescription')}</p>
             </div>
           </div>

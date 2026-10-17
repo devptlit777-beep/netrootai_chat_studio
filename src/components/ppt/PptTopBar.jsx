@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { THEME_OPTIONS, THEME_SEEDS } from './pptConstants';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useTranslation } from 'react-i18next';
 import {
   Undo2,
   Redo2,
@@ -49,6 +50,7 @@ export default function PptTopBar({
   isViewOnly = false,
   isFreeLimitReached = false,
 }) {
+  const { t } = useTranslation();
   const { theme, toggleTheme } = useTheme();
   const darkMode = theme === 'dark';
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
@@ -93,7 +95,8 @@ export default function PptTopBar({
         <input
           type="text"
           value={deckTitle || ''}
-          onChange={(e) => onChangeDeckTitle && onChangeDeckTitle(e.target.value)}
+          onChange={(e) => !isViewOnly && onChangeDeckTitle && onChangeDeckTitle(e.target.value)}
+          readOnly={isViewOnly}
           placeholder="Untitled Presentation"
           className={`text-sm font-semibold rounded-lg px-2 py-0.5 transition outline-none border focus:border-sky-500 max-w-[150px] sm:max-w-[240px] md:max-w-[320px] truncate ${
             isViewOnly ? 'cursor-default opacity-85' : ''
@@ -102,7 +105,7 @@ export default function PptTopBar({
               ? 'bg-transparent text-white border-transparent hover:border-white/20 focus:bg-[#18181b]'
               : 'bg-transparent text-slate-900 border-transparent hover:border-slate-300 focus:bg-white'
           }`}
-          title="Click to rename presentation"
+          title={isViewOnly ? "Presentation Title (View-Only)" : "Click to rename presentation"}
         />
 
         {isViewOnly && (
@@ -397,10 +400,11 @@ export default function PptTopBar({
               ? 'border-purple-500/40 bg-purple-950/30 text-purple-300 hover:bg-purple-950/60 hover:border-purple-400'
               : 'border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100 hover:border-purple-400'
           }`}
-          title="Toggle Slide AI"
+          title="Toggle NetRoot AI Assistant"
         >
           <Bot className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Slide AI</span>
+          <span className="hidden md:inline">NetRoot AI Assistant</span>
+          <span className="hidden sm:inline md:hidden">AI Assistant</span>
         </button>
 
         {/* Upgrade CTA if View Only */}
@@ -430,10 +434,13 @@ export default function PptTopBar({
               ? 'border-sky-500/40 bg-sky-950/30 hover:bg-sky-900/50 text-sky-300 hover:text-white'
               : 'border-sky-300 bg-sky-50 hover:bg-sky-100 text-sky-700'
           }`}
-          title="Create New Presentation (Open Hub)"
+          title={isFreeLimitReached ? "Upgrade to Pro to create more presentations" : "Create New Presentation (Open Hub)"}
         >
           <Plus className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">New Presentation</span>
+          {isFreeLimitReached && (
+            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400">PRO</span>
+          )}
         </button>
 
         {/* Download PPTX Native Button */}
