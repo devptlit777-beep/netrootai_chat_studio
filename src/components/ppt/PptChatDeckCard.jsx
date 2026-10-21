@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { PPT_API_BASE } from './pptConstants';
+import { PPT_API_BASE, getActiveDeckStorageKey, getSavedSlidesStorageKey } from './pptConstants';
 import {
   Presentation,
   ExternalLink,
@@ -31,9 +31,12 @@ export default function PptChatDeckCard({ pptDeck, darkMode = true }) {
 
   const handleOpenStudio = () => {
     try {
+      const activeKey = getActiveDeckStorageKey(user?.id);
+      const savedKey = getSavedSlidesStorageKey(user?.id);
+
       // 1. Set as active working deck
       localStorage.setItem(
-        'netroot_active_working_deck',
+        activeKey,
         JSON.stringify({
           id: pptDeck.deckId,
           slides: pptDeck.slides,
@@ -44,7 +47,7 @@ export default function PptChatDeckCard({ pptDeck, darkMode = true }) {
       );
 
       // 2. Add or update in saved slides list
-      const saved = JSON.parse(localStorage.getItem('netroot_saved_slides') || '[]');
+      const saved = JSON.parse(localStorage.getItem(savedKey) || '[]');
       const existingIdx = saved.findIndex((d) => d.id === pptDeck.deckId);
       const deckItem = {
         id: pptDeck.deckId,
@@ -59,7 +62,7 @@ export default function PptChatDeckCard({ pptDeck, darkMode = true }) {
       } else {
         saved.unshift(deckItem);
       }
-      localStorage.setItem('netroot_saved_slides', JSON.stringify(saved));
+      localStorage.setItem(savedKey, JSON.stringify(saved));
     } catch (e) {
       console.warn('Could not cache deck in localStorage:', e);
     }
@@ -202,7 +205,7 @@ export default function PptChatDeckCard({ pptDeck, darkMode = true }) {
           className="flex-1 min-w-[170px] inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 shadow-md hover:shadow-blue-500/25 active:scale-[0.98] transition-all"
         >
           <ExternalLink className="w-3.5 h-3.5" />
-          <span>Open in PPT Studio</span>
+          <span>Open in NetRoot AI PPT Studio</span>
         </button>
 
         <button

@@ -44,6 +44,7 @@ export default function PricingPage() {
         t('plans.tokensPerDay', { count: proLimit.toLocaleString() }),
         t('plans.modelsAvailable', { count: proModelsCount }),
         t('plans.fluxImages', { count: fluxImageLimit }),
+        'Unlimited AI presentations & edits',
         t('plans.allPlugins'),
         t('plans.emailSupport'),
         t('plans.usageAnalytics'),
@@ -51,6 +52,7 @@ export default function PricingPage() {
     const freeFeatures = [
         t('plans.tokensPerDay', { count: freeLimit.toLocaleString() }),
         t('plans.modelsAvailable', { count: freeModelsCount }),
+        '2 AI presentations lifetime',
         t('plans.basicPlugins'),
         t('plans.communitySupport'),
     ];
