@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { THEME_OPTIONS, THEME_SEEDS } from './pptConstants';
 import { useTheme } from '../../contexts/ThemeContext';
 import {
@@ -49,6 +50,7 @@ export default function PptTopBar({
   isViewOnly = false,
   isFreeLimitReached = false,
 }) {
+  const { t } = useTranslation();
   const { theme, toggleTheme } = useTheme();
   const darkMode = theme === 'dark';
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);

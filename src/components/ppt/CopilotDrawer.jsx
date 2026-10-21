@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlan } from '../../contexts/PlanContext';
@@ -27,6 +28,7 @@ export default function CopilotDrawer({
   onQuickRegenerateCurrent,
   isRegenerating = false,
 }) {
+  const { t } = useTranslation();
   const { theme } = useTheme();
   const { user } = useAuth();
   const { plan, lifetimePptCount = 0, featureAccess } = usePlan();

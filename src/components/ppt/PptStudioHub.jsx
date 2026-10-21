@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlan } from '../../contexts/PlanContext';
@@ -37,6 +39,8 @@ export default function PptStudioHub({
   activeSlidesCount = 0,
   isGeneratingDeck = false,
 }) {
+  const { t: translate, i18n } = useTranslation();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { plan, lifetimePptCount = 0, featureAccess } = usePlan();
   const { theme, toggleTheme } = useTheme();
@@ -648,9 +652,9 @@ export default function PptStudioHub({
             </div>
           </div>
 
-          {activeSlidesCount > 0 && (
-            <div
-              onClick={() => {
+          <div
+            onClick={() => {
+              if (activeSlidesCount > 0) {
                 if (isFreeLimitReached) {
                   navigate('/pricing');
                   return;

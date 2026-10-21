@@ -579,8 +579,6 @@ function hfRequest(prompt, token) {
     });
 }
 
-const AGNES_VIDEO_MODEL = 'agnes-video-2.5-flash';
-
 async function handleImageStudio(req, res) {
     const body = await readJson(req);
     const prompt = String(body.prompt || '').trim();
@@ -634,102 +632,63 @@ async function handleVideoGeneration(req, res) {
         return;
     }
 
-    const apiKey = process.env.AGNES_API_KEY;
-    if (!apiKey) { sendJson(res, 500, { error: 'AGNES_API_KEY is not configured.' }, req); return; }
+    const apiKey = process.env.MAGIC_HOUR_API_KEY;
+    if (!apiKey) { sendJson(res, 500, { error: 'MAGIC_HOUR_API_KEY is not configured.' }, req); return; }
 
     try {
-        const fetchAgnes = async (url, options, operation) => {
+        const fetchMagicHour = async (url, options, operation) => {
             try {
                 return await fetch(url, options);
             } catch (error) {
                 const errorCode = typeof error?.cause?.code === 'string' ? ` (${error.cause.code})` : '';
-                throw new Error(`Agnes ${operation} request failed${errorCode}: ${error.message}`, { cause: error });
+                throw new Error(`Magic Hour ${operation} request failed${errorCode}: ${error.message}`, { cause: error });
             }
         };
-        const apiBase = new URL(process.env.AGNES_BASE_URL || 'https://apihub.agnes-ai.com/v1');
-        if (apiBase.protocol !== 'https:') throw new Error('AGNES_BASE_URL must use HTTPS.');
-        apiBase.pathname = apiBase.pathname.replace(/\/+$/, '');
+        const apiBase = new URL('https://api.magichour.ai');
 
         const headers = {
             Authorization: `Bearer ${apiKey}`,
             'Content-Type': 'application/json',
+            Accept: 'application/json',
         };
-        const createUrl = new URL(`${apiBase.pathname}/videos`, apiBase.origin);
+        const createUrl = new URL('/v1/text-to-video', apiBase.origin);
         const createBody = JSON.stringify({
-            model: AGNES_VIDEO_MODEL,
-            prompt,
-            mode: 'text',
-            seconds: '5',
-            size: '720P',
+            end_seconds: 5,
             aspect_ratio: aspectRatio,
+            style: { prompt },
         });
-        const maxCreateAttempts = 3;
+        const createResponse = await fetchMagicHour(createUrl, {
+            method: 'POST',
+            headers,
+            body: createBody,
+            signal: AbortSignal.timeout(30_000),
+        }, 'video task creation');
+        const createText = await createResponse.text();
         let task;
-        for (let attempt = 0; attempt < maxCreateAttempts; attempt++) {
-            const createResponse = await fetchAgnes(createUrl, {
-                method: 'POST',
-                headers,
-                body: createBody,
-                signal: AbortSignal.timeout(30_000),
-            }, 'video task creation');
-            const createText = await createResponse.text();
-            let responseBody;
-            try {
-                responseBody = JSON.parse(createText);
-            } catch {
-                responseBody = null;
-            }
-
-            if (!createResponse.ok) {
-                const providerMessage = responseBody?.error?.message
-                    || responseBody?.error
-                    || responseBody?.message
-                    || createText.slice(0, 300);
-                const message = String(providerMessage);
-                const queueFull = createResponse.status === 503 && /video queue is full|queue is full/i.test(message);
-                if (!queueFull || attempt === maxCreateAttempts - 1) {
-                    if (queueFull) {
-                        throw new Error(`Agnes video queue is still full after ${maxCreateAttempts} attempts. Please wait at least a minute before trying again. ${message}`);
-                    }
-                    throw new Error(`Agnes task creation failed (${createResponse.status}): ${message}`);
-                }
-
-                const retryAfter = createResponse.headers.get('retry-after');
-                const retryAfterSeconds = retryAfter && /^\d+(?:\.\d+)?$/.test(retryAfter)
-                    ? Number(retryAfter) * 1000
-                    : retryAfter ? Date.parse(retryAfter) - Date.now() : NaN;
-                const minimumRetryMs = 60_000 * (attempt + 1);
-                const retryDelayMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
-                    ? Math.max(minimumRetryMs, retryAfterSeconds)
-                    : minimumRetryMs;
-                if (retryDelayMs > 5 * 60_000) {
-                    throw new Error(`Agnes video queue is full and requested a long retry delay. Please wait ${Math.ceil(retryDelayMs / 60_000)} minutes before trying again. ${message}`);
-                }
-                console.warn(`[video-generation] Agnes video queue is full; retrying in ${retryDelayMs}ms (attempt ${attempt + 2}/${maxCreateAttempts}).`);
-                await new Promise(resolve => setTimeout(resolve, retryDelayMs));
-                continue;
-            }
-
-            if (!responseBody || typeof responseBody !== 'object' || Array.isArray(responseBody)) {
-                throw new Error(`Agnes task creation returned invalid JSON (${createResponse.status}).`);
-            }
-            task = responseBody;
-            break;
+        try {
+            task = JSON.parse(createText);
+        } catch {
+            throw new Error(`Magic Hour task creation returned invalid JSON (${createResponse.status}).`);
+        }
+        if (!createResponse.ok) {
+            const message = task?.message || task?.error?.message || task?.error || createText.slice(0, 300);
+            throw new Error(`Magic Hour task creation failed (${createResponse.status}): ${message}`);
+        }
+        if (!task || typeof task !== 'object' || Array.isArray(task)) {
+            throw new Error(`Magic Hour task creation returned an invalid response (${createResponse.status}).`);
         }
 
-        const videoId = task.video_id;
+        const videoId = task.id;
         if (typeof videoId !== 'string' || !videoId) {
-            throw new Error('Agnes task creation response did not include a video_id.');
+            throw new Error('Magic Hour task creation response did not include a project id.');
         }
 
-        const pollUrl = new URL('/agnesapi', apiBase.origin);
-        pollUrl.searchParams.set('video_id', videoId);
-        pollUrl.searchParams.set('model_name', AGNES_VIDEO_MODEL);
+        const pollUrl = new URL(`/v1/video-projects/${encodeURIComponent(videoId)}`, apiBase.origin);
         const deadline = Date.now() + 10 * 60 * 1000;
         let result;
         while (Date.now() < deadline) {
             const remainingMs = deadline - Date.now();
-            const pollResponse = await fetchAgnes(pollUrl, {
+            const pollResponse = await fetchMagicHour(pollUrl, {
                 headers: { Authorization: headers.Authorization },
                 signal: AbortSignal.timeout(Math.min(30_000, remainingMs)),
             }, 'video status check');
@@ -737,39 +696,40 @@ async function handleVideoGeneration(req, res) {
             try {
                 result = JSON.parse(pollText);
             } catch {
-                throw new Error(`Agnes status check returned invalid JSON (${pollResponse.status}).`);
+                throw new Error(`Magic Hour status check returned invalid JSON (${pollResponse.status}).`);
             }
             if (!result || typeof result !== 'object' || Array.isArray(result)) {
-                throw new Error('Agnes status check returned an invalid response.');
+                throw new Error('Magic Hour status check returned an invalid response.');
             }
             if (!pollResponse.ok) {
                 const message = result.error?.message || result.error || result.message || pollText.slice(0, 300);
-                throw new Error(`Agnes status check failed (${pollResponse.status}): ${message}`);
+                throw new Error(`Magic Hour status check failed (${pollResponse.status}): ${message}`);
             }
 
             const status = String(result.status || '').toLowerCase();
-            if (status === 'completed') break;
-            if (status === 'failed') {
-                const message = result.error?.message || result.error || result.message || 'The provider reported a failed task.';
-                throw new Error(`Agnes video generation failed: ${message}`);
+            if (status === 'complete') break;
+            if (status === 'error' || status === 'canceled') {
+                const message = result.error?.message || result.error || result.message || `The provider reported a ${status} task.`;
+                throw new Error(`Magic Hour video generation failed: ${message}`);
             }
-            if (!['queued', 'in_progress', 'pending', 'running'].includes(status)) {
-                throw new Error(`Agnes returned an unexpected video task status: ${status || 'missing'}.`);
+            if (!['queued', 'rendering'].includes(status)) {
+                throw new Error(`Magic Hour returned an unexpected video task status: ${status || 'missing'}.`);
             }
             await new Promise(resolve => setTimeout(resolve, Math.min(2000, Math.max(0, deadline - Date.now()))));
         }
-        if (!result || String(result.status || '').toLowerCase() !== 'completed') {
-            throw new Error('Agnes video generation timed out after 10 minutes.');
+        if (!result || String(result.status || '').toLowerCase() !== 'complete') {
+            throw new Error('Magic Hour video generation timed out after 10 minutes.');
         }
-        if (typeof result.url !== 'string' || !result.url) {
-            throw new Error('Agnes completed the task without returning a video URL.');
+        const videoDownloadUrl = result.downloads?.[0]?.url;
+        if (typeof videoDownloadUrl !== 'string' || !videoDownloadUrl) {
+            throw new Error('Magic Hour completed the task without returning a video URL.');
         }
 
-        const videoUrl = new URL(result.url);
-        if (videoUrl.protocol !== 'https:' || videoUrl.username || videoUrl.password) {
-            throw new Error('Agnes returned an invalid video URL.');
+        const videoUrl = new URL(videoDownloadUrl);
+        if (videoUrl.protocol !== 'https:' || videoUrl.username || videoUrl.password || !videoUrl.hostname.endsWith('.magichour.ai')) {
+            throw new Error('Magic Hour returned an invalid video URL.');
         }
-        const videoResponse = await fetchAgnes(
+        const videoResponse = await fetchMagicHour(
             videoUrl,
             { signal: AbortSignal.timeout(120_000) },
             'generated video download',
@@ -778,7 +738,7 @@ async function handleVideoGeneration(req, res) {
             throw new Error(`Could not download the generated video (${videoResponse.status}).`);
         }
         const videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
-        if (!videoBuffer.length) throw new Error('Agnes returned an empty video.');
+        if (!videoBuffer.length) throw new Error('Magic Hour returned an empty video.');
 
         const origin = req?.headers?.origin || '';
         const allowed = ['http://127.0.0.1:5173', 'http://localhost:5173', 'https://netrootai.tech', 'https://ampjiasvmmhxeqwdullc.supabase.co'];
@@ -791,7 +751,7 @@ async function handleVideoGeneration(req, res) {
         });
         res.end(videoBuffer);
     } catch (error) {
-        console.error('[video-generation] Agnes AI error:', error);
+        console.error('[video-generation] Magic Hour API error:', error);
         sendJson(res, 502, { error: `Video generation failed: ${error.message}` }, req);
     }
 }

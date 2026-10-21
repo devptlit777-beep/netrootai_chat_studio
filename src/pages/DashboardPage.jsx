@@ -1179,6 +1179,7 @@ function getFallbackAvatar(email) {
 }
 
 export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
+  const { t } = useTranslation();
   const { plan, accessExpired, lifetimePptCount = 0 } = usePlan();
   const isPro = plan === 'pro' || plan === 'enterprise';
   const isFreeLimitReached = !isPro && lifetimePptCount >= 2;

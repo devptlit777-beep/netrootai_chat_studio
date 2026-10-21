@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
@@ -17,8 +17,11 @@ import {
   Share2,
 } from 'lucide-react';
 
-const VIDEO_MODEL = 'Agnes Video 2.5 Flash';
+const VIDEO_MODEL = 'Magic Hour Text-to-Video';
 const VIDEO_ASPECT_RATIOS = ['16:9', '9:16'];
+const IMAGE_STUDIO_CACHE_TTL = 5 * 60 * 1000;
+const IMAGE_STUDIO_PAGE_SIZE = 10;
+const imageStudioGalleryCache = new Map();
 
 const SIZES = [
   { label: 'Square', value: '1024x1024', ratio: '1:1' },
@@ -50,27 +53,119 @@ export default function ImageStudioPage() {
   const [selectedStyle, setSelectedStyle] = useState(STYLES[0].value);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState(null);
-  const [gallery, setGallery] = useState([]);
-  const [loadingGallery, setLoadingGallery] = useState(true);
+  const [gallery, setGallery] = useState(() =>
+    user?.id ? imageStudioGalleryCache.get(user.id)?.items || [] : []
+  );
+  const [loadingGallery, setLoadingGallery] = useState(() =>
+    Boolean(user?.id && !imageStudioGalleryCache.has(user.id))
+  );
+  const [hasMoreGallery, setHasMoreGallery] = useState(false);
+  const [loadingMoreGallery, setLoadingMoreGallery] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
   const [shareMessage, setShareMessage] = useState('');
   const promptRef = useRef(null);
 
-  const loadGallery = useCallback(async () => {
-    if (!user) return;
-    setLoadingGallery(true);
-    const { data, error } = await supabase
-      .from('image_studio')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
-    if (!error) setGallery(data || []);
-    setLoadingGallery(false);
-  }, [user]);
-
   useEffect(() => {
-    loadGallery();
-  }, [loadGallery]);
+    if (!user?.id) {
+      setGallery([]);
+      setHasMoreGallery(false);
+      setLoadingGallery(false);
+      return;
+    }
+
+    const userId = user.id;
+    const cachedGallery = imageStudioGalleryCache.get(userId);
+    const hasCachedGallery = Boolean(cachedGallery);
+    const isCacheFresh = hasCachedGallery &&
+      Date.now() - cachedGallery.cachedAt < IMAGE_STUDIO_CACHE_TTL;
+    setGallery(cachedGallery?.items || []);
+    setHasMoreGallery(cachedGallery?.hasMore || false);
+    setLoadingGallery(!hasCachedGallery);
+    if (isCacheFresh) return;
+
+    let isCurrent = true;
+
+    async function refreshGallery() {
+      const { data, error: queryError } = await supabase
+        .from('image_studio')
+        .select('id, user_id, prompt, image_url, size, created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .range(0, IMAGE_STUDIO_PAGE_SIZE);
+
+      if (!isCurrent) return;
+      if (queryError) {
+        if (!hasCachedGallery) setError(`Could not load image history: ${queryError.message}`);
+        setLoadingGallery(false);
+        return;
+      }
+
+      const refreshedGallery = data || [];
+      const hasMore = refreshedGallery.length > IMAGE_STUDIO_PAGE_SIZE;
+      const items = refreshedGallery.slice(0, IMAGE_STUDIO_PAGE_SIZE);
+      imageStudioGalleryCache.set(userId, {
+        items,
+        cachedAt: Date.now(),
+        hasMore,
+      });
+      setGallery(items);
+      setHasMoreGallery(hasMore);
+      setError(null);
+      setLoadingGallery(false);
+    }
+
+    refreshGallery();
+    return () => {
+      isCurrent = false;
+    };
+  }, [user?.id]);
+
+  async function loadMoreGallery() {
+    if (!user?.id || loadingMoreGallery || !hasMoreGallery) return;
+    setLoadingMoreGallery(true);
+    setError(null);
+
+    try {
+      const { data, error: queryError } = await supabase
+        .from('image_studio')
+        .select('id, user_id, prompt, image_url, size, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .range(gallery.length, gallery.length + IMAGE_STUDIO_PAGE_SIZE);
+
+      if (queryError) throw queryError;
+
+      const nextPage = data || [];
+      const hasMore = nextPage.length > IMAGE_STUDIO_PAGE_SIZE;
+      const updatedGallery = [
+        ...gallery,
+        ...nextPage.slice(0, IMAGE_STUDIO_PAGE_SIZE),
+      ];
+      imageStudioGalleryCache.set(user.id, {
+        items: updatedGallery,
+        cachedAt: Date.now(),
+        hasMore,
+      });
+      setGallery(updatedGallery);
+      setHasMoreGallery(hasMore);
+    } catch (loadError) {
+      setError(`Could not load more image history: ${loadError.message}`);
+    } finally {
+      setLoadingMoreGallery(false);
+    }
+  }
+
+  function updateGalleryCache(update) {
+    const cachedGallery = imageStudioGalleryCache.get(user.id);
+    const currentGallery = cachedGallery?.items || gallery;
+    const updatedGallery = update(currentGallery);
+    imageStudioGalleryCache.set(user.id, {
+      items: updatedGallery,
+      cachedAt: Date.now(),
+      hasMore: cachedGallery?.hasMore || hasMoreGallery,
+    });
+    setGallery(updatedGallery);
+  }
 
   const visibleGallery = gallery.filter((item) => (
     mode === 'video' ? isVideoRecord(item) : !isVideoRecord(item)
@@ -134,7 +229,7 @@ export default function ImageStudioPage() {
           throw new Error(`Could not add generated video to history: ${insertError.message}.${cleanupMessage}`);
         }
 
-        setGallery((prev) => [inserted, ...prev]);
+        updateGalleryCache((prev) => [inserted, ...prev]);
         setPrompt('');
       } else {
         const data = await response.json();
@@ -158,7 +253,7 @@ export default function ImageStudioPage() {
           size: selectedSize,
           created_at: new Date().toISOString(),
         };
-        setGallery((prev) => [newImage, ...prev]);
+        updateGalleryCache((prev) => [newImage, ...prev]);
         setPrompt('');
       }
     } catch (err) {
@@ -190,7 +285,7 @@ export default function ImageStudioPage() {
       return;
     }
 
-    setGallery((prev) => prev.filter((entry) => entry.id !== id));
+    updateGalleryCache((prev) => prev.filter((entry) => entry.id !== id));
   }
 
   function handleDownload(url, filename) {
@@ -492,6 +587,22 @@ export default function ImageStudioPage() {
                     );
                   })}
                 </div>
+                {hasMoreGallery && (
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      onClick={loadMoreGallery}
+                      disabled={loadingMoreGallery}
+                      className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-60 ${
+                        darkMode
+                          ? 'border-[#2a2a2a] text-gray-300 hover:bg-white/5'
+                          : 'border-gray-200 text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      {loadingMoreGallery ? t('common.loading') : t('imageStudio.loadMore', { defaultValue: 'Load more' })}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
