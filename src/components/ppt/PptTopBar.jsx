@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { THEME_OPTIONS, THEME_SEEDS } from './pptConstants';
 import { useTheme } from '../../contexts/ThemeContext';
-import { useTranslation } from 'react-i18next';
 import {
   Undo2,
   Redo2,
