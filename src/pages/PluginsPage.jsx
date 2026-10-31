@@ -242,7 +242,7 @@ export default function PluginsPage() {
 
     return (
         <div className={`min-h-screen ${darkMode ? 'bg-[#0e0e0e] text-white' : 'bg-gray-50 text-gray-900'}`}>
-            <div className="max-w-5xl mx-auto px-6 py-8">
+            <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
 
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
                     <div>

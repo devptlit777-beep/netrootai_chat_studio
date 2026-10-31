@@ -83,7 +83,7 @@ export default function CheckoutSuccessPage() {
 
   return (
     <div className={`min-h-screen flex items-center justify-center px-4 ${darkMode ? 'bg-[#0e0e0e]' : 'bg-gray-50'}`}>
-      <div className={`w-full max-w-md text-center border rounded-2xl p-10 shadow-2xl ${darkMode ? 'bg-[#141414] border-[#2a2a2a]' : 'bg-white border-gray-200'}`}>
+      <div className={`w-full max-w-md rounded-2xl border p-6 text-center shadow-2xl sm:p-10 ${darkMode ? 'bg-[#141414] border-[#2a2a2a]' : 'bg-white border-gray-200'}`}>
 
         {status === 'verifying' && (
           <>

@@ -8,6 +8,11 @@ const MODEL_IMAGE_LIMITS = {
         pro: 10,
         enterprise: 10,
     },
+    'black-forest-labs/FLUX-2-Klein-4B': {
+        free: 0,
+        pro: 10,
+        enterprise: 10,
+    },
 };
 
 const PLAN_LIMITS = {

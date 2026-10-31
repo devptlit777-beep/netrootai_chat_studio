@@ -22,10 +22,15 @@ test('pro plan allows four models and a larger token budget', () => {
     assert.equal(canUseTokens('pro', 100000, 1), false);
 });
 
-test('FLUX image generation is capped at 10 per month for Pro users', () => {
+test('FLUX image generation and editing are capped at 10 per month for Pro users', () => {
     assert.equal(getModelImageLimit('free', 'black-forest-labs/FLUX.1-schnell'), 0);
     assert.equal(getModelImageLimit('pro', 'black-forest-labs/FLUX.1-schnell'), 10);
     assert.equal(getModelImageLimit('enterprise', 'black-forest-labs/FLUX.1-schnell'), 10);
     assert.equal(canUseImageGeneration('pro', 'black-forest-labs/FLUX.1-schnell', 9), true);
     assert.equal(canUseImageGeneration('pro', 'black-forest-labs/FLUX.1-schnell', 10), false);
+    assert.equal(getModelImageLimit('free', 'black-forest-labs/FLUX-2-Klein-4B'), 0);
+    assert.equal(getModelImageLimit('pro', 'black-forest-labs/FLUX-2-Klein-4B'), 10);
+    assert.equal(getModelImageLimit('enterprise', 'black-forest-labs/FLUX-2-Klein-4B'), 10);
+    assert.equal(canUseImageGeneration('pro', 'black-forest-labs/FLUX-2-Klein-4B', 9), true);
+    assert.equal(canUseImageGeneration('pro', 'black-forest-labs/FLUX-2-Klein-4B', 10), false);
 });

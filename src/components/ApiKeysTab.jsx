@@ -301,7 +301,7 @@ export default function ApiKeysTab({ darkMode }) {
       {showCreate && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className={`w-full max-w-md rounded-2xl border shadow-2xl ${darkMode ? 'bg-[#141414] border-[#2a2a2a]' : 'bg-white border-gray-200'}`}>
-            <div className={`flex items-center justify-between px-6 py-5 border-b ${border}`}>
+            <div className={`flex items-center justify-between gap-3 px-4 py-4 border-b sm:px-6 sm:py-5 ${border}`}>
               <h3 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                 {createdKey ? t('apiKeys.saveKey') : t('apiKeys.create')}
               </h3>
@@ -313,7 +313,7 @@ export default function ApiKeysTab({ darkMode }) {
               </button>
             </div>
 
-            <div className="px-6 py-5 space-y-4">
+            <div className="space-y-4 px-4 py-4 sm:px-6 sm:py-5">
               {!createdKey ? (
                 <>
                   <div>
@@ -371,7 +371,7 @@ export default function ApiKeysTab({ darkMode }) {
               )}
             </div>
 
-            <div className={`flex justify-end gap-2 px-6 py-4 border-t ${border}`}>
+            <div className={`flex flex-wrap justify-end gap-2 px-4 py-4 border-t sm:px-6 ${border}`}>
               <button
                 onClick={closeCreate}
                 className={`text-sm px-4 py-2 rounded-lg border transition-colors ${darkMode ? 'border-[#3a3a3a] text-gray-400 hover:text-white' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
@@ -395,13 +395,13 @@ export default function ApiKeysTab({ darkMode }) {
       {renaming && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className={`w-full max-w-sm rounded-2xl border shadow-2xl ${darkMode ? 'bg-[#141414] border-[#2a2a2a]' : 'bg-white border-gray-200'}`}>
-            <div className={`flex items-center justify-between px-6 py-5 border-b ${border}`}>
+            <div className={`flex items-center justify-between gap-3 px-4 py-4 border-b sm:px-6 sm:py-5 ${border}`}>
               <h3 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('apiKeys.renameKey')}</h3>
               <button onClick={() => setRenaming(null)} className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${darkMode ? 'text-gray-400 hover:text-white hover:bg-white/5' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}>
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="px-6 py-5">
+            <div className="px-4 py-4 sm:px-6 sm:py-5">
               <label className={`block text-sm font-medium mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{t('common.name')}</label>
               <input
                 type="text"
@@ -412,7 +412,7 @@ export default function ApiKeysTab({ darkMode }) {
                 autoFocus
               />
             </div>
-            <div className={`flex justify-end gap-2 px-6 py-4 border-t ${border}`}>
+            <div className={`flex flex-wrap justify-end gap-2 px-4 py-4 border-t sm:px-6 ${border}`}>
               <button onClick={() => setRenaming(null)} className={`text-sm px-4 py-2 rounded-lg border transition-colors ${darkMode ? 'border-[#3a3a3a] text-gray-400 hover:text-white' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>{t('common.cancel')}</button>
               <button onClick={handleRename} disabled={renameLoading || !renameValue.trim()} className="text-sm font-medium bg-white hover:bg-gray-100 disabled:opacity-50 text-black px-5 py-2 rounded-lg transition-colors">
                 {renameLoading ? t('project.saving') : t('project.save')}
@@ -425,7 +425,7 @@ export default function ApiKeysTab({ darkMode }) {
       {deleting && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className={`w-full max-w-sm rounded-2xl border shadow-2xl ${darkMode ? 'bg-[#141414] border-[#2a2a2a]' : 'bg-white border-gray-200'}`}>
-            <div className="px-6 py-5">
+            <div className="px-4 py-4 sm:px-6 sm:py-5">
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center shrink-0">
                   <Trash2 className="w-5 h-5 text-red-400" />
@@ -436,7 +436,7 @@ export default function ApiKeysTab({ darkMode }) {
                 {t('apiKeys.revokeWarning', { name: deleting.name })}
               </p>
             </div>
-            <div className={`flex justify-end gap-2 px-6 py-4 border-t ${border}`}>
+            <div className={`flex flex-wrap justify-end gap-2 px-4 py-4 border-t sm:px-6 ${border}`}>
               <button onClick={() => setDeleting(null)} className={`text-sm px-4 py-2 rounded-lg border transition-colors ${darkMode ? 'border-[#3a3a3a] text-gray-400 hover:text-white' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>{t('common.cancel')}</button>
               <button onClick={handleDelete} disabled={deleteLoading} className="text-sm font-medium bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white px-5 py-2 rounded-lg transition-colors">
                 {deleteLoading ? t('apiKeys.revoking') : t('apiKeys.revokeKey')}

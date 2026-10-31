@@ -15,12 +15,15 @@ import {
   AlertCircle,
   Clock,
   Share2,
+  Upload,
 } from 'lucide-react';
 
 const VIDEO_MODEL = 'Magic Hour Text-to-Video';
 const VIDEO_ASPECT_RATIOS = ['16:9', '9:16'];
 const IMAGE_STUDIO_CACHE_TTL = 5 * 60 * 1000;
 const IMAGE_STUDIO_PAGE_SIZE = 10;
+const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
+const SUPPORTED_IMAGE_TYPES = ['image/png', 'image/jpeg'];
 const imageStudioGalleryCache = new Map();
 
 const SIZES = [
@@ -38,6 +41,87 @@ const STYLES = [
   { label: '3D Render', value: '3D render, octane render, cinematic lighting' },
   { label: 'Watercolor', value: 'watercolor painting, soft edges, delicate' },
   { label: 'Cyberpunk', value: 'cyberpunk, neon lights, futuristic, dark atmosphere' },
+];
+
+const IMAGE_EXAMPLES = [
+  {
+    key: 'retroPortrait',
+    imageUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=700&q=80',
+    prompt: 'A confident musician in a colorful 1980s outfit, vintage editorial portrait, warm film grain, dramatic indoor lighting',
+    style: STYLES.find((style) => style.label === 'Photorealistic').value,
+  },
+  {
+    key: 'childhoodPortrait',
+    imageUrl: 'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?auto=format&fit=crop&w=700&q=80',
+    prompt: 'A tender childhood portrait of siblings playing together at home, soft afternoon window light, nostalgic family photography',
+    style: STYLES.find((style) => style.label === 'Photorealistic').value,
+  },
+  {
+    key: 'moviePoster',
+    imageUrl: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=700&q=80',
+    prompt: 'An adventurous travel movie poster featuring a winding mountain road at golden hour, cinematic composition, vivid colors, no text',
+    style: STYLES.find((style) => style.label === 'Digital Art').value,
+  },
+  {
+    key: 'comicHero',
+    imageUrl: 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?auto=format&fit=crop&w=700&q=80',
+    prompt: 'A joyful young hero flying a kite above a colorful neighborhood, hand-painted vintage comic book cover, expressive ink lines',
+    style: STYLES.find((style) => style.label === 'Digital Art').value,
+  },
+  // {
+  //   key: 'indieMixtape',
+  //   imageUrl: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff1d?auto=format&fit=crop&w=700&q=80',
+  //   prompt: 'A nostalgic indie music mixtape cover, retro cassette on a desk at blue hour, warm amber lights, dreamy analog film look',
+  //   style: STYLES.find((style) => style.label === 'Digital Art').value,
+  // },
+  {
+    key: 'goodMorning',
+    imageUrl: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=700&q=80',
+    prompt: 'A peaceful good morning scene with a steaming cup of coffee by a sunlit window, soft golden rays, calm and cozy atmosphere',
+    style: STYLES.find((style) => style.label === 'Photorealistic').value,
+  },
+  {
+    key: 'botanicalDream',
+    imageUrl: 'https://images.unsplash.com/photo-1497250681960-ef046c08a56e?auto=format&fit=crop&w=700&q=80',
+    prompt: 'A dreamy botanical greenhouse filled with lush tropical leaves, tiny water droplets, soft morning sunlight, tranquil editorial photography',
+    style: STYLES.find((style) => style.label === 'Photorealistic').value,
+  },
+  {
+    key: 'productGlow',
+    imageUrl: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=700&q=80',
+    prompt: 'A premium minimalist wristwatch floating above a reflective surface, elegant studio product photography, soft dramatic highlights, clean background',
+    style: STYLES.find((style) => style.label === '3D Render').value,
+  },
+  {
+    key: 'spaceExplorer',
+    imageUrl: 'https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?auto=format&fit=crop&w=700&q=80',
+    prompt: 'A lone astronaut looking out at a brilliant blue planet from orbit, cinematic science fiction scene, deep space, awe-inspiring scale',
+    style: STYLES.find((style) => style.label === 'Digital Art').value,
+  },
+  {
+    key: 'streetwearEditorial',
+    imageUrl: 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=700&q=80',
+    prompt: 'A bold streetwear fashion editorial on a colorful city street, confident pose, dynamic framing, modern magazine photography',
+    style: STYLES.find((style) => style.label === 'Photorealistic').value,
+  },
+  {
+    key: 'sweetTreat',
+    imageUrl: 'https://images.unsplash.com/photo-1488477181946-6428a0291777?auto=format&fit=crop&w=700&q=80',
+    prompt: 'A beautifully plated berry dessert with fresh fruit and cream, bright natural window light, elegant food photography, appetizing details',
+    style: STYLES.find((style) => style.label === 'Photorealistic').value,
+  },
+  {
+    key: 'watercolorGarden',
+    imageUrl: 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=700&q=80',
+    prompt: 'A charming spring garden bursting with wildflowers, painted in delicate translucent washes, gentle colors, visible watercolor paper texture',
+    style: STYLES.find((style) => style.label === 'Watercolor').value,
+  },
+  {
+    key: 'neonCity',
+    imageUrl: 'https://images.unsplash.com/photo-1519608487953-e999c86e7455?auto=format&fit=crop&w=700&q=80',
+    prompt: 'A futuristic city street after dark, glowing neon signs reflected in rain-soaked pavement, atmospheric cyberpunk scene, vivid magenta and cyan',
+    style: STYLES.find((style) => style.label === 'Cyberpunk').value,
+  },
 ];
 
 export default function ImageStudioPage() {
@@ -61,9 +145,18 @@ export default function ImageStudioPage() {
   );
   const [hasMoreGallery, setHasMoreGallery] = useState(false);
   const [loadingMoreGallery, setLoadingMoreGallery] = useState(false);
+  const [galleryView, setGalleryView] = useState('examples');
   const [previewImage, setPreviewImage] = useState(null);
+  const [previewExample, setPreviewExample] = useState(null);
+  const [uploadedImage, setUploadedImage] = useState(null);
   const [shareMessage, setShareMessage] = useState('');
   const promptRef = useRef(null);
+  const uploadInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!uploadedImage?.previewUrl) return undefined;
+    return () => URL.revokeObjectURL(uploadedImage.previewUrl);
+  }, [uploadedImage]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -171,6 +264,23 @@ export default function ImageStudioPage() {
     mode === 'video' ? isVideoRecord(item) : !isVideoRecord(item)
   ));
 
+  function handleImageSelection(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!SUPPORTED_IMAGE_TYPES.includes(file.type)) {
+      setError(t('imageStudio.uploadTypeError'));
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError(t('imageStudio.uploadSizeError'));
+      return;
+    }
+
+    setError(null);
+    setUploadedImage({ file, previewUrl: URL.createObjectURL(file) });
+  }
+
   async function handleGenerate() {
     if (!prompt.trim() || !user) return;
 
@@ -182,20 +292,30 @@ export default function ImageStudioPage() {
         ? `${prompt.trim()}, ${selectedStyle}`
         : prompt.trim();
 
-      const endpoint = mode === 'video' ? `${API_BASE}/api/video-generation` : `${API_BASE}/api/image-studio`;
+      const isEditing = mode === 'image' && Boolean(uploadedImage);
+      const endpoint = mode === 'video'
+        ? `${API_BASE}/api/video-generation`
+        : isEditing
+          ? `${API_BASE.replace(/\/+$/, '')}/api/image-studio/edit`
+          : `${API_BASE}/api/image-studio`;
+      const requestBody = {
+        prompt: fullPrompt,
+        size: selectedSize,
+        aspectRatio: selectedVideoAspectRatio,
+        email: user.email,
+      };
+      if (isEditing) requestBody.image = await readFileAsDataUrl(uploadedImage.file);
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: fullPrompt,
-          size: selectedSize,
-          aspectRatio: selectedVideoAspectRatio,
-          email: user.email,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
         const data = await response.json();
+        if (isEditing && response.status === 404) {
+          throw new Error(t('imageStudio.editUnavailable'));
+        }
         throw new Error(data.error || 'Image generation failed');
       }
 
@@ -233,7 +353,7 @@ export default function ImageStudioPage() {
         setPrompt('');
       } else {
         const data = await response.json();
-        if (!data.imageUrl) return;
+        if (!data.imageUrl) throw new Error('Image generation completed without returning an image.');
         const { data: inserted, error: insertError } = await supabase
           .from('image_studio')
           .insert({
@@ -245,16 +365,14 @@ export default function ImageStudioPage() {
           .select()
           .single();
 
-        const newImage = inserted || {
-          id: crypto.randomUUID(),
-          user_id: user.id,
-          prompt: prompt.trim(),
-          image_url: data.imageUrl,
-          size: selectedSize,
-          created_at: new Date().toISOString(),
-        };
-        updateGalleryCache((prev) => [newImage, ...prev]);
+        if (insertError) throw new Error(`Could not add generated image to history: ${insertError.message}`);
+        if (!inserted) throw new Error('Could not add generated image to history.');
+        updateGalleryCache((prev) => [inserted, ...prev]);
         setPrompt('');
+        if (isEditing) {
+          setUploadedImage(null);
+          setGalleryView('creations');
+        }
       }
     } catch (err) {
       setError(err.message);
@@ -348,9 +466,52 @@ export default function ImageStudioPage() {
     }
   }
 
+  function useExample(example) {
+    setMode('image');
+    setPrompt(example.prompt);
+    setSelectedStyle(example.style);
+    setError(null);
+    promptRef.current?.focus();
+  }
+
+  const examplesSection = (
+    <section aria-labelledby="image-examples-title" className="mb-6">
+      <div className="mb-4">
+        <h2 id="image-examples-title" className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+          {t('imageStudio.examplesTitle')}
+        </h2>
+        <p className={`mt-1 text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+          {t('imageStudio.examplesDescription')}
+        </p>
+      </div>
+      <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+        {IMAGE_EXAMPLES.map((example) => (
+          <button
+            key={example.key}
+            type="button"
+            onClick={() => setPreviewExample(example)}
+            aria-label={t('imageStudio.viewExample', { title: t(`imageStudio.examples.${example.key}`) })}
+            className={`group relative aspect-square overflow-hidden rounded-2xl text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${darkMode ? 'focus-visible:ring-offset-[#0e0e0e]' : 'focus-visible:ring-offset-gray-50'}`}
+          >
+            <img
+              src={example.imageUrl}
+              alt=""
+              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+              loading="lazy"
+            />
+            <span className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/5 to-transparent" />
+            <span className="absolute inset-x-0 bottom-0 p-3 text-sm font-semibold text-white">
+              {t(`imageStudio.examples.${example.key}`)}
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-[#0e0e0e] text-white' : 'bg-gray-50 text-gray-900'}`}>
-      <div className="max-w-6xl mx-auto px-6 py-8">
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         {shareMessage && (
           <div role="status" className={`fixed bottom-5 right-5 z-50 max-w-sm rounded-lg border px-4 py-3 text-sm shadow-lg ${darkMode ? 'border-[#333] bg-[#171717] text-gray-200' : 'border-gray-200 bg-white text-gray-700'}`}>
             {shareMessage}
@@ -372,9 +533,9 @@ export default function ImageStudioPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[400px_1fr] gap-6 mt-8">
+        <div className="mt-6 grid min-w-0 grid-cols-1 gap-6 lg:mt-8 lg:grid-cols-[minmax(320px,400px)_minmax(0,1fr)]">
           {/* Left: Controls */}
-          <div className={`rounded-2xl border p-5 h-fit lg:sticky lg:top-6 ${darkMode ? 'border-[#222] bg-[#111]' : 'border-gray-200 bg-white'}`}>
+          <div className={`h-fit min-w-0 rounded-2xl border p-4 sm:p-5 lg:sticky lg:top-6 ${darkMode ? 'border-[#222] bg-[#111]' : 'border-gray-200 bg-white'}`}>
             <div className="grid grid-cols-2 gap-2 mb-5">
               {['image', 'video'].map((value) => (
                 <button key={value} onClick={() => setMode(value)} className={`rounded-lg border py-2 text-sm font-semibold capitalize ${mode === value ? 'bg-blue-500 border-blue-500 text-white' : darkMode ? 'border-[#2a2a2a] text-gray-400' : 'border-gray-200 text-gray-600'}`}>
@@ -383,6 +544,59 @@ export default function ImageStudioPage() {
               ))}
             </div>
             {mode === 'video' && <p className={`mb-4 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{t('imageStudio.model')} {VIDEO_MODEL}</p>}
+            {mode === 'image' && (
+              <div className={`mb-5 rounded-xl border p-3 ${darkMode ? 'border-[#2a2a2a] bg-[#1a1a1a]' : 'border-gray-200 bg-gray-50'}`}>
+                <input
+                  ref={uploadInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,.png,.jpg,.jpeg"
+                  onChange={handleImageSelection}
+                  className="hidden"
+                />
+                {uploadedImage ? (
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={uploadedImage.previewUrl}
+                      alt={t('imageStudio.uploadedPhoto')}
+                      className="h-16 w-16 shrink-0 rounded-lg object-cover"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className={`truncate text-sm font-medium ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                        {uploadedImage.file.name}
+                      </p>
+                      <p className={`mt-1 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                        {t('imageStudio.uploadedPhoto')}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setUploadedImage(null)}
+                      aria-label={t('imageStudio.removePhoto')}
+                      title={t('imageStudio.removePhoto')}
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${darkMode ? 'text-gray-400 hover:bg-white/10 hover:text-white' : 'text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => uploadInputRef.current?.click()}
+                    className={`flex w-full items-center gap-3 rounded-lg text-left ${darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-700 hover:text-gray-900'}`}
+                  >
+                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${darkMode ? 'bg-blue-500/10 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>
+                      <Upload className="h-4 w-4" />
+                    </span>
+                    <span>
+                      <span className="block text-sm font-semibold">{t('imageStudio.uploadPhoto')}</span>
+                      <span className={`mt-1 block text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                        {t('imageStudio.uploadHint')}
+                      </span>
+                    </span>
+                  </button>
+                )}
+              </div>
+            )}
             <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               {t('imageStudio.descriptionLabel')}
             </label>
@@ -391,7 +605,7 @@ export default function ImageStudioPage() {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={t('imageStudio.promptPlaceholder')}
+              placeholder={t(uploadedImage ? 'imageStudio.editPromptPlaceholder' : 'imageStudio.promptPlaceholder')}
               rows={5}
               className={`w-full rounded-xl border px-4 py-3 text-sm outline-none resize-none transition-colors ${darkMode
                 ? 'bg-[#1a1a1a] border-[#2a2a2a] text-white placeholder-gray-600 focus:border-blue-500'
@@ -463,7 +677,7 @@ export default function ImageStudioPage() {
               ) : (
                 <>
                   <Wand2 className="w-4 h-4" />
-                  {t(mode === 'video' ? 'imageStudio.generateVideo' : 'imageStudio.generateImage')}
+                  {t(mode === 'video' ? 'imageStudio.generateVideo' : uploadedImage ? 'imageStudio.editImage' : 'imageStudio.generateImage')}
                 </>
               )}
             </button>
@@ -482,6 +696,28 @@ export default function ImageStudioPage() {
 
           {/* Right: Gallery */}
           <div>
+            {mode === 'image' && (
+              <div role="tablist" aria-label={t('imageStudio.galleryViews')} className="mb-5 flex gap-2">
+                {['examples', 'creations'].map((view) => (
+                  <button
+                    key={view}
+                    type="button"
+                    role="tab"
+                    aria-selected={galleryView === view}
+                    onClick={() => setGalleryView(view)}
+                    className={`rounded-full px-5 py-2 text-sm font-semibold transition-colors ${
+                      galleryView === view
+                        ? 'bg-blue-500 text-white'
+                        : darkMode
+                          ? 'bg-[#1a1a1a] text-gray-400 hover:text-white'
+                          : 'bg-gray-100 text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    {t(view === 'examples' ? 'imageStudio.examplesTab' : 'imageStudio.creations')}
+                  </button>
+                ))}
+              </div>
+            )}
             {generating && (
               <div className={`rounded-2xl border mb-4 flex flex-col items-center justify-center py-20 ${darkMode ? 'border-[#222] bg-[#111]' : 'border-gray-200 bg-white'}`}>
                 <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 ${darkMode ? 'bg-blue-500/10' : 'bg-blue-50'}`}>
@@ -496,22 +732,38 @@ export default function ImageStudioPage() {
               </div>
             )}
 
-            {loadingGallery ? (
+            {mode === 'image' && galleryView === 'examples' ? examplesSection : loadingGallery ? (
               <div className="flex items-center justify-center py-20">
                 <Loader2 className={`w-6 h-6 animate-spin ${darkMode ? 'text-gray-600' : 'text-gray-400'}`} />
               </div>
             ) : visibleGallery.length === 0 && !generating ? (
-              <div className={`rounded-2xl border flex flex-col items-center justify-center py-20 ${darkMode ? 'border-[#222] bg-[#111]' : 'border-gray-200 bg-white'}`}>
-                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-4 ${darkMode ? 'bg-[#1a1a1a]' : 'bg-gray-100'}`}>
-                  <ImageIcon className={`w-7 h-7 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`} />
+              mode === 'image' ? null : (
+                <div className={`rounded-2xl border flex flex-col items-center justify-center py-20 ${darkMode ? 'border-[#222] bg-[#111]' : 'border-gray-200 bg-white'}`}>
+                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-4 ${darkMode ? 'bg-[#1a1a1a]' : 'bg-gray-100'}`}>
+                    <ImageIcon className={`w-7 h-7 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`} />
+                  </div>
+                  <p className={`text-sm font-medium ${darkMode ? 'text-gray-500' : 'text-gray-600'}`}>
+                    {t('imageStudio.noVideos')}
+                  </p>
+                  <p className={`text-xs mt-1 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                    {t('imageStudio.firstCreate', { mode: t('imageStudio.video') })}
+                  </p>
+                  {hasMoreGallery && (
+                    <button
+                      type="button"
+                      onClick={loadMoreGallery}
+                      disabled={loadingMoreGallery}
+                      className={`mt-4 rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-60 ${
+                        darkMode
+                          ? 'border-[#2a2a2a] text-gray-300 hover:bg-white/5'
+                          : 'border-gray-200 text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      {loadingMoreGallery ? t('common.loading') : t('imageStudio.loadMore', { defaultValue: 'Load more' })}
+                    </button>
+                  )}
                 </div>
-                <p className={`text-sm font-medium ${darkMode ? 'text-gray-500' : 'text-gray-600'}`}>
-                  {mode === 'video' ? t('imageStudio.noVideos') : t('imageStudio.noImages')}
-                </p>
-                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-                  {t('imageStudio.firstCreate', { mode: t(`imageStudio.${mode}`) })}
-                </p>
-              </div>
+              )
             ) : (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -609,6 +861,46 @@ export default function ImageStudioPage() {
         </div>
       </div>
 
+      {/* Example preview */}
+      {previewExample && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-6"
+          onClick={() => setPreviewExample(null)}
+        >
+          <button
+            type="button"
+            aria-label={t('common.close')}
+            className="absolute top-5 right-5 text-white/70 hover:text-white transition-colors"
+            onClick={() => setPreviewExample(null)}
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <div className="max-w-3xl w-full" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={previewExample.imageUrl}
+              alt={t(`imageStudio.examples.${previewExample.key}`)}
+              className="max-h-[70vh] w-full rounded-xl object-contain"
+            />
+            <p className="text-white text-base font-semibold mt-4 text-center">
+              {t(`imageStudio.examples.${previewExample.key}`)}
+            </p>
+            <div className="flex justify-center mt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  useExample(previewExample);
+                  setPreviewExample(null);
+                }}
+                className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-semibold transition-colors"
+              >
+                <Wand2 className="w-4 h-4" />
+                {t('imageStudio.useExamplePrompt')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Lightbox preview */}
       {previewImage && (
         <div
@@ -651,6 +943,21 @@ export default function ImageStudioPage() {
       )}
     </div>
   );
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error('Could not read the selected image.'));
+      }
+    };
+    reader.onerror = () => reject(new Error('Could not read the selected image.'));
+    reader.readAsDataURL(file);
+  });
 }
 
 function formatDate(iso, locale) {

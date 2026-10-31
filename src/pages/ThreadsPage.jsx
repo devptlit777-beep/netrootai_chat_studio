@@ -62,7 +62,7 @@ export default function ThreadsPage() {
     >
       {/* Header */}
       <div
-        className={`px-8 py-6 border-b flex items-center justify-between ${darkMode
+        className={`flex items-center justify-between gap-3 border-b px-4 py-5 sm:px-8 sm:py-6 ${darkMode
             ? "bg-[#111111] border-[#222]"
             : "bg-white border-gray-200"
           }`}
@@ -84,7 +84,7 @@ export default function ThreadsPage() {
       </div>
 
       {/* Search */}
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         <div className="relative mb-6">
           <Search
             className={`absolute left-3 top-3 w-4 h-4 ${darkMode ? "text-gray-500" : "text-gray-400"
@@ -117,7 +117,7 @@ export default function ThreadsPage() {
               <div
                 key={thread.id}
                 onClick={() => navigate(`/dashboard/${thread.id}`)}
-                className={`cursor-pointer rounded-xl border p-5 transition flex justify-between items-center ${darkMode
+                className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-4 transition sm:p-5 ${darkMode
                     ? "bg-[#111111] border-[#222] hover:bg-[#181818]"
                     : "bg-white border-gray-200 hover:bg-gray-50"
                   }`}

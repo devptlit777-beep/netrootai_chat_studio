@@ -108,7 +108,7 @@ export default function LoginPage() {
 
       {/* Card */}
       <div className="relative z-10 w-full max-w-md mx-4">
-        <div className={`${darkMode ? 'bg-[#111118]/90 backdrop-blur-xl border-white/10' : 'bg-white border-gray-200'} border rounded-2xl px-8 py-10 shadow-2xl`}>
+        <div className={`${darkMode ? 'bg-[#111118]/90 backdrop-blur-xl border-white/10' : 'bg-white border-gray-200'} rounded-2xl border px-5 py-7 shadow-2xl sm:px-8 sm:py-10`}>
           {/* Logo */}
           <div className="flex justify-center mb-6">
             <img src="/image.png" alt="Netrootai" className="w-16 h-16 object-contain" />

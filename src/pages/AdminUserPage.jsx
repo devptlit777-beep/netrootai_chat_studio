@@ -107,7 +107,7 @@ export default function AdminUserPage() {
 
     return (
         <div className={`min-h-screen ${dark ? 'bg-[#0e0e0e] text-white' : 'bg-gray-50 text-gray-900'}`}>
-            <header className={`border-b px-6 py-4 flex items-center justify-between sticky top-0 z-30 ${dark ? 'bg-[#111] border-[#222]' : 'bg-white border-gray-200'}`}>
+            <header className={`sticky top-0 z-30 flex items-center justify-between gap-3 border-b px-4 py-3 sm:px-6 sm:py-4 ${dark ? 'bg-[#111] border-[#222]' : 'bg-white border-gray-200'}`}>
                 <div className="flex items-center gap-3">
                     <img src="/image.png" alt="NetRoot AI logo" className="w-9 h-9 object-contain" />
                     {/* <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${dark ? 'bg-blue-500/10' : 'bg-blue-50'}`}>
@@ -118,17 +118,17 @@ export default function AdminUserPage() {
                         <p className={`text-xs mt-0.5 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{t('admin.dashboard')}</p>
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <button onClick={() => navigate('/admin')} className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border ${dark ? 'border-[#333] text-gray-400 hover:text-white' : 'border-gray-200 text-gray-500 hover:text-gray-700'}`}>
-                        <ArrowLeft className="w-3.5 h-3.5" /> {t('admin.users')}
+                <div className="flex shrink-0 items-center gap-2">
+                    <button onClick={() => navigate('/admin')} aria-label={t('admin.users')} className={`flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-sm sm:px-3 ${dark ? 'border-[#333] text-gray-400 hover:text-white' : 'border-gray-200 text-gray-500 hover:text-gray-700'}`}>
+                        <ArrowLeft className="w-3.5 h-3.5" /> <span className="hidden sm:inline">{t('admin.users')}</span>
                     </button>
-                    <button onClick={logout} className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20">
-                        <LogOut className="w-3.5 h-3.5" /> {t('admin.logout')}
+                    <button onClick={logout} aria-label={t('admin.logout')} className="flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/10 px-2 py-1.5 text-sm text-red-400 sm:px-3">
+                        <LogOut className="w-3.5 h-3.5" /> <span className="hidden sm:inline">{t('admin.logout')}</span>
                     </button>
                 </div>
             </header>
 
-            <main className="max-w-5xl mx-auto px-6 py-8">
+            <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
                 <div className="mb-6">
                     <p className={`text-sm ${dark ? 'text-gray-500' : 'text-gray-500'}`}>{t('admin.userAccount')}</p>
                     <h2 className="text-2xl font-bold mt-1 break-all">{email}</h2>

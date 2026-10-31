@@ -93,7 +93,7 @@ export default function CopilotDrawer({
   return (
     /* Side panel without any blur/dark backdrop overlay so slide remains 100% clear */
     <aside
-      className={`fixed inset-y-0 right-0 z-40 w-80 sm:w-96 flex flex-col select-none shadow-2xl animate-in slide-in-from-right duration-200 border-l ${
+      className={`fixed inset-y-0 right-0 z-40 flex w-full max-w-[min(100vw,24rem)] flex-col select-none border-l shadow-2xl animate-in slide-in-from-right duration-200 sm:max-w-none sm:w-96 ${
         darkMode
           ? 'bg-[#141416] border-[#26262a] text-slate-100'
           : 'bg-white border-slate-200 text-slate-900 shadow-slate-300/40'

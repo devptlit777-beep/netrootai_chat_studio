@@ -1029,7 +1029,7 @@ export default function PptStudioPage() {
 
   return (
     <div
-      className={`w-full h-screen flex flex-col font-sans overflow-hidden select-none transition-colors ${
+      className={`flex h-dvh w-full select-none flex-col overflow-hidden font-sans transition-colors ${
         darkMode ? 'bg-[#0e0e10] text-slate-100' : 'bg-slate-50 text-slate-900'
       }`}
     >
@@ -1104,7 +1104,7 @@ export default function PptStudioPage() {
           />
 
           {/* Slide Stage Container */}
-          <div id="stageContainer" className="relative flex items-center justify-center">
+          <div id="stageContainer" className="relative flex -translate-y-12 items-center justify-center sm:translate-y-0">
             {activeSlide ? (
               <SlideCanvas
                 slide={activeSlide}

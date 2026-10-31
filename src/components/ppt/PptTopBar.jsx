@@ -57,14 +57,14 @@ export default function PptTopBar({
 
   return (
     <header
-      className={`h-14 border-b px-4 flex items-center justify-between gap-3 select-none shrink-0 z-30 transition-colors ${
+      className={`z-30 flex h-auto min-h-14 shrink-0 flex-wrap items-center justify-between gap-2 border-b px-2 py-2 transition-colors select-none 2xl:h-14 2xl:flex-nowrap 2xl:py-0 2xl:gap-3 2xl:px-4 ${
         darkMode
           ? 'bg-[#121214] border-[#26262a] text-slate-100'
           : 'bg-white border-slate-200 text-slate-800 shadow-sm'
       }`}
     >
       {/* Left: Back to Hub + NetRoot AI PPT Studio Logo + Editable Deck Title Input + Cloud Save Indicator */}
-      <div className="flex items-center gap-2.5 min-w-0">
+      <div className="flex min-w-0 flex-1 items-center gap-1 sm:flex-none sm:gap-2.5">
         {onBackToHub && (
           <button
             type="button"
@@ -98,7 +98,7 @@ export default function PptTopBar({
           onChange={(e) => !isViewOnly && onChangeDeckTitle && onChangeDeckTitle(e.target.value)}
           readOnly={isViewOnly}
           placeholder="Untitled Presentation"
-          className={`text-sm font-semibold rounded-lg px-2 py-0.5 transition outline-none border focus:border-sky-500 max-w-[150px] sm:max-w-[240px] md:max-w-[320px] truncate ${
+          className={`min-w-0 max-w-[90px] truncate rounded-lg border px-1 py-0.5 text-xs font-semibold transition outline-none focus:border-sky-500 sm:max-w-[240px] sm:px-2 sm:text-sm md:max-w-[320px] ${
             isViewOnly ? 'cursor-default opacity-85' : ''
           } ${
             darkMode
@@ -211,7 +211,7 @@ export default function PptTopBar({
       </div>
 
       {/* Right: Theme, Light/Dark, My Slides, NetRoot AI Assistant, New Presentation, PPTX Export */}
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex w-full shrink-0 flex-wrap items-center justify-between gap-1 2xl:w-auto 2xl:flex-nowrap 2xl:justify-start 2xl:gap-2">
         {/* Presentation Color Palette Dropdown */}
         <div className="relative">
           <button

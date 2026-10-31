@@ -1109,6 +1109,8 @@ import {
   FileText,
   Mic,
   MicOff,
+  Volume2,
+  VolumeX,
   Lock,
   Zap,
   Download,
@@ -1179,6 +1181,17 @@ function getFallbackAvatar(email) {
   return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed)}&backgroundColor=3b82f6,06b6d4`;
 }
 
+function speechTextFromMarkdown(markdown) {
+  return markdown
+    .replace(/```(?:\w+)?\s*([\s\S]*?)```/g, ' $1 ')
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[#>*_~`|\-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function ChatCodeBlock({ language, code, darkMode }) {
   const [copied, setCopied] = useState(false);
 
@@ -1218,7 +1231,7 @@ function ChatCodeBlock({ language, code, darkMode }) {
 }
 
 export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { plan, accessExpired, lifetimePptCount = 0 } = usePlan();
   const isPro = plan === 'pro' || plan === 'enterprise';
   const isFreeLimitReached = !isPro && lifetimePptCount >= 2;
@@ -1244,6 +1257,7 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [copiedChat, setCopiedChat] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState(null);
+  const [readingMsgId, setReadingMsgId] = useState(null);
   const { threadId } = useParams();
   const navigate = useNavigate();
   const messagesEndRef = useRef(null);
@@ -1253,6 +1267,47 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
   const recognitionRef = useRef(null);
   const voiceTranscriptRef = useRef('');
   const sendingRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    };
+  }, []);
+
+  useEffect(() => {
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    setReadingMsgId(null);
+  }, [threadId]);
+
+  function handleReadMessage(messageId, text) {
+    if (!('speechSynthesis' in window) || typeof window.SpeechSynthesisUtterance !== 'function') {
+      setVoiceError(t('dashboard.readUnsupported'));
+      return;
+    }
+
+    if (readingMsgId === messageId) {
+      window.speechSynthesis.cancel();
+      setReadingMsgId(null);
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const spokenText = speechTextFromMarkdown(text);
+    if (!spokenText) return;
+
+    const utterance = new window.SpeechSynthesisUtterance(spokenText);
+    utterance.lang = i18n.resolvedLanguage || i18n.language || 'en';
+    utterance.rate = 1;
+    utterance.onend = () => setReadingMsgId(null);
+    utterance.onerror = (event) => {
+      if (event.error !== 'canceled' && event.error !== 'interrupted') {
+        setVoiceError(t('dashboard.readFailed'));
+      }
+      setReadingMsgId(null);
+    };
+    setReadingMsgId(messageId);
+    window.speechSynthesis.speak(utterance);
+  }
 
   const MODEL_DAILY_LIMITS = {
     'openai/gpt-oss-120b': 200000,
@@ -1856,15 +1911,15 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
   }
 
   return (
-    <div className={`flex flex-col h-screen overflow-hidden ${darkMode ? 'bg-[#0e0e0e] text-white' : 'bg-gray-50 text-gray-900'}`}>
-      <header className={`h-14 flex items-center justify-between px-6 border-b shrink-0 z-20 ${darkMode ? 'bg-[#0e0e0e] border-[#1f1f1f]' : 'bg-white border-gray-200'}`}>
-        <div className="flex items-center gap-2">
+    <div className={`flex h-dvh flex-col overflow-hidden ${darkMode ? 'bg-[#0e0e0e] text-white' : 'bg-gray-50 text-gray-900'}`}>
+      <header className={`z-20 flex h-14 shrink-0 items-center justify-between gap-2 border-b px-3 sm:px-6 ${darkMode ? 'bg-[#0e0e0e] border-[#1f1f1f]' : 'bg-white border-gray-200'}`}>
+        <div className="flex min-w-0 items-center gap-2">
           <h2 className={`text-xl font-medium truncate max-w-[300px] ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
             Netroot AI
           </h2>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
           {showSearch ? (
             <div className={`flex items-center gap-2 border rounded-lg px-3 py-1.5 ${darkMode ? 'bg-[#1a1a1a] border-[#2a2a2a]' : 'bg-gray-50 border-gray-300'}`}>
               <Search className={`w-3.5 h-3.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
@@ -1883,19 +1938,21 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
           ) : (
             <button
               onClick={() => { setShowSearch(true); setShowThreadPanel(true); }}
-              className={`flex items-center gap-2 border rounded-lg px-3 py-1.5 text-sm transition-all ${darkMode ? 'bg-[#1a1a1a] border-[#2a2a2a] hover:border-[#3a3a3a] text-gray-400 hover:text-gray-200' : 'bg-white border-gray-300 hover:border-gray-400 text-gray-500 hover:text-gray-700'}`}
+              aria-label="Search threads"
+              className={`flex items-center gap-2 border rounded-lg px-2.5 py-1.5 text-sm transition-all sm:px-3 ${darkMode ? 'bg-[#1a1a1a] border-[#2a2a2a] hover:border-[#3a3a3a] text-gray-400 hover:text-gray-200' : 'bg-white border-gray-300 hover:border-gray-400 text-gray-500 hover:text-gray-700'}`}
             >
               <Search className="w-3.5 h-3.5" />
-              Search Thread
+              <span className="hidden sm:inline">Search Thread</span>
             </button>
           )}
 
           <button
             onClick={newThread}
-            className="flex items-center gap-1.5 bg-white text-black hover:bg-gray-100 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+            aria-label="New thread"
+            className="flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1.5 text-sm font-medium text-black transition-colors hover:bg-gray-100 sm:px-3"
           >
             <Plus className="w-3.5 h-3.5" />
-            New Thread
+            <span className="hidden sm:inline">New Thread</span>
           </button>
 
           {activeThread && (
@@ -1967,9 +2024,9 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
         <div><p className="text-xs text-gray-500">{t('dashboard.dailyPlanLimit')}</p><p className="mt-1 text-lg font-semibold">{planTokenLimit?.toLocaleString() || t('dashboard.unlimited')}</p></div>
       </div> */}
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {showThreadPanel && (
-          <aside className={`w-64 border-r flex flex-col overflow-hidden shrink-0 ${darkMode ? 'bg-[#0a0a0a] border-[#1f1f1f]' : 'bg-white border-gray-200'}`}>
+          <aside className={`absolute inset-0 z-30 flex w-full shrink-0 flex-col overflow-hidden border-r sm:relative sm:inset-auto sm:w-64 ${darkMode ? 'bg-[#0a0a0a] border-[#1f1f1f]' : 'bg-white border-gray-200'}`}>
             <div className={`flex items-center justify-between px-4 py-3 border-b ${darkMode ? 'border-[#1f1f1f]' : 'border-gray-200'}`}>
               <span className={`text-xs font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                 Threads
@@ -2014,9 +2071,9 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
           </aside>
         )}
 
-        <main className={`flex-1 flex flex-col ${activeThread ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+        <main className={`flex min-w-0 flex-1 flex-col ${activeThread ? 'overflow-hidden' : 'overflow-y-auto'}`}>
           {activeThread ? (
-            <div className={`flex-1 overflow-y-auto px-6 py-6 space-y-6 ${darkMode ? '' : 'bg-gray-50'}`}>
+            <div className={`min-w-0 flex-1 space-y-6 overflow-y-auto px-3 py-4 sm:px-6 sm:py-6 ${darkMode ? '' : 'bg-gray-50'}`}>
               {messages.map(msg => {
                 const { images, pptDeck, pptUpgradeNotice, text } = parseMessageContent(msg.content);
                 return (
@@ -2203,6 +2260,31 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
                       <div className="flex items-center gap-1.5 mt-2 px-1">
                         <button
                           type="button"
+                          onClick={() => handleReadMessage(msg.id, text)}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                            readingMsgId === msg.id
+                              ? 'bg-blue-500/15 text-blue-500 border border-blue-500/30'
+                              : darkMode
+                              ? 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent hover:border-white/10'
+                              : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100 border border-transparent hover:border-gray-200'
+                          }`}
+                          title={readingMsgId === msg.id ? t('dashboard.stopReading') : t('dashboard.readResponse')}
+                          aria-pressed={readingMsgId === msg.id}
+                        >
+                          {readingMsgId === msg.id ? (
+                            <>
+                              <VolumeX className="w-3.5 h-3.5" />
+                              <span className="text-[11px]">{t('dashboard.stop')}</span>
+                            </>
+                          ) : (
+                            <>
+                              <Volume2 className="w-3.5 h-3.5" />
+                              <span className="text-[11px]">{t('dashboard.read')}</span>
+                            </>
+                          )}
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => {
                             navigator.clipboard.writeText(text);
                             setCopiedMsgId(msg.id);
@@ -2258,7 +2340,7 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
               <div ref={messagesEndRef} />
             </div>
           ) : (
-            <div className={`flex-1 flex flex-col items-center justify-end pb-4 px-6 ${darkMode ? '' : 'bg-gray-50'}`}>
+            <div className={`flex-1 flex flex-col items-center justify-end pb-4 px-3 sm:px-6 ${darkMode ? '' : 'bg-gray-50'}`}>
               <img key={avatarUrl} src={avatarUrl} alt="avatar" className="w-16 h-16 rounded-full object-cover border-2 mb-5" />
               <h1 className={`text-3xl font-bold mb-1.5 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                 {t(getGreeting())}, {firstName}
@@ -2269,7 +2351,7 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
             </div>
           )}
 
-          <div className="px-6 pb-6 shrink-0">
+          <div className="shrink-0 px-3 pb-3 sm:px-6 sm:pb-6">
             <div className="max-w-3xl mx-auto">
               <div className={`relative border rounded-2xl transition-colors ${darkMode ? 'bg-[#161616] border-[#2a2a2a]' : 'bg-white border-gray-300 shadow-sm'} ${!isModelBlocked ? darkMode ? 'focus-within:border-[#3a3a3a]' : 'focus-within:border-gray-400' : ''}`}>
                 {isModelBlocked ? (

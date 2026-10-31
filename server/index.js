@@ -24,6 +24,11 @@ const VISION_MODELS = new Set([
     'qwen/qwen3.6-27b',
 ]);
 
+const IMAGE_STUDIO_MODELS = new Set([
+    'black-forest-labs/flux.1-schnell',
+    'black-forest-labs/flux-2-klein-4b',
+]);
+
 
 loadEnvFile();
 
@@ -163,17 +168,17 @@ async function getTodayUserUsageAsync(userEmail) {
     // Exclude PPT Studio and Image models so PPT tokens never count against chat models' daily token pool
     const chatEntries = entries.filter(e => {
         const m = String(e.model || '').toLowerCase();
-        return m !== 'ppt-studio' && m !== 'ppt-generator' && m !== 'black-forest-labs/flux.1-schnell';
+        return m !== 'ppt-studio' && m !== 'ppt-generator' && !IMAGE_STUDIO_MODELS.has(m);
     });
     return chatEntries.reduce((sum, e) => sum + e.inputTokens + e.outputTokens, 0);
 }
 
-async function getCurrentMonthImageUsageAsync(userEmail, modelName) {
+async function getCurrentMonthImageUsageAsync(userEmail) {
     if (!userEmail) return 0;
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
     const entries = await queryUsage({ userEmail, since: monthStart });
-    return entries.filter(e => e.model === modelName).length;
+    return entries.filter(e => IMAGE_STUDIO_MODELS.has(String(e.model || '').toLowerCase())).length;
 }
 
 async function getUserLifetimePptCount(sb, userId, userEmail) {
@@ -340,6 +345,7 @@ async function handleUsage(req, res, userEmail = null) {
         'groq/compound': { dailyLimit: null, contextWindow: 131072, displayName: 'Compound' },
         'groq/compound-mini': { dailyLimit: null, contextWindow: 131072, displayName: 'Compound Mini' },
         'black-forest-labs/FLUX.1-schnell': { dailyLimit: 100000, contextWindow: 0, displayName: 'FLUX.1 Schnell' },
+        'black-forest-labs/FLUX-2-Klein-4B': { dailyLimit: 100000, contextWindow: 0, displayName: 'FLUX.2 Klein 4B' },
         'ppt-studio': { dailyLimit: null, contextWindow: 131072, displayName: 'NetRoot AI PPT Studio' },
         'ppt-generator': { dailyLimit: null, contextWindow: 131072, displayName: 'NetRoot AI PPT Studio' },
     };
@@ -568,70 +574,160 @@ async function runPdfSearch(prompt, attachments) {
         return `PDF search failed: ${error.message}`;
     }
 }
-// Image Generation — FLUX.1-schnell via HuggingFace (nscale provider)
-function hfRequest(prompt, token) {
-    return new Promise((resolve, reject) => {
-        const data = JSON.stringify({
-            model: 'black-forest-labs/FLUX.1-schnell',
-            prompt,
-            num_inference_steps: 4,
-            width: 1024,
-            height: 1024,
-        });
-        const options = {
-            hostname: 'router.huggingface.co',
-            path: '/nscale/v1/images/generations',
+// Image Generation — FLUX.1-schnell via Cloudflare Workers AI
+async function cloudflareFluxRequest(prompt, imageInput = null) {
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+    const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+    if (!accountId || !apiToken) {
+        throw new Error('CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN must be configured.');
+    }
+
+    const model = imageInput
+        ? '@cf/black-forest-labs/flux-2-klein-4b'
+        : '@cf/black-forest-labs/flux-1-schnell';
+    const requestBody = imageInput
+        ? (() => {
+            const form = new FormData();
+            form.append('prompt', prompt);
+            form.append('image', new Blob([imageInput.buffer], { type: imageInput.contentType }), imageInput.fileName);
+            return form;
+        })()
+        : JSON.stringify({ prompt, steps: 4 });
+    const response = await fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/ai/run/${model}`,
+        {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(data),
+                Authorization: `Bearer ${apiToken}`,
+                ...(imageInput ? {} : { 'Content-Type': 'application/json' }),
             },
-            timeout: 120000,
-        };
-        const req = https.request(options, (hfRes) => {
-            const chunks = [];
-            hfRes.on('data', c => chunks.push(c));
-            hfRes.on('end', () => resolve({ status: hfRes.statusCode, buffer: Buffer.concat(chunks) }));
-        });
-        req.on('error', reject);
-        req.on('timeout', () => { req.destroy(); reject(new Error('HuggingFace request timed out')); });
-        req.write(data);
-        req.end();
-    });
+            body: requestBody,
+            signal: AbortSignal.timeout(120000),
+        },
+    );
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!response.ok) {
+        let detail = buffer.toString().slice(0, 300);
+        try {
+            const errorJson = JSON.parse(detail);
+            detail = errorJson.errors?.map(error => error.message).filter(Boolean).join('; ') || detail;
+        } catch {}
+        throw new Error(`Cloudflare request failed (${response.status})${detail ? `: ${detail}` : ''}`);
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('json')) {
+        if (!buffer.length) throw new Error('Cloudflare returned an empty image response.');
+        return buffer.toString('base64');
+    }
+
+    const data = JSON.parse(buffer.toString());
+    if (!data.success) {
+        throw new Error(data.errors?.map(error => error.message).filter(Boolean).join('; ') || 'Cloudflare image generation failed.');
+    }
+    const image = data.result?.image;
+    if (typeof image !== 'string' || !image) throw new Error('Cloudflare returned no image data.');
+    return image;
 }
 
 async function handleImageStudio(req, res) {
     const body = await readJson(req);
     const prompt = String(body.prompt || '').trim();
     if (!prompt) { sendJson(res, 400, { error: 'Prompt is required.' }, req); return; }
+    if (prompt.length > 2048) { sendJson(res, 400, { error: 'Prompt must be 2,048 characters or fewer.' }, req); return; }
 
-    const { accessExpired, featureAccess } = await resolveUserPlan(req, body);
+    const { accessExpired, featureAccess, plan, email } = await resolveUserPlan(req, body);
     if (accessExpired && !featureAccess?.['image-studio']) {
         sendJson(res, 403, { error: 'Upgrade to Pro to access Image Studio.' }, req);
         return;
     }
 
-    const hfToken = process.env.HF_IMAGE_TOKEN || process.env.HF_TOKEN;
-    if (!hfToken) { sendJson(res, 500, { error: 'HF_IMAGE_TOKEN is not configured (set it or provide the legacy HF_TOKEN).' }, req); return; }
+    const selectedModel = 'black-forest-labs/FLUX.1-schnell';
+    const imageLimit = getModelImageLimit(plan, selectedModel);
+    const usedImagesThisMonth = email ? await getCurrentMonthImageUsageAsync(email) : 0;
+    if (!canUseImageGeneration(plan, selectedModel, usedImagesThisMonth)) {
+        sendJson(res, 429, {
+            error: `You have reached your monthly image limit for the ${plan} plan. Pro/Enterprise users can generate up to ${imageLimit} images per month.`,
+        }, req);
+        return;
+    }
 
-    console.log('[image-studio] generating:', prompt.slice(0, 80));
+    console.log('[image-studio] generating via Cloudflare:', prompt.slice(0, 80));
 
     try {
-        const { status, buffer } = await hfRequest(prompt, hfToken);
-        const text = buffer.toString();
-        if (status !== 200) {
-            console.error('[image-studio] HF error:', status, text.slice(0, 300));
-            sendJson(res, 502, { error: `Image generation failed (${status}): ${text.slice(0, 200)}` }, req);
-            return;
-        }
-        const json = JSON.parse(text);
-        const b64 = json?.data?.[0]?.b64_json;
-        if (!b64) { sendJson(res, 502, { error: 'No image data in response.' }, req); return; }
-        const imageUrl = `data:image/png;base64,${b64}`;
-        sendJson(res, 200, { imageUrl }, req);
+        const b64 = await cloudflareFluxRequest(prompt);
+        await recordUsage({
+            inputTokens: estimateRequestTokens(prompt),
+            outputTokens: 0,
+            cachedTokens: 0,
+            model: selectedModel,
+            userEmail: email,
+            plan,
+            prompt,
+        });
+        sendJson(res, 200, { imageUrl: `data:image/png;base64,${b64}` }, req);
     } catch (e) {
         console.error('[image-studio] error:', e.message);
+        sendJson(res, 500, { error: e.message }, req);
+    }
+}
+
+async function handleImageStudioEdit(req, res) {
+    const body = await readJson(req);
+    const prompt = String(body.prompt || '').trim();
+    const imageData = String(body.image || '');
+    const imageMatch = imageData.match(/^data:image\/(png|jpeg);base64,([A-Za-z0-9+/]+={0,2})$/);
+    if (!prompt) { sendJson(res, 400, { error: 'Edit instructions are required.' }, req); return; }
+    if (prompt.length > 2048) { sendJson(res, 400, { error: 'Prompt must be 2,048 characters or fewer.' }, req); return; }
+    if (!imageMatch) { sendJson(res, 400, { error: 'Upload a valid PNG or JPEG image.' }, req); return; }
+
+    const imageBuffer = Buffer.from(imageMatch[2], 'base64');
+    if (imageBuffer.length > 2 * 1024 * 1024) {
+        sendJson(res, 400, { error: 'Images must be 2 MB or smaller.' }, req);
+        return;
+    }
+    const isPng = imageMatch[1] === 'png' &&
+        imageBuffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    const isJpeg = imageMatch[1] === 'jpeg' &&
+        imageBuffer[0] === 0xff && imageBuffer[1] === 0xd8 && imageBuffer[2] === 0xff;
+    if (!isPng && !isJpeg) { sendJson(res, 400, { error: 'The uploaded file is not a valid PNG or JPEG image.' }, req); return; }
+
+    const { accessExpired, featureAccess, plan, email } = await resolveUserPlan(req, body);
+    if (accessExpired && !featureAccess?.['image-studio']) {
+        sendJson(res, 403, { error: 'Upgrade to Pro to access Image Studio.' }, req);
+        return;
+    }
+
+    const selectedModel = 'black-forest-labs/FLUX-2-Klein-4B';
+    const imageLimit = getModelImageLimit(plan, selectedModel);
+    const usedImagesThisMonth = email ? await getCurrentMonthImageUsageAsync(email) : 0;
+    if (!canUseImageGeneration(plan, selectedModel, usedImagesThisMonth)) {
+        sendJson(res, 429, {
+            error: `You have reached your monthly image limit for the ${plan} plan. Pro/Enterprise users can generate up to ${imageLimit} images per month.`,
+        }, req);
+        return;
+    }
+
+    console.log('[image-studio] editing uploaded image:', prompt.slice(0, 80));
+    try {
+        const b64 = await cloudflareFluxRequest(prompt, {
+            buffer: imageBuffer,
+            contentType: imageMatch[1] === 'png' ? 'image/png' : 'image/jpeg',
+            fileName: imageMatch[1] === 'png' ? 'upload.png' : 'upload.jpg',
+        });
+        await recordUsage({
+            inputTokens: estimateRequestTokens(prompt),
+            outputTokens: 0,
+            cachedTokens: 0,
+            model: selectedModel,
+            userEmail: email,
+            plan,
+            prompt,
+        });
+        sendJson(res, 200, { imageUrl: `data:image/png;base64,${b64}` }, req);
+    } catch (e) {
+        console.error('[image-studio] edit error:', e.message);
         sendJson(res, 500, { error: e.message }, req);
     }
 }
@@ -1561,7 +1657,7 @@ async function handleChat(req, res) {
 
     if (selectedModel === 'black-forest-labs/FLUX.1-schnell') {
         const imageLimit = getModelImageLimit(plan, selectedModel);
-        const usedImagesThisMonth = email ? await getCurrentMonthImageUsageAsync(email, selectedModel) : 0;
+        const usedImagesThisMonth = email ? await getCurrentMonthImageUsageAsync(email) : 0;
         if (!canUseImageGeneration(plan, selectedModel, usedImagesThisMonth)) {
             sendJson(res, 429, {
                 error: `You have reached your monthly image limit for the ${plan} plan. Pro/Enterprise users can generate up to ${imageLimit} images per month.`,
@@ -1569,16 +1665,8 @@ async function handleChat(req, res) {
             return;
         }
 
-        const hfToken = process.env.HF_IMAGE_TOKEN || process.env.HF_TOKEN;
-        if (!hfToken) { sendJson(res, 500, { error: 'HF_IMAGE_TOKEN is not configured (set it or provide the legacy HF_TOKEN).' }); return; }
         try {
-            const { status, buffer } = await hfRequest(prompt, hfToken);
-            const data = JSON.parse(buffer.toString());
-            const b64 = data?.data?.[0]?.b64_json;
-            if (status !== 200 || !b64) {
-                sendJson(res, 502, { error: `Image generation failed (${status}).` });
-                return;
-            }
+            const b64 = await cloudflareFluxRequest(prompt);
             await recordUsage({
                 inputTokens: estimateRequestTokens(prompt),
                 outputTokens: 0,
@@ -2654,6 +2742,11 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'POST' && req.url === '/api/image-studio') {
         try { await handleImageStudio(req, res); } catch (e) { console.error('[image-studio]', e); sendJson(res, 500, { error: e.message }, req); }
+        return;
+    }
+    const requestPath = new URL(req.url, 'http://127.0.0.1').pathname.replace(/\/+$/, '');
+    if (req.method === 'POST' && requestPath === '/api/image-studio/edit') {
+        try { await handleImageStudioEdit(req, res); } catch (e) { console.error('[image-studio-edit]', e); sendJson(res, 500, { error: e.message }, req); }
         return;
     }
     if (req.method === 'POST' && req.url === '/api/video-generation') {

@@ -248,7 +248,7 @@ export default function HelpPage() {
                 </aside>
 
                 <div className="grid min-w-0 grid-cols-1 xl:grid-cols-[minmax(0,760px)_150px] xl:justify-center xl:gap-12">
-                    <main className="min-w-0 px-6 py-10 sm:px-10 lg:px-12 xl:px-4">
+                    <main className="min-w-0 px-4 py-7 sm:px-10 sm:py-10 lg:px-12 xl:px-4">
                         <div className={`mb-9 flex items-center gap-2 text-sm ${palette.muted}`}>
                             <BookOpen className="h-4 w-4" />
                             <span>{t("help.docs")}</span>
@@ -258,7 +258,7 @@ export default function HelpPage() {
 
                         <header id="introduction" className="scroll-mt-8">
                             <p className={`mb-2 text-sm ${palette.muted}`}>{t("help.getStarted")}</p>
-                            <h1 className="text-4xl font-semibold tracking-tight sm:text-[42px]">{t("help.introduction")}</h1>
+                            <h1 className="text-3xl font-semibold tracking-tight sm:text-[42px]">{t("help.introduction")}</h1>
                             <p className={`mt-3 max-w-2xl text-lg leading-7 ${palette.muted}`}>
                                 {t("help.introDescription")}
                             </p>

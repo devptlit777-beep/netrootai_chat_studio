@@ -87,14 +87,14 @@ export default function FloatingSlidesIsland({
 
   return (
     <div
-      className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 select-none flex flex-col items-center"
+      className="absolute bottom-6 left-1/2 z-40 flex max-w-[calc(100%-1rem)] -translate-x-1/2 flex-col items-center select-none"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
       {/* Floating Island Expanded Carousel (Morphs up on Hover/Pin) */}
       {isExpanded && (
         <div
-          className={`mb-3 flex flex-col backdrop-blur-2xl rounded-2xl p-3.5 ring-1 animate-in fade-in zoom-in-95 slide-in-from-bottom-3 duration-200 max-w-[90vw] ${
+          className={`mb-3 flex max-w-full flex-col rounded-2xl p-3.5 backdrop-blur-2xl ring-1 animate-in fade-in zoom-in-95 slide-in-from-bottom-3 duration-200 ${
             darkMode
               ? 'bg-[#121214]/95 border border-white/15 shadow-[0_25px_60px_rgba(0,0,0,0.85)] ring-white/10'
               : 'bg-white/95 border border-slate-200 shadow-[0_20px_50px_rgba(0,0,0,0.12)] ring-slate-900/5'
@@ -141,7 +141,7 @@ export default function FloatingSlidesIsland({
           </div>
 
           {/* Horizontal slides card deck */}
-          <div className="flex items-center gap-3 overflow-x-auto py-1 px-0.5 max-w-[85vw] scrollbar-thin">
+          <div className="flex max-w-full items-center gap-3 overflow-x-auto px-0.5 py-1 scrollbar-thin">
             {slides.map((slide, idx) => {
               const isActive = idx === currentIndex;
               const isOver = dragOverIdx === idx;

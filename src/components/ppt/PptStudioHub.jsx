@@ -294,28 +294,28 @@ export default function PptStudioHub({
     >
       {/* Hub Top Bar */}
       <header
-        className={`sticky top-0 z-30 px-6 py-3.5 border-b backdrop-blur-xl flex items-center justify-between ${darkMode
+        className={`sticky top-0 z-30 flex items-center justify-between gap-2 border-b px-3 py-3.5 backdrop-blur-xl sm:gap-3 sm:px-6 ${darkMode
             ? 'bg-[#121215]/85 border-[#222226]'
             : 'bg-white/85 border-slate-200/90 shadow-sm'
           }`}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-sky-500/20">
             <Layout className="w-4 h-4" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold font-mono tracking-wider text-sky-500 uppercase">
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="hidden text-xs font-bold font-mono tracking-wider text-sky-500 uppercase sm:inline">
                 NetRoot AI PPT Studio
               </span>
-              <span className={`text-xs ${darkMode ? 'text-slate-600' : 'text-slate-300'}`}>/</span>
-              <span className="text-xs font-semibold text-slate-400">{translate('ppt.workspaceHub')}</span>
+              <span className={`hidden text-xs sm:inline ${darkMode ? 'text-slate-600' : 'text-slate-300'}`}>/</span>
+              <span className="truncate text-xs font-semibold text-slate-400">{translate('ppt.workspaceHub')}</span>
             </div>
-            <h1 className="text-sm font-bold tracking-tight">{translate('ppt.dashboard')}</h1>
+            <h1 className="truncate text-sm font-bold tracking-tight">{translate('ppt.dashboard')}</h1>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2.5">
           {/* Resume Active Session Button (if user has active slides) */}
           {activeSlidesCount > 0 && (
             <button
@@ -327,7 +327,7 @@ export default function PptStudioHub({
                 }`}
             >
               <Play className="w-3.5 h-3.5 fill-current" />
-              <span>Resume Active Deck ({activeSlidesCount} {activeSlidesCount === 1 ? 'slide' : 'slides'})</span>
+              <span className="hidden sm:inline">Resume Active Deck ({activeSlidesCount} {activeSlidesCount === 1 ? 'slide' : 'slides'})</span>
             </button>
           )}
 
@@ -347,7 +347,7 @@ export default function PptStudioHub({
               }`}
           >
             <FilePlus className="w-3.5 h-3.5" />
-            <span>Blank Deck</span>
+            <span className="hidden sm:inline">Blank Deck</span>
           </button>
 
           {/* Theme Switcher */}
@@ -366,13 +366,13 @@ export default function PptStudioHub({
       </header>
 
       {/* Main Hub Body */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-12">
+      <main className="mx-auto w-full min-w-0 max-w-6xl flex-1 space-y-8 px-4 py-6 sm:space-y-12 sm:px-6 sm:py-12">
         {/* Hero: Gamma-style AI Prompt Card */}
-        <section className="relative">
+        <section className="relative min-w-0">
           {/* Subtle Glow Backdrop */}
           <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-3/4 h-52 bg-gradient-to-r from-sky-500/15 via-indigo-500/15 to-purple-500/15 blur-3xl pointer-events-none rounded-full" />
 
-          <div className="relative text-center max-w-2xl mx-auto mb-8 space-y-2">
+          <div className="relative mx-auto mb-6 max-w-2xl space-y-2 text-center sm:mb-8">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20 mb-1">
               <Sparkles className="w-3.5 h-3.5" />
               <span>Next-Gen AI Presentation Engine</span>
@@ -387,12 +387,12 @@ export default function PptStudioHub({
 
           {/* Main Glowing AI Generation Card */}
           <div
-            className={`relative rounded-2xl p-5 sm:p-6 border shadow-2xl backdrop-blur-xl transition-all duration-200 ${darkMode
+            className={`relative min-w-0 rounded-2xl border p-4 shadow-2xl backdrop-blur-xl transition-all duration-200 sm:p-6 ${darkMode
                 ? 'bg-[#151518]/90 border-white/10 shadow-black/60 ring-1 ring-white/5'
                 : 'bg-white/95 border-slate-200 shadow-xl shadow-slate-200/50'
               }`}
           >
-            <form onSubmit={handleDirectGenerateSubmit} className="space-y-4">
+            <form onSubmit={handleDirectGenerateSubmit} className="min-w-0 space-y-4">
               {/* Textarea for Topic */}
               <div className="relative">
                 <textarea
@@ -423,13 +423,13 @@ export default function PptStudioHub({
                 className={`pt-3 border-t flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 ${darkMode ? 'border-white/10' : 'border-slate-100'
                   }`}
               >
-                <div className={`flex flex-wrap items-center gap-4 ${isFreeLimitReached ? 'opacity-40 pointer-events-none' : ''}`}>
+                <div className={`flex min-w-0 flex-wrap items-center gap-4 ${isFreeLimitReached ? 'opacity-40 pointer-events-none' : ''}`}>
                   {/* Slide Count Selector: 1 to 10 Drawer/Rail */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
                     <span className={`text-xs font-mono font-bold shrink-0 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
                       {translate('ppt.slidesCount', { count: numSlides })}
                     </span>
-                    <div className="flex items-center gap-1 overflow-x-auto max-w-[270px] sm:max-w-[340px] p-1 rounded-xl border bg-black/20 border-white/10 scrollbar-none">
+                    <div className="flex min-w-0 max-w-[calc(100vw-190px)] items-center gap-1 overflow-x-auto rounded-xl border bg-black/20 p-1 scrollbar-none sm:max-w-[340px]">
                       {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
                         <button
                           key={num}

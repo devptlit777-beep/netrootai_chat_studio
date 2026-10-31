@@ -78,7 +78,7 @@ function ProtectedLayout() {
     >
       <Sidebar />
 
-      <div className="flex-1 ml-[60px]">
+      <div className="min-w-0 flex-1 pl-[60px]">
         <Routes>
           <Route
             path="/dashboard"

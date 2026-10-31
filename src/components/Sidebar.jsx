@@ -58,7 +58,7 @@ export default function Sidebar() {
 
   return (
     <div
-      className={`w-[60px] min-h-screen border-r flex flex-col items-center py-3 fixed left-0 top-0 z-40 ${darkMode
+      className={`fixed left-0 top-0 z-40 flex h-screen w-[60px] flex-col items-center border-r py-3 ${darkMode
         ? "bg-[#111111] border-[#222]"
         : "bg-white border-gray-200"
         }`}
@@ -66,7 +66,7 @@ export default function Sidebar() {
       {/* Logo */}
       <button
         onClick={() => navigate("/dashboard")}
-        className="w-10 h-10 flex items-center justify-center mb-6 hover:scale-105 transition-transform"
+        className="mb-6 flex h-10 w-10 shrink-0 items-center justify-center transition-transform hover:scale-105"
       >
         <img
           src="/image.png"
@@ -76,7 +76,7 @@ export default function Sidebar() {
       </button>
 
       {/* Navigation */}
-      <nav className="flex flex-col items-center gap-1 flex-1">
+      <nav aria-label="Main navigation" className="flex flex-1 flex-col items-center gap-1">
         {navItems.filter(({ path }) => path === "/dashboard" || canUse(path === "/threads" ? "threads" : path === "/files" ? "files" : path === "/plugins" ? "plugins" : path === "/image-studio" ? "image-studio" : path === "/ppt-studio" ? "ppt-studio" : "none")).map(({ icon: Icon, path, label }) => {
           const active = location.pathname === path;
 
@@ -85,7 +85,8 @@ export default function Sidebar() {
               key={path}
               onClick={() => navigate(path)}
               title={label}
-              className={`w-10 h-10 relative flex items-center justify-center rounded-xl transition-all ${active
+              aria-label={label}
+              className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all ${active
                 ? darkMode
                   ? "bg-white/10 text-white"
                   : "bg-blue-50 text-blue-600"
@@ -104,11 +105,12 @@ export default function Sidebar() {
       </nav>
 
       {/* Bottom */}
-      <div className="flex flex-col items-center gap-2 mt-auto">
+      <div className="mt-auto flex flex-col items-center gap-2">
         <button
           onClick={() => navigate("/help")}
           title={t("sidebar.docsHelp")}
-          className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${location.pathname === "/help"
+          aria-label={t("sidebar.docsHelp")}
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all ${location.pathname === "/help"
             ? darkMode
               ? "bg-white/10 text-white"
               : "bg-blue-50 text-blue-600"
@@ -123,7 +125,8 @@ export default function Sidebar() {
         {canUse("project-settings") && <button
           onClick={() => navigate("/project-settings")}
           title={t("sidebar.projectSettings")}
-          className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${location.pathname === "/project-settings"
+          aria-label={t("sidebar.projectSettings")}
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all ${location.pathname === "/project-settings"
             ? darkMode
               ? "bg-white/10 text-white"
               : "bg-blue-50 text-blue-600"

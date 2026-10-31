@@ -128,7 +128,7 @@ export default function Billing({ darkMode }) {
   }
 
   return (
-    <div className="space-y-8 max-w-4xl">
+    <div className="max-w-full space-y-8 lg:max-w-4xl">
       {error && (
         <div className={`px-4 py-3 rounded-xl text-sm font-medium ${darkMode ? 'bg-red-500/10 border border-red-500/25 text-red-400' : 'bg-red-50 border border-red-200 text-red-700'}`}>
           {error}
@@ -139,7 +139,7 @@ export default function Billing({ darkMode }) {
       )}
 
       {/* Current plan banner */}
-      <div className={`flex items-center justify-between border rounded-xl px-6 py-4 ${plan === 'enterprise' ? darkMode ? 'border-purple-500/30 bg-purple-500/5' : 'border-purple-200 bg-purple-50'
+      <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-4 sm:px-6 ${plan === 'enterprise' ? darkMode ? 'border-purple-500/30 bg-purple-500/5' : 'border-purple-200 bg-purple-50'
         : plan === 'pro' ? darkMode ? 'border-blue-500/30 bg-blue-500/5' : 'border-blue-200 bg-blue-50'
           : darkMode ? 'border-[#2a2a2a] bg-[#161616]' : 'border-gray-200 bg-gray-50'
         }`}>

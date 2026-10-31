@@ -79,9 +79,9 @@ export default function PricingPage() {
 
     return (
         <div className={`min-h-screen ${darkMode ? 'bg-[#0e0e0e]' : 'bg-gray-50'}`}>
-            <div className="max-w-4xl mx-auto px-6 py-16">
-                <div className="text-center mb-14">
-                    <h1 className={`text-4xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6 sm:py-16">
+                <div className="mb-10 text-center sm:mb-14">
+                    <h1 className={`mb-4 text-3xl font-bold sm:text-4xl ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                         {t('plans.heading')}
                     </h1>
                     <p className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -119,7 +119,7 @@ export default function PricingPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
-                    <div className={`border rounded-2xl p-8 flex flex-col ${darkMode ? 'bg-[#141414] border-[#2a2a2a]' : 'bg-white border-gray-200'}`}>
+                    <div className={`flex flex-col rounded-2xl border p-5 sm:p-8 ${darkMode ? 'bg-[#141414] border-[#2a2a2a]' : 'bg-white border-gray-200'}`}>
                         <div className="mb-6">
                             <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('common.free')}</h2>
                             <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{t('plans.freeStart')}</p>
@@ -144,7 +144,7 @@ export default function PricingPage() {
                         </div>
                     </div>
 
-                    <div className={`border-2 rounded-2xl p-8 flex flex-col relative overflow-hidden ${darkMode ? 'bg-[#141414] border-blue-500/50' : 'bg-white border-blue-500'}`}>
+                    <div className={`relative flex flex-col overflow-hidden rounded-2xl border-2 p-5 sm:p-8 ${darkMode ? 'bg-[#141414] border-blue-500/50' : 'bg-white border-blue-500'}`}>
                         <div className="absolute top-4 right-4">
                             <span className="flex items-center gap-1 text-xs font-semibold bg-blue-500 text-white px-2.5 py-1 rounded-full">
                                 <Star className="w-3 h-3" />

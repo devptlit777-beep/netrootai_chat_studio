@@ -33,17 +33,23 @@ export default function SlideCanvas({
 
   useEffect(() => {
     const updateSize = () => {
-      if (!containerRef.current?.parentElement) return;
-      const parent = containerRef.current.parentElement;
-      const availW = Math.max(260, parent.clientWidth - 48);
-      const availH = Math.max(160, parent.clientHeight - 64);
+      const workspace = containerRef.current?.closest('#stageWorkspace');
+      if (!workspace) return;
+      const availW = Math.max(160, workspace.clientWidth - 32);
+      const availH = Math.max(140, workspace.clientHeight - 180);
       const fit = Math.min(availW / baseW, availH / baseH);
       setAutoScale(Math.min(fit, 1.0));
     };
 
     updateSize();
+    const workspace = containerRef.current?.closest('#stageWorkspace');
+    const resizeObserver = workspace ? new ResizeObserver(updateSize) : null;
+    if (workspace && resizeObserver) resizeObserver.observe(workspace);
     window.addEventListener('resize', updateSize);
-    return () => window.removeEventListener('resize', updateSize);
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', updateSize);
+    };
   }, []);
 
   if (!slide) {
