@@ -10,6 +10,8 @@ import {
   Sparkles,
   HelpCircle,
   Presentation,
+  Map,
+  Video,
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
@@ -26,6 +28,8 @@ const navItems = [
   { icon: Database, path: "/plugins", label: "Plugins" },
   { icon: Sparkles, path: "/image-studio", label: "Image Studio" },
   { icon: Presentation, path: "/ppt-studio", label: "NetRoot AI PPT Studio" },
+  { icon: Map, path: "/maps", label: "Maps" },
+  // { icon: Video, path: "/webinars", label: "Webinars" },
 ];
 
 function getFallbackAvatar(email) {
@@ -77,15 +81,16 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav aria-label="Main navigation" className="flex flex-1 flex-col items-center gap-1">
-        {navItems.filter(({ path }) => path === "/dashboard" || canUse(path === "/threads" ? "threads" : path === "/files" ? "files" : path === "/plugins" ? "plugins" : path === "/image-studio" ? "image-studio" : path === "/ppt-studio" ? "ppt-studio" : "none")).map(({ icon: Icon, path, label }) => {
-          const active = location.pathname === path;
+        {navItems.filter(({ path }) => path === "/dashboard" || path === "/maps" || path === "/webinars" || canUse(path === "/threads" ? "threads" : path === "/files" ? "files" : path === "/plugins" ? "plugins" : path === "/image-studio" ? "image-studio" : path === "/ppt-studio" ? "ppt-studio" : "none")).map(({ icon: Icon, path, label }) => {
+          const active = location.pathname === path || (path === "/webinars" && location.pathname.startsWith("/webinars/"));
+          const itemLabel = path === "/maps" ? t("sidebar.maps") : path === "/webinars" ? t("sidebar.webinars") : label;
 
           return (
             <button
               key={path}
               onClick={() => navigate(path)}
-              title={label}
-              aria-label={label}
+              title={itemLabel}
+              aria-label={itemLabel}
               className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all ${active
                 ? darkMode
                   ? "bg-white/10 text-white"

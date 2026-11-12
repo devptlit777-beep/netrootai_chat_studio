@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
@@ -13,6 +14,7 @@ import StoragePage from "./pages/StoragePage";
 import PluginsPage from "./pages/PluginsPage";
 import ImageStudioPage from "./pages/ImageStudioPage";
 import PptStudioPage from "./pages/PptStudioPage";
+import MapsPage from "./pages/MapsPage";
 import ResetPassword from "./pages/ResetPassword";
 import ThreadsPage from "./pages/ThreadsPage";
 import HelpPage from "./pages/HelpPage";
@@ -21,6 +23,8 @@ import CheckoutSuccessPage from './pages/CheckoutSuccessPage';
 import { PlanProvider } from "./contexts/PlanContext";
 import Sidebar from "./components/Sidebar";
 import { useTranslation } from "react-i18next";
+
+const WebinarsPage = lazy(() => import("./pages/WebinarsPage"));
 
 function UpgradeRequired({ darkMode }) {
   const { t } = useTranslation();
@@ -123,6 +127,12 @@ function ProtectedLayout() {
           <Route path="/image-studio" element={<FeatureGate darkMode={darkMode} feature="image-studio"><ImageStudioPage /></FeatureGate>} />
 
           <Route path="/ppt-studio" element={<FeatureGate darkMode={darkMode} feature="ppt-studio"><PptStudioPage /></FeatureGate>} />
+
+          <Route path="/maps" element={<MapsPage />} />
+
+          <Route path="/webinars" element={<Suspense fallback={null}><WebinarsPage /></Suspense>} />
+
+          <Route path="/webinars/:roomId" element={<Suspense fallback={null}><WebinarsPage /></Suspense>} />
 
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

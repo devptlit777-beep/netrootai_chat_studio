@@ -115,7 +115,7 @@ function UserTab({ profile, user, onSaved, darkMode }) {
     setUploadingAvatar(true);
 
     const ext = file.name.split('.').pop()?.toLowerCase() ?? 'png';
-    const path = `${user.id}.${ext}`;
+    const path = `${user.id}/avatar.${ext}`;
 
     const { error: storageError } = await supabase.storage
       .from('avatars')
@@ -133,8 +133,7 @@ function UserTab({ profile, user, onSaved, darkMode }) {
 
     const { error: profileError } = await supabase
       .from('profiles')
-      .update({ avatar_url: urlData.publicUrl, updated_at: new Date().toISOString() })
-      .eq('id', user.id);
+      .upsert({ id: user.id, avatar_url: urlData.publicUrl, updated_at: new Date().toISOString() }, { onConflict: 'id' });
 
     if (profileError) {
       setUploadError(profileError.message);
@@ -155,12 +154,13 @@ function UserTab({ profile, user, onSaved, darkMode }) {
 
     setSaving(true);
 
-    await supabase.from('profiles').update({
+    await supabase.from('profiles').upsert({
+      id: user.id,
       full_name: fullName,
       phone: phone || null,
       default_org: defaultOrg || fullName,
       updated_at: new Date().toISOString(),
-    }).eq('id', user.id);
+    }, { onConflict: 'id' });
 
     await onSaved();
     setSaving(false);

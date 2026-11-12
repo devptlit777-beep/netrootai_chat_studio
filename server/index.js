@@ -4,6 +4,8 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import { calculateRoute, createChatMap, geocode, isCurrentLocationPrompt, searchPlaces } from './googleMaps.js';
+// import { createLiveKitRoom, createLiveKitToken } from './livekit.js';
 import { Resend } from 'resend';
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
@@ -28,6 +30,8 @@ const IMAGE_STUDIO_MODELS = new Set([
     'black-forest-labs/flux.1-schnell',
     'black-forest-labs/flux-2-klein-4b',
 ]);
+const MAP_DAILY_LIMITS = { free: 20, pro: 100, enterprise: 200 };
+const mapUsageCounters = new Map();
 
 
 loadEnvFile();
@@ -179,6 +183,47 @@ async function getCurrentMonthImageUsageAsync(userEmail) {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
     const entries = await queryUsage({ userEmail, since: monthStart });
     return entries.filter(e => IMAGE_STUDIO_MODELS.has(String(e.model || '').toLowerCase())).length;
+}
+
+function getLocalDateKey(date = new Date()) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+async function consumeMapDailyUsage(req, plan, email, userId) {
+    const normalizedEmail = String(email || '').toLowerCase();
+    const identity = normalizedEmail || userId || req.socket.remoteAddress || 'anonymous';
+    const dateKey = getLocalDateKey();
+    const counterKey = `${dateKey}:${identity}`;
+    const dailyLimit = MAP_DAILY_LIMITS[normalizePlan(plan)] || MAP_DAILY_LIMITS.free;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const persistedCount = normalizedEmail
+        ? (await queryUsage({ userEmail: normalizedEmail, since: today.getTime() }))
+            .filter(entry => entry.model === 'google/maps').length
+        : 0;
+    const used = Math.max(mapUsageCounters.get(counterKey) || 0, persistedCount);
+
+    if (used >= dailyLimit) {
+        return { error: `You have reached your daily maps limit (${dailyLimit} requests). Try again tomorrow.`, status: 429 };
+    }
+
+    for (const key of mapUsageCounters.keys()) {
+        if (!key.startsWith(`${dateKey}:`)) mapUsageCounters.delete(key);
+    }
+    mapUsageCounters.set(counterKey, used + 1);
+    await recordUsage({
+        inputTokens: 0,
+        outputTokens: 0,
+        cachedTokens: 0,
+        model: 'google/maps',
+        userEmail: normalizedEmail,
+        plan,
+        prompt: 'Map API request',
+    });
+    return { used: used + 1, limit: dailyLimit, remaining: dailyLimit - used - 1 };
 }
 
 async function getUserLifetimePptCount(sb, userId, userEmail) {
@@ -1845,6 +1890,153 @@ async function handleChat(req, res) {
     sendJson(res, 200, { answer: extractAnswer(data) });
 }
 
+async function handleMapsApi(req, res, operation) {
+    const body = await readJson(req);
+    const query = String(body.query || '').trim();
+    const location = String(body.location || '').trim();
+    const origin = String(body.origin || '').trim();
+    const destination = String(body.destination || '').trim();
+    const prompt = String(body.prompt || '').trim();
+    const languageCode = String(body.languageCode || 'en').slice(0, 35);
+    const rawCoordinates = body.coordinates;
+    const coordinates = rawCoordinates
+        && Number.isFinite(Number(rawCoordinates.lat))
+        && Number.isFinite(Number(rawCoordinates.lon))
+        && Number(rawCoordinates.lat) >= -90
+        && Number(rawCoordinates.lat) <= 90
+        && Number(rawCoordinates.lon) >= -180
+        && Number(rawCoordinates.lon) <= 180
+        ? { lat: Number(rawCoordinates.lat), lon: Number(rawCoordinates.lon) }
+        : null;
+    if (rawCoordinates && !coordinates) {
+        sendJson(res, 400, { error: 'Location coordinates are invalid.' }, req);
+        return;
+    }
+    if (operation === 'geocode' && (!query || query.length > 200)) {
+        sendJson(res, 400, { error: 'Enter a location of 1 to 200 characters.' }, req);
+        return;
+    }
+    if (operation === 'places' && ((!location && !coordinates) || location.length > 200)) {
+        sendJson(res, 400, { error: 'Enter a city or address, or share your current location.' }, req);
+        return;
+    }
+    if (operation === 'route' && (!origin || !destination || origin.length > 200 || destination.length > 200)) {
+        sendJson(res, 400, { error: 'Enter an origin and destination of 1 to 200 characters each.' }, req);
+        return;
+    }
+    if (operation === 'chat' && (!prompt || prompt.length > 500)) {
+        sendJson(res, 400, { error: 'Map prompts must be 1 to 500 characters.' }, req);
+        return;
+    }
+    if (operation === 'chat' && isCurrentLocationPrompt(prompt) && !coordinates) {
+        sendJson(res, 200, { mapData: await createChatMap(prompt) }, req);
+        return;
+    }
+    if (!process.env.GOOGLE_MAPS_API_KEY) {
+        sendJson(res, 503, { error: 'Maps are not configured. Set GOOGLE_MAPS_API_KEY on the server.' }, req);
+        return;
+    }
+
+    const { plan, email, userId } = await resolveUserPlan(req, body);
+    const usage = await consumeMapDailyUsage(req, plan, email, userId);
+    if (usage.error) {
+        sendJson(res, usage.status, { error: usage.error, usage: { used: usage.limit, limit: usage.limit, remaining: 0 } }, req);
+        return;
+    }
+
+    try {
+        let result;
+        if (operation === 'geocode') {
+            result = { locations: await geocode(query) };
+        } else if (operation === 'places') {
+            result = await searchPlaces(location, String(body.category || 'all'), coordinates);
+        } else if (operation === 'route') {
+            result = await calculateRoute(origin, destination, String(body.mode || 'drive'), languageCode);
+        } else {
+            result = { mapData: await createChatMap(prompt, coordinates, languageCode) };
+        }
+        sendJson(res, 200, { ...result, usage }, req);
+    } catch (error) {
+        console.error(`[maps:${operation}]`, error.message);
+        sendJson(res, error.statusCode || 502, { error: error.message, usage }, req);
+    }
+}
+
+async function handleWebinarsApi(req, res, operation) {
+    const body = await readJson(req);
+    const authorization = req.headers.authorization || '';
+    const accessToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+    const supabase = getSupabaseClient();
+    if (!accessToken || !supabase) {
+        sendJson(res, accessToken ? 503 : 401, {
+            error: accessToken ? 'Webinar authentication is unavailable.' : 'Sign in to create or join a webinar.',
+        }, req);
+        return;
+    }
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(accessToken);
+    if (authError || !user) {
+        sendJson(res, 401, { error: 'Your session is no longer valid. Sign in again.' }, req);
+        return;
+    }
+
+    if (operation === 'create') {
+        const title = String(body.title || '').trim().replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 120);
+        const roomType = String(body.type || '');
+        if (!title || !['meeting', 'webinar'].includes(roomType)) {
+            sendJson(res, 400, { error: 'Enter a title and choose a one-to-one meeting or webinar.' }, req);
+            return;
+        }
+
+        const { data: room, error: insertError } = await supabase
+            .from('webinar_rooms')
+            .insert({ host_user_id: user.id, title, room_type: roomType })
+            .select('room_id, host_user_id, title, room_type')
+            .single();
+        if (insertError) {
+            console.error('[webinars:create] Could not save room:', insertError.message);
+            sendJson(res, 500, { error: 'Could not create the room. Make sure the webinar database migration is applied.' }, req);
+            return;
+        }
+
+        try {
+            await createLiveKitRoom(room.room_id, room.room_type);
+            sendJson(res, 201, await createLiveKitToken({ room, user, isHost: true }), req);
+        } catch (error) {
+            const { error: cleanupError } = await supabase.from('webinar_rooms').delete().eq('room_id', room.room_id);
+            if (cleanupError) console.error('[webinars:create] Could not remove failed room record:', cleanupError.message);
+            throw error;
+        }
+        return;
+    }
+
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(body.roomId || ''))) {
+        sendJson(res, 400, { error: 'Enter a valid webinar invitation link.' }, req);
+        return;
+    }
+    const { data: room, error: roomError } = await supabase
+        .from('webinar_rooms')
+        .select('room_id, host_user_id, title, room_type')
+        .eq('room_id', body.roomId)
+        .maybeSingle();
+    if (roomError) {
+        console.error('[webinars:join] Could not look up room:', roomError.message);
+        sendJson(res, 500, { error: 'Could not look up this room.' }, req);
+        return;
+    }
+    if (!room) {
+        sendJson(res, 404, { error: 'This invitation is invalid or the room is no longer available.' }, req);
+        return;
+    }
+
+    await createLiveKitRoom(room.room_id, room.room_type);
+    sendJson(res, 200, await createLiveKitToken({
+        room,
+        user,
+        isHost: room.host_user_id === user.id,
+    }), req);
+}
+
 async function handleGetPlan(req, res) {
     const url = new URL(req.url, 'http://127.0.0.1');
     const email = url.searchParams.get('email');
@@ -2676,6 +2868,25 @@ const server = createServer(async (req, res) => {
         try { await handleMyUsage(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
         return;
     }
+    if (req.method === 'POST' && new URL(req.url, 'http://127.0.0.1').pathname.startsWith('/api/maps/')) {
+        const operation = new URL(req.url, 'http://127.0.0.1').pathname.slice('/api/maps/'.length).replace(/\/+$/, '');
+        if (['geocode', 'places', 'route', 'chat'].includes(operation)) {
+            try { await handleMapsApi(req, res, operation); } catch (e) { sendJson(res, 500, { error: e.message }, req); }
+            return;
+        }
+    }
+    // if (req.method === 'POST' && new URL(req.url, 'http://127.0.0.1').pathname.startsWith('/api/webinars/')) {
+    //     const operation = new URL(req.url, 'http://127.0.0.1').pathname.slice('/api/webinars/'.length).replace(/\/+$/, '');
+    //     if (['create', 'token'].includes(operation)) {
+    //         try {
+    //             await handleWebinarsApi(req, res, operation);
+    //         } catch (error) {
+    //             console.error(`[webinars:${operation}]`, error.message);
+    //             sendJson(res, error.statusCode || 500, { error: error.message || 'Webinar request failed.' }, req);
+    //         }
+    //         return;
+    //     }
+    // }
     if (req.method === 'POST' && req.url === '/api/chat') {
         try { await handleChat(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
         return;

@@ -1130,7 +1130,9 @@ import API_BASE from '../lib/api';
 import { DEFAULT_PLAN_LIMITS, fetchPlanLimits, normalizePlan } from '../lib/planLimits';
 import { copyChatContext, downloadAsWord, downloadAsPdf, downloadAsPpt } from '../lib/chatExport';
 import PptChatDeckCard from '../components/ppt/PptChatDeckCard';
+import MapResultCard from '../components/maps/MapResultCard';
 import { getActiveDeckStorageKey, getSavedSlidesStorageKey } from '../components/ppt/pptConstants';
+import { getCurrentBrowserLocation, isMapPrompt, requestMapsApi } from '../lib/mapsApi';
 import { useTranslation } from 'react-i18next';
 
 const PLUGIN_ICONS = {
@@ -1709,6 +1711,7 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
       console.log("API DATA", data);
 
       let aiContent = data.answer;
+      let mapData = null;
       if (!aiContent) {
         if (typeof data.error === 'string') {
           aiContent = data.error;
@@ -1758,6 +1761,28 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
         refreshPlan?.();
       }
 
+      if (response.ok && isMapPrompt(content)) {
+        try {
+          const mapResponse = await requestMapsApi('chat', {
+            prompt: content,
+            languageCode: i18n.resolvedLanguage || i18n.language,
+            email: user?.email,
+            userId: user?.id,
+          });
+          mapData = {
+            ...mapResponse.mapData,
+            prompt: mapResponse.mapData.needsLocation ? content : undefined,
+            usage: mapResponse.usage,
+          };
+          if (mapData.needsLocation) aiContent = t('maps.requestLocationResponse');
+        } catch (mapError) {
+          mapData = { type: 'search', title: 'Map results', error: mapError.message, usage: mapError.usage };
+        }
+      }
+      if (mapData) {
+        aiContent = `${aiContent || ''}\n\n__MAP__${JSON.stringify(mapData)}__MAP__`;
+      }
+
       const aiMsg = {
         id: crypto.randomUUID(),
         thread_id: thread.id,
@@ -1791,6 +1816,32 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
     } finally {
       setSending(false);
     }
+  }
+
+  async function saveChatMapData(message, mapData) {
+    let text = parseMessageContent(message.content).text;
+    if (mapData.isCurrentLocation) text = t('maps.sharedLocationResponse');
+    if (mapData.dismissed) text = t('maps.dismissedLocationResponse');
+    const content = `${text}\n\n__MAP__${JSON.stringify(mapData)}__MAP__`;
+    const { error } = await supabase.from('messages').update({ content }).eq('id', message.id);
+    if (error) throw error;
+    setMessages((previous) => previous.map((item) => item.id === message.id ? { ...item, content } : item));
+  }
+
+  async function shareChatLocation(message, mapData) {
+    const coordinates = await getCurrentBrowserLocation();
+    const mapResponse = await requestMapsApi('chat', {
+      prompt: mapData.prompt,
+      coordinates,
+      languageCode: i18n.resolvedLanguage || i18n.language,
+      email: user?.email,
+      userId: user?.id,
+    });
+    await saveChatMapData(message, { ...mapResponse.mapData, usage: mapResponse.usage });
+  }
+
+  async function dismissChatLocation(message, mapData) {
+    await saveChatMapData(message, { ...mapData, needsLocation: false, dismissed: true });
   }
 
   function handleKeyDown(e) {
@@ -1868,6 +1919,7 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
   function parseMessageContent(content) {
     let images = [];
     let pptDeck = null;
+    let mapData = null;
     let text = content || '';
 
     const imgMatch = text.match(/^__IMAGES__(.*?)__IMAGES__([\s\S]*)$/);
@@ -1907,7 +1959,17 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
       text = text.replace(/__PPT_PRO_UPGRADE__[\s\S]*?__PPT_PRO_UPGRADE__/, '').trim();
     }
 
-    return { images, pptDeck, pptUpgradeNotice, text };
+    const mapMatch = text.match(/__MAP__([\s\S]*?)__MAP__/);
+    if (mapMatch) {
+      try {
+        mapData = JSON.parse(mapMatch[1]);
+      } catch {
+        mapData = null;
+      }
+      text = text.replace(/__MAP__[\s\S]*?__MAP__/, '').trim();
+    }
+
+    return { images, pptDeck, pptUpgradeNotice, mapData, text };
   }
 
   return (
@@ -2075,7 +2137,7 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
           {activeThread ? (
             <div className={`min-w-0 flex-1 space-y-6 overflow-y-auto px-3 py-4 sm:px-6 sm:py-6 ${darkMode ? '' : 'bg-gray-50'}`}>
               {messages.map(msg => {
-                const { images, pptDeck, pptUpgradeNotice, text } = parseMessageContent(msg.content);
+                const { images, pptDeck, pptUpgradeNotice, mapData, text } = parseMessageContent(msg.content);
                 return (
                   <div key={msg.id} className={`flex gap-3 items-end ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     {msg.role === 'assistant' && (
@@ -2204,6 +2266,16 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
                       ) : null}
 
                       {/* Render PPT Presentation Card if present */}
+                      {mapData && (
+                        <MapResultCard
+                          mapData={mapData}
+                          darkMode={darkMode}
+                          compact
+                          onShareLocation={() => shareChatLocation(msg, mapData)}
+                          onDismissLocation={() => dismissChatLocation(msg, mapData)}
+                        />
+                      )}
+
                       {pptDeck && (
                         <PptChatDeckCard pptDeck={pptDeck} darkMode={darkMode} />
                       )}
