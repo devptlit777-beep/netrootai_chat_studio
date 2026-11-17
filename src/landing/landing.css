@@ -1,0 +1,272 @@
+/* Custom 3D Perspective Utilities */
+.perspective-1000 {
+  perspective: 1000px;
+}
+.perspective-1200 {
+  perspective: 1200px;
+}
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+.backface-hidden {
+  backface-visibility: hidden;
+}
+
+/* 3D Glass Surface (GPU optimized) */
+.glass-panel {
+  background: rgba(14, 16, 26, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transform: translateZ(0);
+}
+
+.glass-panel-hover {
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.glass-panel-hover:hover {
+  background: rgba(22, 26, 42, 0.88);
+  border-color: rgba(37, 99, 235, 0.4);
+  box-shadow: 0 20px 40px -15px rgba(37, 99, 235, 0.2);
+}
+
+/* Staggered Floating Keyframes for Orbital Satellites */
+@keyframes float-pill-1 {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-7px) rotate(0.8deg); }
+}
+@keyframes float-pill-2 {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(7px) rotate(-1deg); }
+}
+@keyframes float-pill-3 {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-6px) rotate(-0.8deg); }
+}
+@keyframes float-pill-4 {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(7px) rotate(1deg); }
+}
+
+.animate-orbit-1 {
+  animation: float-pill-1 7s ease-in-out infinite;
+}
+.animate-orbit-2 {
+  animation: float-pill-2 8.5s ease-in-out 1s infinite;
+}
+.animate-orbit-3 {
+  animation: float-pill-3 6.5s ease-in-out 2s infinite;
+}
+.animate-orbit-4 {
+  animation: float-pill-4 9s ease-in-out 1.5s infinite;
+}
+
+/* Orbital Satellite Pills Micro-Interaction */
+.satellite-pill {
+  transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  will-change: transform, opacity;
+}
+.satellite-pill:hover {
+  animation-play-state: paused !important;
+  opacity: 1 !important;
+  transform: translateY(-3px) scale(1.03) !important;
+  box-shadow: 0 8px 20px -4px rgba(0, 0, 0, 0.7), 0 0 14px rgba(37, 99, 235, 0.15);
+  border-color: rgba(37, 99, 235, 0.4) !important;
+}
+
+/* Brain Neural Synapses & Floating Code Tokens Emitter */
+@keyframes float-up-token {
+  0% {
+    transform: translate(0px, 20px) scale(0.85);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.9;
+  }
+  80% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate(var(--drift-x, 0px), -240px) scale(1.05);
+    opacity: 0;
+  }
+}
+
+.animate-float-up-token {
+  animation: float-up-token linear infinite;
+  will-change: transform, opacity;
+}
+
+/* Living Background Nebula Aurora Waves */
+@keyframes aurora-drift-1 {
+  0%, 100% { transform: translate(0px, 0px) scale(1); }
+  33% { transform: translate(40px, -30px) scale(1.1); }
+  66% { transform: translate(-30px, 25px) scale(0.95); }
+}
+
+@keyframes aurora-drift-2 {
+  0%, 100% { transform: translate(0px, 0px) scale(1); }
+  33% { transform: translate(-50px, 35px) scale(1.08); }
+  66% { transform: translate(35px, -25px) scale(0.92); }
+}
+
+.animate-aurora-1 {
+  animation: aurora-drift-1 18s ease-in-out infinite;
+}
+.animate-aurora-2 {
+  animation: aurora-drift-2 22s ease-in-out infinite;
+}
+
+/* Holographic Card Reflections */
+.hologram-card {
+  position: relative;
+  overflow: hidden;
+}
+.hologram-card::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    60deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.04) 45%,
+    rgba(37, 99, 235, 0.08) 50%,
+    rgba(59, 130, 246, 0.05) 55%,
+    transparent 65%
+  );
+  transform: rotate(-25deg) translateY(-100%);
+  transition: transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+}
+.hologram-card:hover::after {
+  transform: rotate(-25deg) translateY(100%);
+}
+
+/* Laser Border Animation */
+.laser-border {
+  position: relative;
+}
+.laser-border::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(90deg, #2563eb, #3b82f6, #1d4ed8, #2563eb);
+  background-size: 300% 300%;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: laser-gradient 6s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes laser-gradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Rotating Orbits & Laser Flows */
+@keyframes spin-orbit-cw {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes spin-orbit-ccw {
+  from {
+    transform: rotate(360deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes laser-flow-stream {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -400;
+  }
+}
+
+.animate-spin-orbit-cw {
+  transform-origin: 0px 0px;
+  animation: spin-orbit-cw 42s linear infinite;
+}
+
+.animate-spin-orbit-ccw {
+  transform-origin: 0px 0px;
+  animation: spin-orbit-ccw 32s linear infinite;
+}
+
+.animate-laser-flow {
+  animation: laser-flow-stream 14s linear infinite;
+}
+
+/* Infinite Floating Marquee Streams (Hardware Accelerated 60FPS) */
+@keyframes marquee-forward {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-50%, 0, 0); }
+}
+
+@keyframes marquee-reverse {
+  0% { transform: translate3d(-50%, 0, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+
+.animate-marquee-forward {
+  display: flex;
+  width: max-content;
+  animation: marquee-forward 50s linear infinite;
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+.animate-marquee-reverse {
+  display: flex;
+  width: max-content;
+  animation: marquee-reverse 45s linear infinite;
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+.animate-marquee-forward:hover,
+.animate-marquee-reverse:hover {
+  animation-play-state: paused;
+}
+
+/* Video Marquee (Hardware Accelerated 60FPS) */
+.animate-video-marquee-forward {
+  display: flex;
+  width: max-content;
+  animation: marquee-forward 70s linear infinite;
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+.animate-video-marquee-reverse {
+  display: flex;
+  width: max-content;
+  animation: marquee-reverse 65s linear infinite;
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+.animate-video-marquee-forward:hover,
+.animate-video-marquee-reverse:hover {
+  animation-play-state: paused;
+}
+

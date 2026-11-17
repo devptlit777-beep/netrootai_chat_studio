@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Loader2, Check, Copy, Search, Download, Plus,
   MoreHorizontal, PenSquare, AlertTriangle, Users, X, Cpu,
@@ -15,37 +15,39 @@ import BillingTab from '../components/Billing';
 import API_BASE from '../lib/api';
 import { DEFAULT_PLAN_LIMITS, fetchPlanLimits, getModelImageLimit, normalizePlan } from '../lib/planLimits';
 import { useTranslation } from 'react-i18next';
-// import MembersTab from '../components/MembersTab';
-// import GroupsTab from '../components/GroupsTab';
-// import RolesTab from '../components/RolesTab';
-// import WebhooksTab from '../components/WebhooksTab';
-// import EvaluationsTab from '../components/EvaluationsTab';
 
 const TABS = ['general', 'limits', 'billing', 'api-keys', 'token-dashboard'];
-// const TABS = ['general', 'limits', 'billing', 'members', 'groups', 'roles', 'webhooks', 'evaluations', 'api-keys', 'token-dashboard'];
+
 export default function ProjectSettingsPage() {
   const { t } = useTranslation();
   const { theme } = useTheme();
   const darkMode = theme === 'dark';
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [tab, setTab] = useState(() => searchParams.get('tab') || 'general');
   const [autoUpgradePlan, setAutoUpgradePlan] = useState(() => searchParams.get('upgrade') || null);
 
-  const showOrgButton = tab === 'members' || tab === 'groups' || tab === 'roles';
+  // Auto redirect if user had bookmarked or navigated with ?view=catalog or ?model=...
+  useEffect(() => {
+    const view = searchParams.get('view');
+    const model = searchParams.get('model');
+    if (view === 'catalog' || view === 'compare' || model) {
+      const q = new URLSearchParams(searchParams);
+      navigate(`/app/models?${q.toString()}`, { replace: true });
+    }
+  }, [searchParams, navigate]);
 
   return (
-    <div className={`min-h-screen ${darkMode ? 'bg-[#1a1a1a] text-white' : 'bg-gray-50 text-gray-900'}`}>
-      <div className="max-w-5xl mx-auto px-8 py-10">
+    <div className={`min-h-screen ${darkMode ? 'bg-[#141414] text-white' : 'bg-gray-50 text-gray-900'}`}>
+      <div className="max-w-5xl mx-auto px-6 sm:px-8 py-10 transition-all duration-300">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <h1 className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('project.title')}</h1>
-          {/* {showOrgButton && (
-            <button className={`flex items-center gap-2 text-sm border rounded-lg px-4 py-2 transition-colors ${darkMode ? 'border-[#3a3a3a] text-gray-300 hover:bg-white/5' : 'border-gray-300 text-gray-700 hover:bg-gray-100'}`}>
-              <ExternalLink className="w-4 h-4" />
-              Organization settings
-              <span className="text-xs">↗</span>
-            </button>
-          )} */}
+        <div className="mb-8">
+          <h1 className={`text-3xl font-extrabold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            {t('project.title') || 'Project Settings'}
+          </h1>
+          <p className={`text-xs mt-1.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            Manage your project configuration, daily token limits, billing, and API keys.
+          </p>
         </div>
 
         {/* Tabs */}
@@ -68,17 +70,13 @@ export default function ProjectSettingsPage() {
         {tab === 'general' && <GeneralTab darkMode={darkMode} />}
         {tab === 'limits' && <LimitsTab darkMode={darkMode} onUpgrade={() => setTab('billing')} />}
         {tab === 'billing' && <BillingTab darkMode={darkMode} autoUpgradePlan={autoUpgradePlan} onAutoUpgradeDone={() => { setAutoUpgradePlan(null); }} />}
-        {/* {tab === 'members' && <MembersTab darkMode={darkMode} />}
-        {tab === 'groups' && <GroupsTab darkMode={darkMode} />}
-        {tab === 'roles' && <RolesTab darkMode={darkMode} />}
-        {tab === 'webhooks' && <WebhooksTab darkMode={darkMode} />}
-        {tab === 'evaluations' && <EvaluationsTab darkMode={darkMode} />} */}
         {tab === 'api-keys' && <ApiKeysTab darkMode={darkMode} />}
         {tab === 'token-dashboard' && <TokenDashboard darkMode={darkMode} />}
       </div>
     </div>
   );
 }
+
 
 /* ─── General ─────────────────────────────────────────────────────────────── */
 function GeneralTab({ darkMode }) {

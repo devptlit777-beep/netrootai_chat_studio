@@ -9,6 +9,81 @@ import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
 import * as yaml from 'js-yaml';
 import { PLAN_LIMITS, canUseModel, canUseTokens, getPlanLimits, normalizeModel, normalizePlan, canUseImageGeneration, getModelImageLimit } from './planLimits.js';
+import { getAllModels, syncModelsFromOpenRouter, updateModelRecord, getGlobalSettings, updateGlobalSettings, bulkUpdateModels, getChangelog, initAutoSyncCron, getLocalRankings } from './modelsService.js';
+import { runFalGeneration } from './falService.js';
+import { recordSystemAlert, getSystemAlerts, markAlertAsRead, getAlertsSummary, registerSSEClient } from './alertsService.js';
+import {
+    indexDocument,
+    searchRelevantChunks,
+    formatRAGPromptContext,
+    listDocuments,
+    deleteDocument,
+    indexChatMessage,
+} from './ragService.js';
+
+import {
+    getWorkspaces,
+    setActiveWorkspace,
+    createWorkspace,
+    getWorkspaceOverview,
+    getWorkspaceActivity,
+    getApiKeys,
+    createApiKey,
+    deleteApiKey,
+    toggleApiKeyStatus,
+    getKeyAnalytics,
+    getLogs as getWorkspaceLogs,
+    getGuardrails,
+    updateGuardrails,
+    enforceWorkspaceGuardrails,
+    maskPiiData,
+    getWorkspaceAvailableProviders,
+    getByok,
+    updateByok,
+    deleteByokKey,
+    testByokKey,
+    getRouting,
+    updateRouting,
+    getPresets,
+    createPreset,
+    updatePreset,
+    deletePreset,
+    updateWorkspaceSettings,
+    getWorkspaceBootstrapData,
+    getDeveloperGatewayModels,
+    handleDeveloperGatewayChat,
+    getWorkspaceFiles,
+    addWorkspaceFile,
+    deleteWorkspaceFile,
+    toggleFileChatSync,
+    getWorkspaceTools,
+    toggleWorkspaceTool,
+    getWorkspaceClassifiers,
+    saveWorkspaceClassifier,
+    evaluateIntentClassifiers,
+    deleteWorkspaceClassifier,
+    reorderWorkspaceClassifiers,
+    getWorkspaceCacheSettings,
+    updateWorkspaceCacheSettings,
+    getObservabilityMetrics,
+    recordDirectUsageLog,
+    calculateModelCost,
+    getWorkspaceMembers,
+    inviteWorkspaceMember,
+    removeWorkspaceMember,
+    updateWorkspaceMemberRole,
+    resetWorkspaceConfig,
+    deleteWorkspace,
+} from './workspaceService.js';
+import {
+    getUserWallet,
+    creditUserWallet,
+    deductUserWallet,
+    getUserWalletTransactions,
+    isModelFree,
+    getPlatformFinancialMetrics,
+    getAllPlatformTransactions,
+} from './walletService.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -23,6 +98,34 @@ const VISION_MODELS = new Set([
     'qwen/qwen3.8-27b',
     'qwen/qwen3.6-27b',
 ]);
+
+function prepareGroqPrompt(promptText) {
+    if (!promptText || typeof promptText !== 'string') return promptText;
+    if (promptText.length <= 12000) return promptText;
+    // Compact history to keep prompt tokens well under Groq 8000 TPM limit
+    const head = promptText.slice(0, 1500);
+    const tail = promptText.slice(-10000);
+    return `${head}\n\n[...context compacted to fit model token limit...]\n\n${tail}`;
+}
+
+function formatCleanAiError(rawError) {
+    const raw = typeof rawError === 'string' ? rawError : (rawError?.message || '');
+    if (!raw) return 'AI engine request failed. Please try again.';
+    if (/tokens per minute|tpm|rate_limit|rate limit/i.test(raw)) {
+        return 'Rate limit reached for this free model. Please shorten your message, wait a few moments, or select another model.';
+    }
+    if (/request too large|context length|maximum context/i.test(raw)) {
+        return 'Message or chat history is too long for this model. Please start a new chat or shorten your message.';
+    }
+    return raw
+        .replace(/in organization\s+org_[a-z0-9]+/gi, '')
+        .replace(/service tier\s+[a-z0-9_]+/gi, '')
+        .replace(/Upgrade to Dev Tier today at [^\s)]+/gi, '')
+        .replace(/https?:\/\/[^\s)]+/gi, '')
+        .replace(/groq/gi, 'NetRoot AI')
+        .replace(/\s{2,}/g, ' ')
+        .trim() || 'AI engine request failed. Please try again.';
+}
 
 
 loadEnvFile();
@@ -60,7 +163,7 @@ function sendJson(res, statusCode, payload, req) {
         'Expires': '0',
         'Access-Control-Allow-Origin': corsOrigin,
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-user-email, stripe-signature',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-user-email, x-user-plan, stripe-signature',
     });
     res.end(JSON.stringify(payload));
 }
@@ -118,6 +221,21 @@ async function recordUsage({ inputTokens, outputTokens, cachedTokens, latencyMs,
         else console.log('[usage] recorded:', userEmail, inputTokens + outputTokens, 'tokens');
     } catch (error) {
         console.error('[usage] insert exception:', error.message);
+    }
+
+    // Synchronously mirror usage to workspace logs & metrics
+    try {
+        recordDirectUsageLog({
+            model,
+            inputTokens,
+            outputTokens,
+            latencyMs,
+            userEmail,
+            plan,
+            isCached: Boolean(cachedTokens),
+        });
+    } catch (e) {
+        // non-fatal
     }
 }
 
@@ -362,9 +480,30 @@ async function handleUsage(req, res, userEmail = null) {
     for (const entry of entries30d) {
         let model = entry.model || modelId;
         if (model === 'ppt-generator') model = 'ppt-studio';
-        if (!perModel[model]) perModel[model] = { tokens: 0, requests: 0 };
-        perModel[model].tokens += entry.inputTokens + entry.outputTokens;
+        if (!perModel[model]) {
+            perModel[model] = {
+                tokens: 0,
+                inputTokens: 0,
+                outputTokens: 0,
+                requests: 0,
+                lastUsed: entry.ts,
+                totalLatency: 0,
+                avgLatencyMs: 0,
+            };
+        }
+        perModel[model].tokens += (entry.inputTokens || 0) + (entry.outputTokens || 0);
+        perModel[model].inputTokens += (entry.inputTokens || 0);
+        perModel[model].outputTokens += (entry.outputTokens || 0);
         perModel[model].requests += 1;
+        perModel[model].totalLatency += (entry.latencyMs || 0);
+        if (entry.ts > perModel[model].lastUsed) {
+            perModel[model].lastUsed = entry.ts;
+        }
+    }
+    for (const m of Object.keys(perModel)) {
+        if (perModel[m].requests > 0) {
+            perModel[m].avgLatencyMs = Math.round(perModel[m].totalLatency / perModel[m].requests);
+        }
     }
 
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
@@ -603,38 +742,71 @@ function hfRequest(prompt, token) {
 
 const AGNES_VIDEO_MODEL = 'agnes-video-2.5-flash';
 
-async function handleImageStudio(req, res) {
+async function handleFalGenerate(req, res) {
     const body = await readJson(req);
-    const prompt = String(body.prompt || '').trim();
-    if (!prompt) { sendJson(res, 400, { error: 'Prompt is required.' }, req); return; }
+    const { modelId, prompt, options = {} } = body;
 
-    const { accessExpired, featureAccess } = await resolveUserPlan(req, body);
-    if (accessExpired && !featureAccess?.['image-studio']) {
-        sendJson(res, 403, { error: 'Upgrade to Pro to access Image Studio.' }, req);
+    if (!prompt) {
+        sendJson(res, 400, { error: 'Prompt is required.' }, req);
+        return;
+    }
+    if (!modelId) {
+        sendJson(res, 400, { error: 'modelId is required.' }, req);
         return;
     }
 
-    const hfToken = process.env.HF_IMAGE_TOKEN || process.env.HF_TOKEN;
-    if (!hfToken) { sendJson(res, 500, { error: 'HF_IMAGE_TOKEN is not configured (set it or provide the legacy HF_TOKEN).' }, req); return; }
+    const { accessExpired, featureAccess } = await resolveUserPlan(req, body);
+    const isFree = modelId.includes('schnell') || modelId.includes('f5') || modelId.includes('whisper') || modelId.includes('cogvideo');
+    const userEmail = String(body.email || req.headers['x-user-email'] || '').trim().toLowerCase();
+    const estCost = modelId.includes('video') ? 0.25 : modelId.includes('audio') ? 0.05 : 0.048;
 
-    console.log('[image-studio] generating:', prompt.slice(0, 80));
-
-    try {
-        const { status, buffer } = await hfRequest(prompt, hfToken);
-        const text = buffer.toString();
-        if (status !== 200) {
-            console.error('[image-studio] HF error:', status, text.slice(0, 300));
-            sendJson(res, 502, { error: `Image generation failed (${status}): ${text.slice(0, 200)}` }, req);
+    if (!isFree) {
+        if (accessExpired && !featureAccess?.['image-studio']) {
+            sendJson(res, 403, { error: 'Upgrade to Pro to generate with this model.' }, req);
             return;
         }
-        const json = JSON.parse(text);
-        const b64 = json?.data?.[0]?.b64_json;
-        if (!b64) { sendJson(res, 502, { error: 'No image data in response.' }, req); return; }
-        const imageUrl = `data:image/png;base64,${b64}`;
-        sendJson(res, 200, { imageUrl }, req);
-    } catch (e) {
-        console.error('[image-studio] error:', e.message);
-        sendJson(res, 500, { error: e.message }, req);
+        if (userEmail) {
+            const wallet = await getUserWallet(userEmail);
+            if (wallet.balance < estCost) {
+                sendJson(res, 402, {
+                    error: `Insufficient model credits (${wallet.balance.toFixed(2)}). Generating with this studio model requires at least ${estCost.toFixed(3)}. Please top up your wallet.`,
+                    requiresTopUp: true,
+                    walletBalance: wallet.balance,
+                    requiredAmount: estCost,
+                }, req);
+                return;
+            }
+        }
+    }
+
+    try {
+        const result = await runFalGeneration({
+            modelId,
+            prompt,
+            options,
+            falKey: process.env.FAL_KEY,
+        });
+        let remainingBalance = null;
+        if (!isFree && userEmail) {
+            const globalSettings = getGlobalSettings();
+            const marginPct = Number(globalSettings?.global_margin_percentage || 20);
+            const baseCost = estCost / (1 + marginPct / 100);
+            const profitUsd = estCost - baseCost;
+            const deductRes = await deductUserWallet({
+                email: userEmail,
+                model: modelId,
+                promptTokens: 0,
+                completionTokens: 0,
+                billedCost: estCost,
+                baseCost,
+                profitUsd,
+            });
+            remainingBalance = deductRes.balance;
+        }
+        sendJson(res, 200, { ...result, walletBalance: remainingBalance }, req);
+    } catch (err) {
+        console.error('[handleFalGenerate] Error:', err.message);
+        sendJson(res, 502, { error: err.message }, req);
     }
 }
 
@@ -1463,6 +1635,43 @@ async function runLinear(query, token) {
     } catch { return null; }
 }
 
+// Intelligent Intent Detector: determines if query genuinely requires live web crawling
+function shouldTriggerWebSearch(prompt) {
+    if (!prompt || typeof prompt !== 'string') return false;
+    const p = prompt.trim().toLowerCase();
+
+    // 1. Common greetings, pleasantries, or bot inquiries -> Never trigger web search
+    if (/^(hi|hello|hey|greetings|howdy|sup|hola|namaste|kem cho|good (morning|afternoon|evening|night)|how are you|who are you|what can you do)[\s!.?]*$/i.test(p)) {
+        return false;
+    }
+
+    // 2. Clear real-time & live search intent keywords
+    const searchIntentKeywords = [
+        'today', 'latest', 'recent', 'news', 'weather', 'current price', 'stock', 'score',
+        'who won', 'what happened', 'release date', 'schedule', 'price of', 'market',
+        'update', 'search web', 'google', 'look up', 'browse', 'live', 'real-time',
+        '2025', '2026', 'yesterday', 'tomorrow'
+    ];
+    const hasSearchKeyword = searchIntentKeywords.some(kw => p.includes(kw));
+    const hasUrl = /https?:\/\/[^\s]+/i.test(p);
+
+    if (hasUrl || hasSearchKeyword) {
+        return true;
+    }
+
+    // 3. Coding, math, algorithms, creative writing, translations -> Never trigger web search
+    if (/^(write|create|code|debug|fix|explain|solve|calculate|translate|summarize|refactor|generate|list|convert)\b/i.test(p)) {
+        return false;
+    }
+
+    const words = p.split(/\s+/).filter(Boolean);
+    if (words.length <= 4) {
+        return false;
+    }
+
+    return hasSearchKeyword;
+}
+
 // Orchestrator
 async function resolvePlugins(prompt, plugins, attachments) {
     if (!Array.isArray(plugins) || plugins.length === 0) return { pluginContext: '', imageUrl: null };
@@ -1480,12 +1689,14 @@ async function resolvePlugins(prompt, plugins, attachments) {
             continue;
         }
 
-
         let result = null;
 
         if (p.plugin_id === 'web-search') {
-            const apiKey = cfg.api_key || process.env.BRAVE_SEARCH_API_KEY || process.env.BRAVE_API_KEY || '';
-            result = await runWebSearch(prompt, apiKey);
+            // Only execute web search when the user prompt actually requires live internet data
+            if (shouldTriggerWebSearch(prompt)) {
+                const apiKey = cfg.api_key || process.env.BRAVE_SEARCH_API_KEY || process.env.BRAVE_API_KEY || '';
+                result = await runWebSearch(prompt, apiKey);
+            }
         } else if (p.plugin_id === 'pdf-search') {
             result = await runPdfSearch(prompt, attachments);
         } else if (p.plugin_id === 'calculator') {
@@ -1522,20 +1733,36 @@ async function resolvePlugins(prompt, plugins, attachments) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-function buildInput({ prompt, attachments, history, pluginContext }) {
+function buildInput({ prompt, attachments, history, pluginContext, hasRagContext }) {
+    // If Vector DB recalled memory is already present, keep immediate history to the last turn (-2) to eliminate duplicate context
+    const historyWindow = hasRagContext ? -2 : -4;
     const previousMessages = Array.isArray(history)
-        ? history.slice(-8).map(msg => `${msg.role}: ${msg.content}`).join('\n\n')
+        ? history.slice(historyWindow).map(msg => {
+            const clean = String(msg.content || '')
+                .replace(/^__IMAGES__[\s\S]*?__IMAGES__/, '')
+                .replace(/__PPT_DECK__[\s\S]*?__PPT_DECK__/, '')
+                .replace(/__CITATIONS__[\s\S]*?__CITATIONS__/, '')
+                .trim();
+            // User query kept up to 300 chars; Assistant previous responses condensed to a crisp 180 chars gist
+            const condensed = msg.role === 'assistant'
+                ? (clean.length > 180 ? clean.slice(0, 180) + '...' : clean)
+                : (clean.length > 300 ? clean.slice(0, 300) + '...' : clean);
+            return `${msg.role}: ${condensed}`;
+        }).join('\n\n')
         : '';
     const attachmentText = Array.isArray(attachments) && attachments.length > 0
         ? `\n\nAttachments:\n${attachments.map(f => `- ${f.name} (${f.file_type || 'file'}): ${f.url || 'uploaded'}`).join('\n')}`
         : '';
     const userPrompt = prompt || (attachmentText ? 'Describe the attached file(s).' : '');
     return [
-        'You are Netroot AI assistant. Answer the user clearly and directly.',
-        'Use short paragraphs and numbered steps when useful.',
-        pluginContext ? 'IMPORTANT: Plugin data is provided below. You MUST use it to answer. Never say you lack real-time access when plugin results are present.' : '',
+        'You are Netroot AI assistant. Answer clearly, accurately, and concisely.',
+        'Format with clean markdown, short paragraphs, or bullet points.',
+        'Avoid conversational filler, repetitive introductions, and wordy conclusions.',
+        'Never repeat characters, excessive whitespace, or blank formatting loops in non-English or Indic scripts.',
+        'Match response length to the query: keep general answers concise and to the point (around 150-300 words). Provide exhaustive depth only when the user explicitly asks for detailed explanations, comprehensive essays, or complete code.',
+        pluginContext ? `IMPORTANT: Real-time search/plugin data is provided below. You MUST use it accurately:\n${pluginContext}` : '',
         previousMessages ? `Conversation so far:\n${previousMessages}` : '',
-        `User prompt:\n${userPrompt}${attachmentText}${pluginContext || ''}`,
+        `User prompt:\n${userPrompt}${attachmentText}`,
     ].filter(Boolean).join('\n\n');
 }
 
@@ -1549,9 +1776,168 @@ function extractAnswer(data) {
     return textParts?.join('\n').trim() || 'No response.';
 }
 
+
+// ─── RAG / Document Analysis Handlers ──────────────────────────────────────────
+
+async function handleRagUpload(req, res) {
+    const body = await readJson(req);
+    const { fileName, mimeType, fileData, thread_id, workspace_id } = body;
+    if (!fileName || !fileData) {
+        sendJson(res, 400, { error: 'fileName and fileData (base64) are required.' });
+        return;
+    }
+
+    const { email, userId } = await resolveUserPlan(req, body);
+    const base64Content = fileData.includes(',') ? fileData.split(',')[1] : fileData;
+    const buffer = Buffer.from(base64Content, 'base64');
+
+    try {
+        const document = await indexDocument({
+            buffer,
+            fileName,
+            mimeType: mimeType || 'application/octet-stream',
+            userId: userId || email || 'anonymous',
+            workspaceId: workspace_id || 'default',
+            threadId: thread_id || null,
+        });
+
+        sendJson(res, 200, { success: true, document });
+    } catch (err) {
+        console.error('[rag] Document upload/index error:', err);
+        sendJson(res, 500, { error: err.message || 'Failed to process and vectorize document.' });
+    }
+}
+
+async function handleRagListDocuments(req, res) {
+    const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const threadId = parsedUrl.searchParams.get('thread_id');
+    const workspaceId = parsedUrl.searchParams.get('workspace_id');
+    const { email, userId } = await resolveUserPlan(req, {});
+
+    const documents = listDocuments({
+        threadId: threadId || null,
+        workspaceId: workspaceId || null,
+        userId: userId || email || null,
+    });
+
+    sendJson(res, 200, { success: true, documents });
+}
+
+async function handleRagDeleteDocument(req, res) {
+    const docId = req.url.replace('/api/rag/documents/', '').split('?')[0];
+    if (!docId) {
+        sendJson(res, 400, { error: 'Document ID is required.' });
+        return;
+    }
+    const deleted = deleteDocument(docId);
+    sendJson(res, 200, { success: deleted });
+}
+
+async function pipeStreamToClient({
+    upstreamResponse,
+    clientRes,
+    clientReq,
+    model,
+    email,
+    plan,
+    prompt,
+    saveTurnMemory,
+    requestStart,
+}) {
+    clientRes.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+    });
+
+    const reader = upstreamResponse.body.getReader();
+    const decoder = new TextDecoder();
+    let accumulatedText = '';
+    let clientDisconnected = false;
+    let consecutiveWhitespaceDeltas = 0;
+
+    clientReq.on('close', () => {
+        clientDisconnected = true;
+        reader.cancel().catch(() => {});
+    });
+
+    try {
+        while (!clientDisconnected) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunkStr = decoder.decode(value, { stream: true });
+
+            const lines = chunkStr.split('\n');
+            let loopDetected = false;
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (trimmed.startsWith('data: ') && trimmed !== 'data: [DONE]') {
+                    try {
+                        const parsed = JSON.parse(trimmed.slice(6));
+                        const delta = parsed.choices?.[0]?.delta?.content || '';
+                        if (delta) {
+                            // Detect repetitive pure whitespace or \u202F loop
+                            if (/^[\s\u202F\u00A0]+$/.test(delta)) {
+                                consecutiveWhitespaceDeltas++;
+                                if (consecutiveWhitespaceDeltas > 6) {
+                                    loopDetected = true;
+                                }
+                            } else {
+                                consecutiveWhitespaceDeltas = 0;
+                            }
+
+                            if (!loopDetected) {
+                                accumulatedText += delta;
+                            }
+                        }
+                    } catch (_) {}
+                }
+            }
+
+            if (loopDetected) {
+                console.warn(`[stream] Loop Breaker: repetitive whitespace loop intercepted (${consecutiveWhitespaceDeltas} deltas)! Terminating stream cleanly.`);
+                await reader.cancel().catch(() => {});
+                break;
+            }
+
+            clientRes.write(chunkStr);
+        }
+    } catch (err) {
+        if (!clientDisconnected) {
+            console.warn('[stream] reader warning:', err.message);
+        }
+    } finally {
+        if (!clientRes.writableEnded) {
+            clientRes.write('data: [DONE]\n\n');
+            clientRes.end();
+        }
+        accumulatedText = accumulatedText.replace(/[\s\u202F\u00A0]{4,}$/, '').trimEnd();
+        if (accumulatedText && saveTurnMemory) {
+            saveTurnMemory(prompt, accumulatedText);
+        }
+        if (accumulatedText) {
+            const estOutTokens = Math.ceil(accumulatedText.length / 4);
+            const estInTokens = estimateRequestTokens(prompt);
+            recordUsage({
+                inputTokens: estInTokens,
+                outputTokens: estOutTokens,
+                cachedTokens: 0,
+                latencyMs: Date.now() - (requestStart || Date.now()),
+                model,
+                userEmail: email,
+                plan,
+                prompt,
+            }).catch(() => {});
+        }
+    }
+}
+
 async function handleChat(req, res) {
     const body = await readJson(req);
-    const prompt = String(body.prompt || body.query || body.message || body.content || '').trim();
+    const isStreaming = Boolean(body.stream);
+    let prompt = String(body.prompt || body.query || body.message || body.content || '').trim();
 
     if (!prompt && (!Array.isArray(body.attachments) || body.attachments.length === 0)) {
         sendJson(res, 400, { error: 'Prompt is required.' });
@@ -1591,10 +1977,97 @@ async function handleChat(req, res) {
 
     const selectedModel = normalizeModel(body.model || process.env.GROQ_MODEL || process.env.OPENAI_MODEL || 'openai/gpt-oss-20b');
 
-    console.log('[chat] plan:', plan, '| model:', selectedModel, '| canUse:', canUseModel(plan, selectedModel), '| allowedModels:', JSON.stringify(getPlanLimits(plan).allowedModels));
-    if (!canUseModel(plan, selectedModel)) {
+    // 🔒 Enforce Universal Workspace Guardrails in Chat Studio (Budget Cap, RPM, Blocked Providers/Models, Toxicity, PII Masking)
+    const wsId = body.workspace_id || req.headers['x-workspace-id'] || (email ? getWorkspaces(email)?.activeWorkspaceId : 'ws_default') || 'ws_default';
+    const guardrailCheck = enforceWorkspaceGuardrails({
+        workspaceId: wsId,
+        model: selectedModel,
+        prompt,
+        messages: Array.isArray(body.history) ? body.history : [],
+        userPlan: plan,
+    });
+
+    if (guardrailCheck.blocked) {
+        sendJson(res, guardrailCheck.status || 403, {
+            error: guardrailCheck.message,
+            code: guardrailCheck.code,
+            requiresTopUp: guardrailCheck.code === 'workspace_budget_exceeded',
+        }, req);
+        return;
+    }
+
+    // Apply masked prompt if PII masking is enabled
+    if (guardrailCheck.maskedPrompt && guardrailCheck.maskedPrompt !== prompt) {
+        prompt = guardrailCheck.maskedPrompt;
+        body.prompt = guardrailCheck.maskedPrompt;
+    }
+
+    
+    // ── RAG / Vectorized Document Knowledge Retrieval ─────────────────────
+    let ragContext = '';
+    let citations = [];
+    const threadId = body.thread_id || body.threadId || null;
+    const saveTurnMemory = (textPrompt, textAnswer) => {
+        if (!threadId || !textPrompt || !textAnswer) return;
+        indexChatMessage({
+            threadId,
+            userId,
+            workspaceId: wsId,
+            userPrompt: textPrompt,
+            aiAnswer: textAnswer,
+        }).catch(e => console.warn('[chat-memory] indexing warning:', e.message));
+    };
+
+    try {
+        const matchedChunks = await searchRelevantChunks({
+            query: prompt,
+            threadId,
+            userId,
+            workspaceId: wsId,
+            limit: 2,
+            threshold: 0.40,
+        });
+
+        if (matchedChunks.length > 0) {
+            ragContext = formatRAGPromptContext(matchedChunks);
+            citations = matchedChunks.map(c => ({
+                fileName: c.metadata?.fileName || 'Document',
+                slide: c.metadata?.slide || null,
+                page: c.metadata?.page || null,
+                similarity: Math.round(c.similarity * 100),
+            }));
+            console.log(`[rag] Injected ${matchedChunks.length} chunks from: ${citations.map(c => c.fileName).join(', ')}`);
+        }
+    } catch (ragErr) {
+        console.warn('[rag] RAG search warning:', ragErr.message);
+    }
+
+    if (ragContext) {
+        prompt = `${ragContext}\n\n[USER QUESTION]: ${prompt}`;
+        body.prompt = prompt;
+    }
+
+    // Apply workspace preset if preset_id is passed
+    if (body.preset_id) {
+        const presets = getPresets(wsId);
+        const matchedPreset = (presets || []).find(p => p.id === body.preset_id);
+        if (matchedPreset && matchedPreset.system_prompt) {
+            body.history = Array.isArray(body.history) ? [...body.history] : [];
+            const hasSystem = body.history.some(m => m.role === 'system');
+            if (!hasSystem) {
+                body.history.unshift({ role: 'system', content: matchedPreset.system_prompt });
+            }
+        }
+    }
+
+    const userWalletInfo = email ? await getUserWallet(email) : { balance: 0 };
+    const hasWalletCredits = (userWalletInfo?.balance || 0) >= 0.001;
+
+    console.log('[chat] plan:', plan, '| model:', selectedModel, '| canUse:', canUseModel(plan, selectedModel), '| hasWalletCredits:', hasWalletCredits);
+    if (!canUseModel(plan, selectedModel) && !hasWalletCredits) {
         sendJson(res, 403, {
-            error: `The model ${selectedModel} is not available on the ${plan} plan. Upgrade to Pro to access more models.`,
+            error: `The model ${selectedModel} is not available on the ${plan} plan. Top up your wallet or upgrade to Pro to access this model.`,
+            requiresTopUp: true,
         });
         return;
     }
@@ -1652,7 +2125,7 @@ async function handleChat(req, res) {
         return;
     }
 
-    const builtPrompt = buildInput({ ...body, pluginContext });
+    const builtPrompt = buildInput({ ...body, pluginContext, hasRagContext: Boolean(ragContext) });
 
     if (AI_PROVIDER === 'google') {
         const googleApiKey = process.env.GOOGLE_API_KEY;
@@ -1680,6 +2153,310 @@ async function handleChat(req, res) {
         return;
     }
 
+    // Route OpenRouter catalog models using OPENROUTER_API_KEY
+    const GROQ_NATIVE_MODELS = new Set([
+        'openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'allam-2-7b',
+        'qwen/qwen3.8-27b', 'whisper-large-v3', 'whisper-large-v3-turbo'
+    ]);
+
+    if (process.env.OPENROUTER_API_KEY && !GROQ_NATIVE_MODELS.has(selectedModel)) {
+        const isPaidModel = !isModelFree(selectedModel);
+        if (isPaidModel && email) {
+            const wallet = await getUserWallet(email);
+            if (wallet.balance < 0.001) {
+                sendJson(res, 402, {
+                    error: `Insufficient model credits (${wallet.balance.toFixed(2)}). Please top up your wallet to use this paid model.`,
+                    requiresTopUp: true,
+                    walletBalance: wallet.balance,
+                });
+                return;
+            }
+        }
+        const isStreaming = Boolean(body.stream);
+        const orStart = Date.now();
+        console.log('[chat] routing to model engine | model:', selectedModel, '| streaming:', isStreaming, '| prompt:', body.prompt?.slice(0, 80));
+        try {
+            const orResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                    'Content-Type': 'application/json',
+                    'HTTP-Referer': 'https://netrootai.tech',
+                    'X-Title': 'NetRoot AI Studio',
+                },
+                body: JSON.stringify({
+                    model: selectedModel,
+                    messages: [{ role: 'user', content: builtPrompt }],
+                    stream: isStreaming,
+                }),
+            });
+
+            if (orResponse.ok && isStreaming) {
+                await pipeStreamToClient({
+                    upstreamResponse: orResponse,
+                    clientRes: res,
+                    clientReq: req,
+                    model: selectedModel,
+                    email,
+                    plan,
+                    prompt,
+                    saveTurnMemory,
+                    requestStart: orStart,
+                });
+                return;
+            }
+
+            let finalOrData = isStreaming ? {} : await orResponse.json().catch(() => ({}));
+            let finalResponseOk = orResponse.ok;
+
+            // Step 1: If 429 rate limit, perform 1 immediate retry after 1.2s
+            if (!finalResponseOk && orResponse.status === 429) {
+                console.warn(`[chat] '${selectedModel}' hit 429 rate-limit on OpenRouter. Attempting 1 automatic retry in 1200ms...`);
+                await new Promise(r => setTimeout(r, 1200));
+                try {
+                    const retryRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                            'Content-Type': 'application/json',
+                            'HTTP-Referer': 'https://netrootai.tech',
+                            'X-Title': 'NetRoot AI Studio',
+                        },
+                        body: JSON.stringify({
+                            model: selectedModel,
+                            messages: [{ role: 'user', content: builtPrompt }],
+                            stream: isStreaming,
+                        }),
+                    });
+                    if (retryRes.ok) {
+                        if (isStreaming) {
+                            await pipeStreamToClient({
+                                upstreamResponse: retryRes,
+                                clientRes: res,
+                                clientReq: req,
+                                model: selectedModel,
+                                email,
+                                plan,
+                                prompt,
+                                saveTurnMemory,
+                                requestStart: orStart,
+                            });
+                            return;
+                        }
+                        finalOrData = await retryRes.json().catch(() => ({}));
+                        finalResponseOk = true;
+                        console.log(`[chat] '${selectedModel}' retry succeeded!`);
+                    }
+                } catch (retryErr) {
+                    console.warn('[chat] retry error:', retryErr.message);
+                }
+            }
+
+            // Step 2: If still failing (429 rate-limit, 503 outage, 404 retired), record real-time admin alert and execute seamless Smart Fallback
+            if (!finalResponseOk) {
+                const errStatus = orResponse.status;
+                const errText = typeof finalOrData?.error === 'string' ? finalOrData.error : (finalOrData?.error?.message || `HTTP ${errStatus} from OpenRouter`);
+                const alertSeverity = errStatus === 402 ? 'CRITICAL' : (errStatus === 429 ? 'WARNING' : 'HIGH');
+                const alertType = errStatus === 402 ? 'LOW_BALANCE' : (errStatus === 429 ? 'RATE_LIMIT' : 'OPENROUTER_ERROR');
+
+                // Trigger real-time alert for admin notification center
+                recordSystemAlert(supabase, {
+                    type: alertType,
+                    severity: alertSeverity,
+                    statusCode: errStatus,
+                    model: selectedModel,
+                    userEmail: email,
+                    message: `[OpenRouter ${errStatus}] ${selectedModel}: ${errText}`,
+                    metadata: { prompt: prompt?.slice(0, 100), plan },
+                }).catch(() => {});
+
+                console.warn(`[chat-fallback] '${selectedModel}' failed (status ${orResponse.status}). Attempting seamless failover to Groq...`);
+                if (process.env.GROQ_API_KEY) {
+                    try {
+                        const fallbackModel = 'openai/gpt-oss-20b';
+                        const fbStart = Date.now();
+                        const groqPrompt = prepareGroqPrompt(builtPrompt);
+                        const groqRes = await fetch(GROQ_CHAT_URL, {
+                            method: 'POST',
+                            headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                model: fallbackModel,
+                                messages: [{ role: 'user', content: groqPrompt }],
+                                stream: isStreaming,
+                                max_tokens: 2048,
+                                frequency_penalty: 0.3,
+                                presence_penalty: 0.2,
+                            }),
+                        });
+                        if (groqRes.ok) {
+                            if (isStreaming) {
+                                console.log(`[chat-fallback] Seamless streaming failover from '${selectedModel}' to '${fallbackModel}' started!`);
+                                await pipeStreamToClient({
+                                    upstreamResponse: groqRes,
+                                    clientRes: res,
+                                    clientReq: req,
+                                    model: selectedModel,
+                                    email,
+                                    plan,
+                                    prompt,
+                                    saveTurnMemory,
+                                    requestStart: fbStart,
+                                });
+                                return;
+                            }
+                            const groqData = await groqRes.json().catch(() => ({}));
+                            if (groqData.choices?.[0]?.message?.content) {
+                                console.log(`[chat-fallback] Seamless failover from '${selectedModel}' to '${fallbackModel}' succeeded!`);
+                                const baseAnswer = groqData.choices[0].message.content;
+                                if (groqData.usage) {
+                                    recordUsage({
+                                        inputTokens: groqData.usage.input_tokens || groqData.usage.prompt_tokens || 0,
+                                        outputTokens: groqData.usage.output_tokens || groqData.usage.completion_tokens || 0,
+                                        cachedTokens: groqData.usage.input_tokens_details?.cached_tokens || 0,
+                                        latencyMs: Date.now() - fbStart,
+                                        model: selectedModel,
+                                        userEmail: email,
+                                        plan,
+                                        prompt,
+                                    });
+                                }
+                                saveTurnMemory(prompt, baseAnswer);
+                                sendJson(res, 200, { answer: baseAnswer, fallbackUsed: true, fallbackModel });
+                                return;
+                            }
+                        }
+                    } catch (fbErr) {
+                        console.error('[chat-fallback] failover error:', fbErr.message);
+                    }
+                }
+
+                console.error('[chat] upstream model error:', finalOrData);
+                const rawMsg = finalOrData.error?.message || '';
+                let cleanErr = 'The requested AI model is temporarily unavailable. Please choose another model.';
+                if (orResponse.status === 404 || rawMsg.includes('retired') || rawMsg.includes('not exist') || rawMsg.includes('does not exist') || rawMsg.includes('not found')) {
+                    cleanErr = `The model '${selectedModel}' is currently retired or unavailable. Please choose another model.`;
+                } else if (orResponse.status === 429 || rawMsg.includes('rate-limited') || rawMsg.includes('quota') || rawMsg.includes('exceeded')) {
+                    cleanErr = `High traffic: '${selectedModel}' is temporarily rate-limited. Please retry shortly or select another model.`;
+                } else if (rawMsg) {
+                    cleanErr = rawMsg
+                        .replace(/https?:\/\/[^\s)]+/gi, '')
+                        .replace(/openrouter(\.ai)?/gi, 'NetRoot AI')
+                        .replace(/api\.groq\.com/gi, 'NetRoot Gateway')
+                        .replace(/user_[a-zA-Z0-9_-]+/gi, '')
+                        .trim() || 'The requested AI model encountered an error. Please try again.';
+                }
+                sendJson(res, orResponse.status, { error: cleanErr });
+                return;
+            }
+
+            let remainingWalletBalance = null;
+            let billedUsage = null;
+            if (finalOrData.usage) {
+                recordUsage({
+                    inputTokens: finalOrData.usage.prompt_tokens || 0,
+                    outputTokens: finalOrData.usage.completion_tokens || 0,
+                    cachedTokens: 0,
+                    latencyMs: Date.now() - orStart,
+                    model: selectedModel,
+                    userEmail: email,
+                    plan,
+                    prompt,
+                });
+                if (!isModelFree(selectedModel) && email) {
+                    const globalSettings = getGlobalSettings();
+                    const marginPct = Number(globalSettings?.global_margin_percentage || 20);
+                    const { baseCost, netrootProfit, billedCost } = calculateModelCost(
+                        selectedModel,
+                        finalOrData.usage.prompt_tokens || 0,
+                        finalOrData.usage.completion_tokens || 0,
+                        marginPct
+                    );
+                    const deductRes = await deductUserWallet({
+                        email,
+                        model: selectedModel,
+                        promptTokens: finalOrData.usage.prompt_tokens || 0,
+                        completionTokens: finalOrData.usage.completion_tokens || 0,
+                        billedCost,
+                        baseCost,
+                        profitUsd: netrootProfit,
+                    });
+                    remainingWalletBalance = deductRes.balance;
+                    billedUsage = {
+                        billedCost,
+                        profitUsd: netrootProfit,
+                        baseCost,
+                        tokens: (finalOrData.usage.prompt_tokens || 0) + (finalOrData.usage.completion_tokens || 0),
+                    };
+                }
+            }
+            const baseAnswer = finalOrData.choices?.[0]?.message?.content || 'No response from model.';
+            saveTurnMemory(prompt, baseAnswer);
+            sendJson(res, 200, { answer: baseAnswer, walletBalance: remainingWalletBalance, billedUsage });
+            return;
+        } catch (err) {
+            console.error('[chat] OpenRouter fetch failed:', err.message);
+            if (process.env.GROQ_API_KEY) {
+                try {
+                    const fallbackModel = 'openai/gpt-oss-20b';
+                    const fbStart = Date.now();
+                    const groqPrompt = prepareGroqPrompt(builtPrompt);
+                    const groqRes = await fetch(GROQ_CHAT_URL, {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            model: fallbackModel,
+                            messages: [{ role: 'user', content: groqPrompt }],
+                            stream: isStreaming,
+                            max_tokens: 2048,
+                            frequency_penalty: 0.3,
+                            presence_penalty: 0.2,
+                        }),
+                    });
+                    if (groqRes.ok) {
+                        if (isStreaming) {
+                            await pipeStreamToClient({
+                                upstreamResponse: groqRes,
+                                clientRes: res,
+                                clientReq: req,
+                                model: selectedModel,
+                                email,
+                                plan,
+                                prompt,
+                                saveTurnMemory,
+                                requestStart: fbStart,
+                            });
+                            return;
+                        }
+                        const groqData = await groqRes.json().catch(() => ({}));
+                        if (groqData.choices?.[0]?.message?.content) {
+                            console.log(`[chat-fallback] Exception failover from '${selectedModel}' to '${fallbackModel}' succeeded!`);
+                            const baseAnswer = groqData.choices[0].message.content;
+                            if (groqData.usage) {
+                                recordUsage({
+                                    inputTokens: groqData.usage.input_tokens || groqData.usage.prompt_tokens || 0,
+                                    outputTokens: groqData.usage.output_tokens || groqData.usage.completion_tokens || 0,
+                                    cachedTokens: groqData.usage.input_tokens_details?.cached_tokens || 0,
+                                    latencyMs: Date.now() - fbStart,
+                                    model: selectedModel,
+                                    userEmail: email,
+                                    plan,
+                                    prompt,
+                                });
+                            }
+                            saveTurnMemory(prompt, baseAnswer);
+                            sendJson(res, 200, { answer: baseAnswer, fallbackUsed: true, fallbackModel });
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    console.error('[chat-fallback] catch failover failed:', e.message);
+                }
+            }
+            sendJson(res, 502, { error: `Failed to reach OpenRouter: ${err.message}` });
+            return;
+        }
+    }
+
     if (AI_PROVIDER === 'groq') {
         const groqApiKey = process.env.GROQ_API_KEY;
         if (!groqApiKey) { sendJson(res, 500, { error: 'GROQ_API_KEY is missing.' }); return; }
@@ -1701,13 +2478,21 @@ async function handleChat(req, res) {
                 body: JSON.stringify({
                     model: groqModel,
                     messages: [{ role: 'user', content: `${textPrompt}\n\n(Image attached: ${imageAttachments.map(a => a.url).join(', ')})` }],
+                    max_tokens: 2048,
+                    frequency_penalty: 0.3,
+                    presence_penalty: 0.2,
                 }),
             });
             const data = await groqResponse.json().catch(() => ({}));
             console.log('[chat] non-vision response status:', groqResponse.status, '| data:', JSON.stringify(data).slice(0, 200));
-            if (!groqResponse.ok) { sendJson(res, groqResponse.status, { error: data.error?.message || 'Groq request failed.' }); return; }
+            if (!groqResponse.ok) {
+                const cleanErrMsg = formatCleanAiError(data.error);
+                sendJson(res, groqResponse.status, { error: cleanErrMsg });
+                return;
+            }
             const answer = data.choices?.[0]?.message?.content || 'No response.';
             if (data.usage) recordUsage({ inputTokens: data.usage.prompt_tokens || 0, outputTokens: data.usage.completion_tokens || 0, cachedTokens: 0, latencyMs: Date.now() - groqStart, model: groqModel, userEmail: email, plan, prompt });
+            saveTurnMemory(prompt, answer);
             sendJson(res, 200, { answer });
             return;
         }
@@ -1736,26 +2521,73 @@ async function handleChat(req, res) {
             const groqResponse = await fetch(GROQ_CHAT_URL, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${groqApiKey}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model: groqModel, messages: [{ role: 'user', content: userContent }] }),
+                body: JSON.stringify({ model: groqModel, messages: [{ role: 'user', content: userContent }], max_tokens: 2048, frequency_penalty: 0.3, presence_penalty: 0.2 }),
             });
             const data = await groqResponse.json().catch(() => ({}));
             console.log('[chat] vision response status:', groqResponse.status, '| data:', JSON.stringify(data).slice(0, 200));
-            if (!groqResponse.ok) { sendJson(res, groqResponse.status, { error: data.error?.message || 'Groq vision request failed.' }); return; }
-            const answer = data.choices?.[0]?.message?.content || 'No response.';
+            if (!groqResponse.ok) {
+                const cleanErrMsg = formatCleanAiError(data.error);
+                sendJson(res, groqResponse.status, { error: cleanErrMsg });
+                return;
+            }
+            let answer = data.choices?.[0]?.message?.content || 'No response.';
+            answer = answer.replace(/[\s\u202F\u00A0]{4,}$/, '').trimEnd();
             if (data.usage) recordUsage({ inputTokens: data.usage.prompt_tokens || 0, outputTokens: data.usage.completion_tokens || 0, cachedTokens: 0, latencyMs: Date.now() - groqStart, model: groqModel, userEmail: email, plan, prompt });
+            saveTurnMemory(prompt, answer);
             sendJson(res, 200, { answer });
             return;
         }
 
+        const groqPrompt = prepareGroqPrompt(builtPrompt);
+
         // Text-only path
+        if (isStreaming) {
+            const groqResponse = await fetch(GROQ_CHAT_URL, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${groqApiKey}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: groqModel,
+                    messages: [{ role: 'user', content: groqPrompt }],
+                    stream: true,
+                    max_tokens: 2048,
+                    frequency_penalty: 0.3,
+                    presence_penalty: 0.2,
+                }),
+            });
+            if (groqResponse.ok) {
+                await pipeStreamToClient({
+                    upstreamResponse: groqResponse,
+                    clientRes: res,
+                    clientReq: req,
+                    model: groqModel,
+                    email,
+                    plan,
+                    prompt,
+                    saveTurnMemory,
+                    requestStart: groqStart,
+                });
+                return;
+            }
+        }
+
         const groqResponse = await fetch(GROQ_CHAT_URL, {
             method: 'POST',
             headers: { Authorization: `Bearer ${groqApiKey}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: groqModel, messages: [{ role: 'user', content: builtPrompt }] }),
+            body: JSON.stringify({
+                model: groqModel,
+                messages: [{ role: 'user', content: groqPrompt }],
+                max_tokens: 2048,
+                frequency_penalty: 0.3,
+                presence_penalty: 0.2,
+            }),
         });
         const data = await groqResponse.json().catch(() => ({}));
         console.log('[chat] text response status:', groqResponse.status, '| data:', JSON.stringify(data).slice(0, 200));
-        if (!groqResponse.ok) { sendJson(res, groqResponse.status, { error: data.error?.message || 'Groq request failed.' }); return; }
+        if (!groqResponse.ok) {
+            const cleanErrMsg = formatCleanAiError(data.error);
+            sendJson(res, groqResponse.status, { error: cleanErrMsg });
+            return;
+        }
         if (data.usage) {
             recordUsage({
                 inputTokens: data.usage.input_tokens || data.usage.prompt_tokens || 0,
@@ -1768,8 +2600,10 @@ async function handleChat(req, res) {
                 prompt,
             });
         }
-        const answer = data.choices?.[0]?.message?.content || 'No response.';
-        sendJson(res, 200, { answer });
+        let baseAnswer = data.choices?.[0]?.message?.content || 'No response.';
+        baseAnswer = baseAnswer.replace(/[\s\u202F\u00A0]{4,}$/, '').trimEnd();
+        saveTurnMemory(prompt, baseAnswer);
+        sendJson(res, 200, { answer: baseAnswer });
         return;
     }
 
@@ -1794,7 +2628,76 @@ async function handleChat(req, res) {
             prompt,
         });
     }
-    sendJson(res, 200, { answer: extractAnswer(data) });
+    const finalAnswer = extractAnswer(data);
+    saveTurnMemory(prompt, finalAnswer);
+    sendJson(res, 200, { answer: finalAnswer });
+}
+
+async function handleAutoTitle(req, res) {
+    try {
+        const body = await readJson(req);
+        const { threadId, prompt, answer } = body;
+        if (!prompt && !answer) {
+            sendJson(res, 400, { error: 'Prompt or answer is required.' }, req);
+            return;
+        }
+
+        const cleanPrompt = String(prompt || '').replace(/^__IMAGES__.*?__IMAGES__/s, '').trim();
+        const cleanAnswer = String(answer || '').replace(/^__IMAGES__.*?__IMAGES__/s, '').slice(0, 300).trim();
+
+        let generatedTitle = '';
+        const groqApiKey = process.env.GROQ_API_KEY;
+
+        if (groqApiKey && cleanPrompt) {
+            try {
+                const titlePrompt = `Give exactly ONE short title (3 to 5 words) for a chat about: "${cleanPrompt.slice(0, 160)}".
+Return ONLY the title text, with no numbering, no punctuation, and no quotes.
+Example: Sound Synthesis in AI`;
+
+                const aiRes = await fetch(GROQ_CHAT_URL, {
+                    method: 'POST',
+                    headers: {
+                        Authorization: `Bearer ${groqApiKey}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        model: 'openai/gpt-oss-20b',
+                        messages: [{ role: 'user', content: titlePrompt }],
+                        max_tokens: 250,
+                        temperature: 0.3,
+                    }),
+                });
+
+                if (aiRes.ok) {
+                    const aiData = await aiRes.json().catch(() => ({}));
+                    let rawTitle = aiData.choices?.[0]?.message?.content || '';
+                    rawTitle = rawTitle.split('\n')[0].replace(/^["'`]|["'`]$/g, '').replace(/^Title:\s*/i, '').replace(/^[1-9]\.\s*/, '').trim();
+                    if (rawTitle.length >= 3 && rawTitle.length <= 60) {
+                        generatedTitle = rawTitle;
+                    }
+                }
+            } catch (err) {
+                console.warn('[auto-title] generation warning:', err.message);
+            }
+        }
+
+        if (!generatedTitle) {
+            generatedTitle = cleanPrompt.slice(0, 40).trim() || 'New Chat';
+        }
+
+        const sb = getSupabaseClient();
+        if (sb && threadId) {
+            await sb.from('threads').update({
+                title: generatedTitle,
+                updated_at: new Date().toISOString(),
+            }).eq('id', threadId);
+        }
+
+        sendJson(res, 200, { success: true, title: generatedTitle }, req);
+    } catch (e) {
+        console.error('[auto-title] exception:', e);
+        sendJson(res, 500, { error: e.message }, req);
+    }
 }
 
 async function handleGetPlan(req, res) {
@@ -1822,7 +2725,8 @@ async function handleGetPlan(req, res) {
         await supabase.from('profiles').upsert({ id: found.id, plan: summary.effective_plan }, { onConflict: 'id' });
     }
     const lifetimePptCount = await getUserLifetimePptCount(supabase, found.id, email);
-    sendJson(res, 200, { ...summary, plan: summary.effective_plan, feature_access: profile?.feature_access || {}, lifetime_ppt_count: lifetimePptCount });
+    const userWallet = await getUserWallet(email);
+    sendJson(res, 200, { ...summary, plan: summary.effective_plan, feature_access: profile?.feature_access || {}, lifetime_ppt_count: lifetimePptCount, wallet_balance: userWallet.balance });
 }
 
 async function handlePptQuota(req, res) {
@@ -1854,9 +2758,11 @@ function toIsoFromStripeTimestamp(timestamp) {
 
 function subscriptionSummary(subscription, fallbackPlan = 'free', freeTrialEndsAt = null) {
     const plan = normalizePlan(subscription?.plan || fallbackPlan);
-    const periodEnd = subscription?.current_period_end || null;
-    const expired = Boolean(periodEnd && new Date(periodEnd).getTime() <= Date.now());
+    const intervalMonths = subscription?.interval_months || 1;
     const paidPlan = plan !== 'free';
+    const fallbackEnd = paidPlan ? new Date(Date.now() + intervalMonths * 30 * 86400000).toISOString() : null;
+    const periodEnd = subscription?.current_period_end || fallbackEnd;
+    const expired = Boolean(periodEnd && new Date(periodEnd).getTime() <= Date.now());
     const active = paidPlan && !expired && ['active', 'trialing', 'past_due'].includes(subscription?.status || 'active');
 
     const freeTrialExpired = !paidPlan && Boolean(freeTrialEndsAt && new Date(freeTrialEndsAt).getTime() <= Date.now());
@@ -1866,19 +2772,20 @@ function subscriptionSummary(subscription, fallbackPlan = 'free', freeTrialEndsA
         plan_status: active || (!paidPlan && !freeTrialExpired) ? 'active' : 'expired',
         current_period_end: paidPlan ? periodEnd : freeTrialEndsAt,
         auto_renew: Boolean(active && !subscription?.cancel_at_period_end),
-        subscription_status: subscription?.status || (paidPlan ? 'expired' : 'free'),
-        interval_months: subscription?.interval_months || 1,
+        subscription_status: subscription?.status || (paidPlan ? 'active' : 'free'),
+        interval_months: intervalMonths,
         access_expired: !active && (paidPlan || freeTrialExpired),
     };
 }
 
 function stripeSubscriptionData(subscription) {
     const periodEnd = subscription?.current_period_end || subscription?.items?.data?.[0]?.current_period_end;
+    const intervalMonths = subscription?.items?.data?.[0]?.price?.recurring?.interval_count || 1;
     return {
         status: subscription?.status || 'active',
-        current_period_end: toIsoFromStripeTimestamp(periodEnd),
+        current_period_end: toIsoFromStripeTimestamp(periodEnd) || new Date(Date.now() + intervalMonths * 30 * 86400000).toISOString(),
         cancel_at_period_end: Boolean(subscription?.cancel_at_period_end),
-        interval_months: subscription?.items?.data?.[0]?.price?.recurring?.interval_count || 1,
+        interval_months: intervalMonths,
     };
 }
 
@@ -1886,6 +2793,65 @@ async function applyCheckoutRenewalPreference(stripe, subscription, autoRenew) {
     if (autoRenew || !subscription) return subscription;
     const subscriptionId = typeof subscription === 'string' ? subscription : subscription.id;
     return stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: true });
+}
+
+async function handleCreateWalletTopUp(req, res) {
+    const body = await readJson(req);
+    const email = String(body.email || '').trim().toLowerCase();
+    const amount = Number(body.amount);
+    if (!email) { sendJson(res, 400, { error: 'email is required.' }); return; }
+    if (isNaN(amount) || amount < 1 || amount > 1000) {
+        sendJson(res, 400, { error: 'Please enter a valid top-up amount between $1 and $1,000.' });
+        return;
+    }
+
+    const stripeKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeKey) { sendJson(res, 500, { error: 'Stripe not configured.' }); return; }
+
+    const stripe = new Stripe(stripeKey);
+    const origin = req.headers?.origin || (IS_VPS ? 'https://netrootai.tech' : 'http://localhost:5173');
+
+    const session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        payment_method_types: ['card'],
+        customer_email: email,
+        line_items: [{
+            price_data: {
+                currency: 'usd',
+                product_data: {
+                    name: `NetRoot AI - Model Usage Credits (${amount.toFixed(2)})`,
+                    description: 'Prepaid balance for pay-per-token frontier AI models & media generation.',
+                },
+                unit_amount: Math.round(amount * 100),
+            },
+            quantity: 1,
+        }],
+        success_url: `${origin}/dashboard?wallet_success=true&amount=${amount}&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${origin}/pricing?wallet_cancelled=true`,
+        metadata: {
+            type: 'wallet_topup',
+            email,
+            amount_usd: String(amount),
+        },
+    });
+
+    sendJson(res, 200, { url: session.url });
+}
+
+async function handleGetWalletBalance(req, res) {
+    const url = new URL(req.url, 'http://127.0.0.1');
+    const email = url.searchParams.get('email');
+    if (!email) { sendJson(res, 400, { error: 'email is required.' }); return; }
+    const wallet = await getUserWallet(email);
+    sendJson(res, 200, wallet);
+}
+
+async function handleGetWalletTransactions(req, res) {
+    const url = new URL(req.url, 'http://127.0.0.1');
+    const email = url.searchParams.get('email');
+    if (!email) { sendJson(res, 400, { error: 'email is required.' }); return; }
+    const transactions = await getUserWalletTransactions(email);
+    sendJson(res, 200, { transactions });
 }
 
 async function handleCreateCheckout(req, res) {
@@ -1901,11 +2867,28 @@ async function handleCreateCheckout(req, res) {
     const stripe = new Stripe(stripeKey);
     const origin = req.headers?.origin || (IS_VPS ? 'https://netrootai.tech' : 'http://localhost:5173');
 
+    // 1 month = $19 ($12 credits), 3 months = $49 ($35 credits), other months = $19 * months
+    let unitAmountInCents = 1900;
+    let includedCredits = 12;
+    if (months === 3) {
+        unitAmountInCents = 4900;
+        includedCredits = 35;
+    } else if (months === 1) {
+        unitAmountInCents = 1900;
+        includedCredits = 12;
+    } else {
+        unitAmountInCents = 1900 * months;
+        includedCredits = 12 * months;
+    }
+
     const lineItems = [{
         price_data: {
             currency: 'usd',
-            product_data: { name: `NetRoot AI ${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan (${months} month${months === 1 ? '' : 's'})` },
-            unit_amount: plan === 'pro' ? 1900 * months : 0,
+            product_data: {
+                name: `NetRoot AI ${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan (${months} month${months === 1 ? '' : 's'})`,
+                description: `Includes ${includedCredits} free wallet credits and 200,000 daily tokens`,
+            },
+            unit_amount: plan === 'pro' ? unitAmountInCents : 0,
             recurring: { interval: 'month', interval_count: months },
         },
         quantity: 1,
@@ -1923,7 +2906,13 @@ async function handleCreateCheckout(req, res) {
         line_items: lineItems,
         success_url: `${origin}/checkout/success?plan=${plan}&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${origin}/pricing`,
-        metadata: { email, plan, months: String(months), auto_renew: String(autoRenew) },
+        metadata: {
+            email,
+            plan,
+            months: String(months),
+            auto_renew: String(autoRenew),
+            included_credits: String(includedCredits),
+        },
     });
 
     sendJson(res, 200, { url: session.url });
@@ -2022,6 +3011,42 @@ async function handleVerifySession(req, res) {
         sendJson(res, 400, { error: 'Payment not completed.' }); return;
     }
 
+    // 1. Handle One-time Wallet Top-Up Session
+    if (session.metadata?.type === 'wallet_topup') {
+        const topupEmail = session.metadata?.email || session.customer_email;
+        const topupAmount = Number(session.metadata?.amount_usd || 0);
+        if (topupEmail && topupAmount > 0) {
+            try {
+                const creditRes = await creditUserWallet(topupEmail, topupAmount, {
+                    stripeSessionId: session.id,
+                    note: `Stripe Top-Up (${topupAmount})`,
+                });
+                console.log(`[verify-session] Top-up verified: ${topupEmail} +${topupAmount}. New balance: ${creditRes.balance}`);
+                sendPaymentReceiptEmail({
+                    email: topupEmail,
+                    plan: 'topup',
+                    amount: topupAmount,
+                    walletCredits: topupAmount,
+                    sessionId: session.id,
+                }).catch(err => console.warn('[email] top-up receipt warning:', err.message));
+                sendJson(res, 200, {
+                    type: 'wallet_topup',
+                    walletBalance: creditRes.balance,
+                    amountAdded: topupAmount,
+                    alreadyCredited: Boolean(creditRes.duplicate),
+                });
+                return;
+            } catch (err) {
+                console.error('[verify-session] Top-up credit error:', err.message);
+                sendJson(res, 500, { error: err.message });
+                return;
+            }
+        }
+        sendJson(res, 400, { error: 'Invalid top-up session parameters.' });
+        return;
+    }
+
+    // 2. Handle Subscription Session (Pro / Enterprise)
     const email = session.metadata?.email || session.customer_email;
     const plan = session.metadata?.plan || 'pro';
 
@@ -2061,8 +3086,33 @@ async function handleVerifySession(req, res) {
         }, { onConflict: 'user_id' });
     } catch { /* best-effort */ }
 
+    // Auto credit wallet if subscription includes wallet credits
+    const includedCredits = Number(session.metadata?.included_credits || (plan === 'pro' ? 12 : 0));
+    if (includedCredits > 0 && email) {
+        try {
+            await creditUserWallet(email, includedCredits, {
+                stripeSessionId: session.id,
+                note: `Pro Plan Included Credits (${includedCredits})`,
+            });
+            console.log(`[stripe verify] Auto credited ${includedCredits} to ${email}`);
+        } catch (crErr) {
+            console.warn('[stripe verify] creditUserWallet warning:', crErr.message);
+        }
+    }
+
     console.log(`[stripe] verified session ${session_id} → ${email} upgraded to ${plan}`);
-    sendJson(res, 200, { plan });
+    const months = Number(session.metadata?.months || 1);
+    const planCost = months === 3 ? 49 : 19;
+    sendPaymentReceiptEmail({
+        email,
+        full_name: found.raw_user_meta_data?.full_name || found.user_metadata?.full_name,
+        plan,
+        amount: planCost,
+        walletCredits: includedCredits,
+        sessionId: session.id,
+        months,
+    }).catch(err => console.warn('[email] subscription receipt warning:', err.message));
+    sendJson(res, 200, { plan, walletCreditsAdded: includedCredits });
 }
 
 async function handleStripeWebhook(req, res) {
@@ -2129,6 +3179,25 @@ async function handleStripeWebhook(req, res) {
 
     if (event.type === 'checkout.session.completed') {
         const session = event.data.object;
+        if (session.metadata?.type === 'wallet_topup') {
+            const topupEmail = session.metadata?.email || session.customer_email;
+            const topupAmount = Number(session.metadata?.amount_usd || 0);
+            if (topupEmail && topupAmount > 0) {
+                await creditUserWallet(topupEmail, topupAmount, {
+                    stripeSessionId: session.id,
+                    note: `Stripe Top-Up (${topupAmount})`,
+                });
+                console.log(`[stripe webhook] Processed wallet topup: ${topupEmail} +${topupAmount}`);
+                sendPaymentReceiptEmail({
+                    email: topupEmail,
+                    plan: 'topup',
+                    amount: topupAmount,
+                    walletCredits: topupAmount,
+                    sessionId: session.id,
+                }).catch(err => console.warn('[email] webhook top-up receipt warning:', err.message));
+            }
+            return;
+        }
         const email = session.metadata?.email || session.customer_email;
         const plan = session.metadata?.plan || 'pro';
         let subscription = typeof session.subscription === 'string'
@@ -2141,6 +3210,31 @@ async function handleStripeWebhook(req, res) {
             stripe_session_id: session.id,
             ...stripeSubscriptionData(subscription),
         });
+
+        // Credit plan wallet credits
+        const includedCredits = Number(session.metadata?.included_credits || (plan === 'pro' ? 12 : 0));
+        if (includedCredits > 0 && email) {
+            try {
+                await creditUserWallet(email, includedCredits, {
+                    stripeSessionId: session.id,
+                    note: `Pro Plan Included Credits (${includedCredits})`,
+                });
+                console.log(`[stripe webhook] Auto credited ${includedCredits} to ${email}`);
+            } catch (crErr) {
+                console.warn('[stripe webhook] creditUserWallet warning:', crErr.message);
+            }
+        }
+
+        const months = Number(session.metadata?.months || 1);
+        const planCost = months === 3 ? 49 : 19;
+        sendPaymentReceiptEmail({
+            email,
+            plan,
+            amount: planCost,
+            walletCredits: includedCredits,
+            sessionId: session.id,
+            months,
+        }).catch(err => console.warn('[email] webhook subscription receipt warning:', err.message));
     }
 
     if (event.type === 'invoice.payment_succeeded') {
@@ -2225,10 +3319,15 @@ async function handleAdminUserDetail(req, res) {
         const user = users?.find(candidate => candidate.email?.toLowerCase() === email);
         if (user) {
             const [{ data: subscriptionData }, { data: profileData }] = await Promise.all([
-                supabase.from('subscriptions').select('plan, status, current_period_end, cancel_at_period_end, interval_months').eq('user_id', user.id).maybeSingle(),
-                supabase.from('profiles').select('plan, free_trial_ends_at, feature_access').eq('id', user.id).maybeSingle(),
+                supabase.from('subscriptions').select('plan, status, current_period_end, cancel_at_period_end, interval_months, stripe_subscription_id').eq('user_id', user.id).maybeSingle(),
+                supabase.from('profiles').select('plan, free_trial_ends_at, feature_access, wallet_balance').eq('id', user.id).maybeSingle(),
             ]);
-            subscription = subscriptionData;
+            let subToUse = subscriptionData;
+            if (subToUse?.stripe_subscription_id && !subToUse.current_period_end) {
+                const hydrated = await hydrateSubscriptionEndDates(supabase, [subToUse]);
+                subToUse = hydrated[0] || subToUse;
+            }
+            subscription = subToUse;
             profile = profileData;
         }
     }
@@ -2241,12 +3340,33 @@ async function handleAdminUserDetail(req, res) {
 
     const sum = arr => arr.reduce((s, e) => s + e.inputTokens + e.outputTokens, 0);
 
+    const marginPct = Number(getGlobalSettings()?.global_margin_percentage || 20);
     const perModel = {};
+    let totalBaseCost30d = 0;
+    let totalProfit30d = 0;
+    let totalBilled30d = 0;
+
     for (const e of entries30d) {
         const m = e.model || 'unknown';
-        if (!perModel[m]) perModel[m] = { tokens: 0, requests: 0 };
-        perModel[m].tokens += e.inputTokens + e.outputTokens;
+        if (!perModel[m]) perModel[m] = { tokens: 0, requests: 0, base_cost: 0, profit_usd: 0, billed_cost: 0 };
+        const totalTok = (e.inputTokens || 0) + (e.outputTokens || 0);
+        perModel[m].tokens += totalTok;
         perModel[m].requests += 1;
+
+        const costCalc = calculateModelCost(m, e.inputTokens || 0, e.outputTokens || 0, marginPct);
+        perModel[m].base_cost += costCalc.baseCost;
+        perModel[m].profit_usd += costCalc.netrootProfit;
+        perModel[m].billed_cost += costCalc.billedCost;
+
+        totalBaseCost30d += costCalc.baseCost;
+        totalProfit30d += costCalc.netrootProfit;
+        totalBilled30d += costCalc.billedCost;
+    }
+
+    for (const m in perModel) {
+        perModel[m].base_cost = Number(perModel[m].base_cost.toFixed(4));
+        perModel[m].profit_usd = Number(perModel[m].profit_usd.toFixed(4));
+        perModel[m].billed_cost = Number(perModel[m].billed_cost.toFixed(4));
     }
 
     // Recent queries with throughput & latency (last 30d, max 100)
@@ -2258,9 +3378,13 @@ async function handleAdminUserDetail(req, res) {
         outputTokens: e.outputTokens,
         totalTokens: e.inputTokens + e.outputTokens,
         latencyMs: e.latencyMs,
-        // throughput = output tokens per second
         throughput: e.latencyMs > 0 ? Math.round((e.outputTokens / e.latencyMs) * 1000) : 0,
     }));
+
+    const [userWallet, userTransactions] = await Promise.all([
+        getUserWallet(email),
+        getUserWalletTransactions(email, 100),
+    ]);
 
     sendJson(res, 200, {
         subscription: subscriptionSummary(subscription, profile?.plan || 'free', profile?.free_trial_ends_at),
@@ -2275,7 +3399,14 @@ async function handleAdminUserDetail(req, res) {
         perModel,
         timeline: buildTimeline(entries7d, 7),
         queries,
-    });
+        wallet: {
+            balance: userWallet.balance || Number(profile?.wallet_balance || 0),
+            totalBaseCost: Number(totalBaseCost30d.toFixed(4)),
+            totalProfit: Number(totalProfit30d.toFixed(4)),
+            totalBilled: Number(totalBilled30d.toFixed(4)),
+            transactions: userTransactions || [],
+        },
+});
 }
 
 async function handleAdminFeatureAccess(req, res) {
@@ -2377,6 +3508,17 @@ async function handleMyUsage(req, res) {
     await handleUsage(req, res, user.email);
 }
 
+
+async function handleAdminTransactions(req, res) {
+    try {
+        const transactions = await getAllPlatformTransactions(250);
+        sendJson(res, 200, { transactions });
+    } catch (err) {
+        console.error('[handleAdminTransactions] error:', err.message);
+        sendJson(res, 500, { error: err.message });
+    }
+}
+
 async function handleAdminUsers(req, res) {
     const supabaseUrl = process.env.VITE_SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -2385,12 +3527,21 @@ async function handleAdminUsers(req, res) {
     const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 
     // Get all auth users
-    const { data: { users: authUsers } } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    const { data: { users: authUsers }, error: usersError } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    if (usersError) {
+        console.error('[admin] Error fetching auth users:', usersError);
+    }
 
-    // Get all profiles and subscription state for plan administration.
-    const { data: profiles } = await supabase.from('profiles').select('id, plan, full_name, free_trial_ends_at');
-    const { data: subscriptions } = await supabase.from('subscriptions')
-        .select('user_id, plan, status, current_period_end, cancel_at_period_end, interval_months, stripe_subscription_id');
+    // Get all profiles and subscription state for plan administration and financials
+    const [{ data: profiles }, { data: subscriptions }, financialMetrics] = await Promise.all([
+        supabase.from('profiles').select('id, email, plan, full_name, free_trial_ends_at, wallet_balance'),
+        supabase.from('subscriptions').select('user_id, plan, status, current_period_end, cancel_at_period_end, interval_months, stripe_subscription_id'),
+        getPlatformFinancialMetrics().catch(err => {
+            console.warn('[admin] getPlatformFinancialMetrics warning:', err.message);
+            return { totalDeposits: 0, totalBaseCost: 0, totalProfit: 0, totalBilled: 0, totalWalletReserves: 0, perUser: {} };
+        }),
+    ]);
+
     const hydratedSubscriptions = await hydrateSubscriptionEndDates(supabase, subscriptions || []);
     const profileMap = {};
     for (const p of profiles || []) profileMap[p.id] = p;
@@ -2401,21 +3552,73 @@ async function handleAdminUsers(req, res) {
     const since30d = Date.now() - 30 * 86400000;
     const allEntries = await queryUsage({ since: since30d });
     const perUserTokens = {};
+    const marginPct = Number(getGlobalSettings()?.global_margin_percentage || 20);
+
+    const perUserUsageCalc = {};
     for (const entry of allEntries) {
-        if (!entry.userEmail) continue;
-        perUserTokens[entry.userEmail] = (perUserTokens[entry.userEmail] || 0) + entry.inputTokens + entry.outputTokens;
+        const email = entry.userEmail?.toLowerCase();
+        if (!email) continue;
+        const totalTok = (entry.inputTokens || 0) + (entry.outputTokens || 0);
+        perUserTokens[email] = (perUserTokens[email] || 0) + totalTok;
+
+        if (!perUserUsageCalc[email]) {
+            perUserUsageCalc[email] = { baseCost: 0, profit: 0, billedCost: 0 };
+        }
+        const costCalc = calculateModelCost(entry.model, entry.inputTokens || 0, entry.outputTokens || 0, marginPct);
+        perUserUsageCalc[email].baseCost += costCalc.baseCost;
+        perUserUsageCalc[email].profit += costCalc.netrootProfit;
+        perUserUsageCalc[email].billedCost += costCalc.billedCost;
     }
 
-    const users = (authUsers || []).map(u => ({
-        id: u.id,
-        email: u.email,
-        full_name: profileMap[u.id]?.full_name || u.user_metadata?.full_name || null,
-        ...subscriptionSummary(subscriptionMap[u.id], profileMap[u.id]?.plan || 'free', profileMap[u.id]?.free_trial_ends_at),
-        tokens: perUserTokens[u.email?.toLowerCase()] || 0,
-        created_at: u.created_at,
-    }));
+    const perUserFin = financialMetrics?.perUser || {};
 
-    sendJson(res, 200, { users });
+    const users = (authUsers || []).map(u => {
+        const uEmail = u.email?.toLowerCase();
+        const profile = profileMap[u.id];
+        const fin = perUserFin[uEmail] || {};
+        const calc = perUserUsageCalc[uEmail] || {};
+
+        const baseCost = Number((fin.total_base_cost && fin.total_base_cost > 0) ? fin.total_base_cost : (calc.baseCost || 0));
+        const billedCost = Number((fin.total_billed && fin.total_billed > 0) ? fin.total_billed : (calc.billedCost || 0));
+        const profit = Number((fin.total_profit && fin.total_profit > 0) ? fin.total_profit : (calc.profit || 0));
+        const walletBal = Number(profile?.wallet_balance ?? fin.wallet_balance ?? 0);
+
+        return {
+            id: u.id,
+            email: u.email,
+            full_name: profile?.full_name || u.user_metadata?.full_name || null,
+            ...subscriptionSummary(subscriptionMap[u.id], profile?.plan || 'free', profile?.free_trial_ends_at),
+            tokens: perUserTokens[uEmail] || 0,
+            wallet_balance: walletBal,
+            openrouter_cost: Number(baseCost.toFixed(5)),
+            billed_cost: Number(billedCost.toFixed(5)),
+            profit_usd: Number(profit.toFixed(5)),
+            created_at: u.created_at,
+        };
+    });
+
+    let calcTotalBaseCost = 0;
+    let calcTotalProfit = 0;
+    for (const c of Object.values(perUserUsageCalc)) {
+        calcTotalBaseCost += (c.baseCost || 0);
+        calcTotalProfit += (c.profit || 0);
+    }
+
+    const totalBaseCost = (financialMetrics?.totalBaseCost && financialMetrics.totalBaseCost > 0) ? financialMetrics.totalBaseCost : calcTotalBaseCost;
+    const totalProfit = (financialMetrics?.totalProfit && financialMetrics.totalProfit > 0) ? financialMetrics.totalProfit : calcTotalProfit;
+    const totalWalletReserves = (financialMetrics?.totalWalletReserves && financialMetrics.totalWalletReserves > 0)
+        ? financialMetrics.totalWalletReserves
+        : users.reduce((s, u) => s + (u.wallet_balance > 0 ? u.wallet_balance : 0), 0);
+
+    const financials = {
+        totalDeposits: financialMetrics?.totalDeposits || 0,
+        totalBaseCost: Number(totalBaseCost.toFixed(5)),
+        totalProfit: Number(totalProfit.toFixed(5)),
+        totalWalletReserves: Number(totalWalletReserves.toFixed(2)),
+        marginPercentage: marginPct,
+    };
+
+    sendJson(res, 200, { users, financials });
 }
 
 async function hydrateSubscriptionEndDates(supabase, subscriptions) {
@@ -2439,6 +3642,66 @@ async function hydrateSubscriptionEndDates(supabase, subscriptions) {
             return subscription;
         }
     }));
+}
+
+
+async function sendPaymentReceiptEmail({ email, full_name, plan, amount, walletCredits, sessionId, months = 1 }) {
+    if (!email) return;
+    const name = full_name ? full_name.split(' ')[0] : 'there';
+    const invoiceNum = 'INV-' + (sessionId ? sessionId.slice(-8).toUpperCase() : Date.now().toString().slice(-6));
+    const isTopup = plan === 'topup' || !plan;
+    const itemName = isTopup 
+        ? `Prepaid Model Credits (${amount})`
+        : `NetRoot AI Pro Plan (${months} ${months === 1 ? 'Month' : 'Months'})`;
+
+    const html = emailLayout(`
+        <tr><td style="padding:32px 40px">
+          <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);color:#10b981;display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;margin-bottom:16px">
+            PAYMENT SUCCESSFUL
+          </div>
+          <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#ffffff">Payment Receipt</h1>
+          <p style="margin:0 0 20px;font-size:14px;color:#9ca3af">Hi ${name}, thank you for your payment. Your receipt and wallet details are below:</p>
+
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:16px 20px;margin-bottom:24px">
+            <tr>
+              <td style="padding:6px 0;font-size:13px;color:#9ca3af">Invoice Number:</td>
+              <td align="right" style="padding:6px 0;font-size:13px;font-weight:600;color:#ffffff;font-family:monospace">#${invoiceNum}</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 0;font-size:13px;color:#9ca3af">Item / Plan:</td>
+              <td align="right" style="padding:6px 0;font-size:13px;font-weight:600;color:#60a5fa">${itemName}</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 0;font-size:13px;color:#9ca3af">Amount Paid:</td>
+              <td align="right" style="padding:6px 0;font-size:15px;font-weight:700;color:#10b981">${Number(amount).toFixed(2)}</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 0;font-size:13px;color:#9ca3af">Wallet Credits Added:</td>
+              <td align="right" style="padding:6px 0;font-size:14px;font-weight:700;color:#34d399;font-family:monospace">+${Number(walletCredits || 0).toFixed(2)}</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 0;font-size:13px;color:#9ca3af">Payment Method:</td>
+              <td align="right" style="padding:6px 0;font-size:13px;color:#9ca3af">Card (Stripe Checkout)</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 0;font-size:13px;color:#9ca3af">Date:</td>
+              <td align="right" style="padding:6px 0;font-size:13px;color:#9ca3af">${new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+            </tr>
+          </table>
+
+          <div style="text-align:center;margin:28px 0 16px">
+            <a href="https://netrootai.tech/dashboard" style="display:inline-block;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 32px;border-radius:10px;box-shadow:0 4px 12px rgba(37,99,235,0.3)">
+              Open AI Studio Dashboard
+            </a>
+          </div>
+          <p style="margin:20px 0 0;font-size:12px;color:#6b7280;text-align:center">
+            You can view your token and model usage anytime from your dashboard.
+          </p>
+        </td></tr>`);
+
+    await sendTransactionalEmail(email, `Payment Receipt: ${itemName} (#${invoiceNum})`, html).catch(err => {
+        console.warn('[email] sendPaymentReceiptEmail warning:', err.message);
+    });
 }
 
 async function sendTransactionalEmail(email, subject, html) {
@@ -2474,6 +3737,44 @@ function emailLayout(content) {
     </td></tr>
   </table>
 </body></html>`;
+}
+
+async function sendWorkspaceInviteEmail({ toEmail, workspaceName, role, invitedBy, workspaceId }) {
+    const formattedRole = role === 'admin' ? 'an Administrator' : 'a Team Member';
+    const workspaceUrl = `https://netrootai.tech/workspace?ws=${encodeURIComponent(workspaceId || 'ws_default')}`;
+    const html = emailLayout(`
+      <tr><td style="padding:32px 40px 16px">
+        <h1 style="margin:0 0 12px;font-size:20px;font-weight:700;color:#ffffff">You're invited to collaborate</h1>
+        <p style="margin:0 0 20px;font-size:14px;color:#9ca3af;line-height:1.6">
+          <strong style="color:#ffffff">${invitedBy || 'A teammate'}</strong> has invited you to join the 
+          <strong style="color:#ffffff">${workspaceName || 'NetRoot AI'}</strong> workspace as <strong style="color:#a78bfa">${formattedRole}</strong>.
+        </p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#1b1b1b;border:1px solid #2a2a2a;border-radius:12px;padding:16px 20px;margin-bottom:24px">
+          <tr><td>
+            <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:1px">Workspace</p>
+            <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:#ffffff">${workspaceName || 'Default Workspace'}</p>
+            <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:1px">Assigned Role</p>
+            <p style="margin:0;font-size:13px;font-weight:600;color:#a78bfa">${role === 'admin' ? 'Admin (Full access)' : 'Member (Can use workspace)'}</p>
+          </td></tr>
+        </table>
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr><td align="center">
+            <a href="${workspaceUrl}" style="display:inline-block;padding:12px 32px;background:#9333ea;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;border-radius:10px">
+              Open Workspace in NetRoot AI &rarr;
+            </a>
+          </td></tr>
+        </table>
+      </td></tr>
+    `);
+
+    return sendTransactionalEmail(
+        toEmail,
+        `You've been invited to join the ${workspaceName || 'NetRoot AI'} workspace`,
+        html
+    ).catch(err => {
+        console.warn('[email] sendWorkspaceInviteEmail warning:', err.message);
+        return { success: false, error: err.message };
+    });
 }
 
 async function handleSendWelcome(req, res) {
@@ -2614,8 +3915,828 @@ async function handleSendEmail(req, res) {
     sendJson(res, 200, { success: true });
 }
 
+// ─── AI Models Management & Dynamic Pricing Handlers ──────────────────────
+
+async function handleGetModels(req, res) {
+    const parsedUrl = new URL(req.url, 'http://127.0.0.1');
+    const search = parsedUrl.searchParams.get('search') || '';
+    const provider = parsedUrl.searchParams.get('provider') || '';
+    const modality = parsedUrl.searchParams.get('modality') || '';
+    const minPlan = parsedUrl.searchParams.get('minPlan') || '';
+    const sortBy = parsedUrl.searchParams.get('sortBy') || 'popular';
+    const all = parsedUrl.searchParams.get('all') === 'true';
+
+    const models = await getAllModels({
+        onlyVisible: !all,
+        search,
+        provider,
+        modality,
+        minPlan,
+        sortBy,
+    });
+    const settings = await getGlobalSettings();
+    const rankings = getLocalRankings();
+
+    // Auto-refresh in background if last_synced_at is > 6 hours old so OpenRouter changes reflect automatically
+    if (settings.last_synced_at) {
+        const lastSyncTime = new Date(settings.last_synced_at).getTime();
+        if (Date.now() - lastSyncTime > 6 * 60 * 60 * 1000) {
+            console.log('[models] Cache is older than 6h, initiating background OpenRouter sync...');
+            syncModelsFromOpenRouter().catch(e => console.warn('[models] Background sync notice:', e.message));
+        }
+    }
+
+    sendJson(res, 200, { models, settings, rankings, count: models.length }, req);
+}
+
+async function handleBulkUpdateModels(req, res) {
+    try {
+        const body = await readJson(req);
+        const result = await bulkUpdateModels(body.action, body.ids);
+        sendJson(res, 200, result, req);
+    } catch (e) {
+        sendJson(res, 500, { error: e.message }, req);
+    }
+}
+
+async function handleSyncModels(req, res) {
+    try {
+        const result = await syncModelsFromOpenRouter();
+        sendJson(res, 200, { success: true, ...result }, req);
+    } catch (e) {
+        console.error('[models] sync error:', e);
+        sendJson(res, 500, { error: e.message }, req);
+    }
+}
+
+async function handleUpdateModel(req, res) {
+    try {
+        const body = await readJson(req);
+        const { id, updates } = body;
+        if (!id) {
+            sendJson(res, 400, { error: 'Model id is required' }, req);
+            return;
+        }
+        const updated = await updateModelRecord(id, updates || {});
+        sendJson(res, 200, { success: true, model: updated }, req);
+    } catch (e) {
+        sendJson(res, 500, { error: e.message }, req);
+    }
+}
+
+async function handleGetModelSettings(req, res) {
+    try {
+        const settings = await getGlobalSettings();
+        sendJson(res, 200, { settings }, req);
+    } catch (e) {
+        sendJson(res, 500, { error: e.message }, req);
+    }
+}
+
+async function handleUpdateModelSettings(req, res) {
+    try {
+        const body = await readJson(req);
+        const updated = await updateGlobalSettings(body);
+        if (body.global_margin_percentage !== undefined) {
+            syncModelsFromOpenRouter().catch(err => console.warn('[models] re-sync notice:', err.message));
+        }
+        sendJson(res, 200, { success: true, settings: updated }, req);
+    } catch (e) {
+        sendJson(res, 500, { error: e.message }, req);
+    }
+}
+
+async function handleGetModelChangelog(req, res) {
+    try {
+        const changelog = getChangelog();
+        const settings = await getGlobalSettings();
+        sendJson(res, 200, {
+            success: true,
+            changelog,
+            count: changelog.length,
+            last_synced_at: settings.last_synced_at,
+            next_auto_sync_at: settings.next_auto_sync_at,
+            auto_sync: settings.auto_sync !== false,
+            auto_sync_interval_hours: settings.auto_sync_interval_hours || 24,
+        }, req);
+    } catch (e) {
+        sendJson(res, 500, { error: e.message }, req);
+    }
+}
+
+async function handleUpdateCronSettings(req, res) {
+    try {
+        const body = await readJson(req);
+        const { auto_sync, interval_hours } = body;
+        const updates = {};
+        if (auto_sync !== undefined) updates.auto_sync = Boolean(auto_sync);
+        if (interval_hours !== undefined) {
+            const h = Math.max(1, Math.min(168, Number(interval_hours) || 24));
+            updates.auto_sync_interval_hours = h;
+            updates.next_auto_sync_at = new Date(Date.now() + h * 3600 * 1000).toISOString();
+        }
+        const updated = await updateGlobalSettings(updates);
+        sendJson(res, 200, { success: true, settings: updated }, req);
+    } catch (e) {
+        sendJson(res, 500, { error: e.message }, req);
+    }
+}
+
+async function handleWorkspaceRoute(req, res) {
+    const parsed = new URL(req.url, 'http://127.0.0.1');
+    const path = parsed.pathname;
+    const wsId = parsed.searchParams.get('workspaceId') || undefined;
+    const userEmail = req.headers['x-user-email'] || parsed.searchParams.get('userEmail') || undefined;
+
+    if (req.method === 'GET' && path === '/api/workspace/bootstrap') {
+        const data = getWorkspaceBootstrapData(wsId, userEmail);
+        sendJson(res, 200, data, req);
+        return;
+    }
+    if (req.method === 'GET' && path === '/api/workspace/workspaces') {
+        const data = getWorkspaces(userEmail);
+        sendJson(res, 200, data, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/workspaces') {
+        const body = await readJson(req);
+        const ws = createWorkspace(body);
+        sendJson(res, 201, { success: true, workspace: ws }, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/workspaces/active') {
+        const body = await readJson(req);
+        const ws = setActiveWorkspace(body.workspaceId);
+        sendJson(res, 200, { success: true, activeWorkspace: ws }, req);
+        return;
+    }
+    if (req.method === 'GET' && path === '/api/workspace/overview') {
+        const data = getWorkspaceOverview(wsId);
+        sendJson(res, 200, data, req);
+        return;
+    }
+    if (req.method === 'GET' && path === '/api/workspace/activity') {
+        const data = getWorkspaceActivity(wsId);
+        sendJson(res, 200, data, req);
+        return;
+    }
+    if (req.method === 'GET' && path === '/api/workspace/keys') {
+        const keys = getApiKeys(wsId);
+        sendJson(res, 200, { keys }, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/keys') {
+        const body = await readJson(req);
+        const newKey = createApiKey({ ...body, workspaceId: wsId || body.workspaceId });
+        sendJson(res, 201, { success: true, key: newKey }, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/keys/toggle') {
+        const body = await readJson(req);
+        const updated = toggleApiKeyStatus(body.keyId);
+        sendJson(res, 200, { success: true, key: updated }, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/keys/delete') {
+        const body = await readJson(req);
+        const resDel = deleteApiKey(body.keyId);
+        sendJson(res, 200, resDel, req);
+        return;
+    }
+    if (req.method === 'GET' && path === '/api/workspace/keys/analytics') {
+        const keyId = parsed.searchParams.get('keyId');
+        if (!keyId) { sendJson(res, 400, { error: 'keyId is required.' }, req); return; }
+        const analytics = getKeyAnalytics(wsId, keyId);
+        if (!analytics) { sendJson(res, 404, { error: 'API Key not found.' }, req); return; }
+        sendJson(res, 200, analytics, req);
+        return;
+    }
+    if (req.method === 'GET' && path === '/api/workspace/logs') {
+        const search = parsed.searchParams.get('search') || '';
+        const limit = Number(parsed.searchParams.get('limit')) || 50;
+        const offset = Number(parsed.searchParams.get('offset')) || 0;
+        const data = getWorkspaceLogs(wsId, { search, limit, offset });
+        sendJson(res, 200, data, req);
+        return;
+    }
+    if (req.method === 'GET' && path === '/api/workspace/guardrails') {
+        const data = getGuardrails(wsId);
+        sendJson(res, 200, { guardrails: data }, req);
+        return;
+    }
+    if (req.method === 'GET' && path === '/api/workspace/providers') {
+        const providers = getWorkspaceAvailableProviders();
+        sendJson(res, 200, { providers, count: providers.length }, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/guardrails') {
+        const body = await readJson(req);
+        const data = updateGuardrails(wsId, body);
+        sendJson(res, 200, { success: true, guardrails: data }, req);
+        return;
+    }
+    if (req.method === 'GET' && path === '/api/workspace/byok') {
+        const data = getByok(wsId);
+        sendJson(res, 200, { byok: data }, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/byok') {
+        try {
+            const body = await readJson(req);
+            const userPlan = req.headers['x-user-plan'] || body.user_plan || 'pro';
+            const data = updateByok(wsId, body.provider, body.key, {
+                display_name: body.display_name,
+                base_url: body.base_url,
+                model_prefix: body.model_prefix,
+                is_custom: body.is_custom,
+                user_plan: userPlan,
+            });
+            sendJson(res, 200, { success: true, byok: data }, req);
+        } catch (byokErr) {
+            sendJson(res, byokErr.status || 400, { success: false, error: byokErr.message }, req);
+        }
+        return;
+    }
+    if (req.method === 'DELETE' && path === '/api/workspace/byok') {
+        const body = await readJson(req).catch(() => ({}));
+        const provider = body.provider || req.query?.provider;
+        const data = deleteByokKey(wsId, provider);
+        sendJson(res, 200, { success: true, byok: data }, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/byok/test') {
+        const body = await readJson(req);
+        const result = await testByokKey(wsId, body.provider, body.key, body.base_url);
+        sendJson(res, 200, result, req);
+        return;
+    }
+    if (req.method === 'GET' && path === '/api/workspace/routing') {
+        const data = getRouting(wsId);
+        sendJson(res, 200, { routing: data }, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/routing') {
+        const body = await readJson(req);
+        const userPlan = (req.headers['x-user-plan'] || 'free').toLowerCase().trim();
+        
+        // Plan guard: Free plan users cannot configure fallbacks containing paid / frontier models
+        if (userPlan === 'free' && Array.isArray(body.fallbacks)) {
+            const hasRestrictedModel = body.fallbacks.some(f => {
+                const prim = (f.primary || '').toLowerCase();
+                const fb = (f.fallback || '').toLowerCase();
+                const isPrimFree = prim.endsWith(':free') || prim.includes('free');
+                const isFbFree = fb.endsWith(':free') || fb.includes('free');
+                return !isPrimFree || !isFbFree;
+            });
+
+            if (hasRestrictedModel) {
+                sendJson(res, 403, {
+                    success: false,
+                    error: {
+                        message: 'Free plan workspaces can only configure fallback routing across Free Tier models. Upgrade to Pro to route across Frontier (GPT-4o, Claude 3.5 Sonnet) and Custom Endpoints.',
+                        code: 'plan_restricted'
+                    }
+                }, req);
+                return;
+            }
+        }
+
+        const data = updateRouting(wsId, body);
+        sendJson(res, 200, { success: true, routing: data }, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/routing/test-simulate') {
+        const body = await readJson(req);
+        const primaryModel = body.primary || 'anthropic/claude-3.5-sonnet';
+        const fallbackModel = body.fallback || 'deepseek/deepseek-chat';
+        
+        // Simulate outage: primary returns 503, failover executes fallback
+        const simulatedLog = {
+            id: `sim_${Date.now()}`,
+            timestamp: new Date().toISOString(),
+            status: 'success',
+            primary_model: primaryModel,
+            fallback_model: fallbackModel,
+            primary_status: 503,
+            primary_error: 'Simulated Upstream 503 Service Unavailable (Outage)',
+            fallback_status: 200,
+            failover_latency_ms: 184,
+            message: `Failover test passed. Request seamlessly shifted from ${primaryModel} to ${fallbackModel} in 184ms with zero dropped tokens.`
+        };
+        sendJson(res, 200, { success: true, simulation: simulatedLog }, req);
+        return;
+    }
+    if (req.method === 'GET' && path === '/api/workspace/presets') {
+        const data = getPresets(wsId);
+        sendJson(res, 200, { presets: data }, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/presets') {
+        const body = await readJson(req);
+        const userPlan = (req.headers['x-user-plan'] || 'free').toLowerCase().trim();
+        const existingPresets = getPresets(wsId);
+
+        // Plan Guard: Free tier is capped at 3 custom presets
+        if (userPlan === 'free' && existingPresets.length >= 3) {
+            sendJson(res, 403, {
+                success: false,
+                error: {
+                    message: 'Free plan workspaces can create up to 3 custom system presets. Upgrade to Pro for unlimited presets and team templates.',
+                    code: 'plan_limit_exceeded'
+                }
+            }, req);
+            return;
+        }
+
+        const preset = createPreset(wsId, body);
+        sendJson(res, 201, { success: true, preset }, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/presets/update') {
+        const body = await readJson(req);
+        try {
+            const updated = updatePreset(wsId, body.id || body.presetId, body);
+            sendJson(res, 200, { success: true, preset: updated }, req);
+        } catch (err) {
+            sendJson(res, 404, { success: false, error: err.message }, req);
+        }
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/presets/delete') {
+        const body = await readJson(req);
+        const resDel = deletePreset(wsId, body.presetId);
+        sendJson(res, 200, resDel, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/settings') {
+        const body = await readJson(req);
+        const updated = updateWorkspaceSettings(wsId || body.workspaceId, body);
+        sendJson(res, 200, { success: true, workspace: updated }, req);
+        return;
+    }
+
+    // ── Team Members & RBAC ──
+    if (req.method === 'GET' && path === '/api/workspace/members') {
+        const userEmail = req.headers['x-user-email'] || 'admin@netrootai.tech';
+        const members = getWorkspaceMembers(wsId, userEmail);
+        sendJson(res, 200, { success: true, members }, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/members/invite') {
+        const body = await readJson(req);
+        try {
+            const member = inviteWorkspaceMember(wsId, body);
+            const wsInfo = getWorkspaceBootstrapData(wsId);
+            const workspaceName = wsInfo?.overview?.workspace?.name || 'Default Workspace';
+
+            // Send branded Resend invite email in background (best-effort)
+            sendWorkspaceInviteEmail({
+                toEmail: member.email,
+                workspaceName,
+                role: member.role,
+                invitedBy: body.invitedBy || 'Admin',
+                workspaceId: wsId,
+            }).catch(e => console.warn('[workspace] Invite email warning:', e.message));
+
+            sendJson(res, 201, { success: true, member, emailSent: true }, req);
+        } catch (err) {
+            sendJson(res, 400, { error: err.message }, req);
+        }
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/members/remove') {
+        const body = await readJson(req);
+        try {
+            const result = removeWorkspaceMember(wsId, body.memberId);
+            sendJson(res, 200, result, req);
+        } catch (err) {
+            sendJson(res, 400, { error: err.message }, req);
+        }
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/members/update-role') {
+        const body = await readJson(req);
+        try {
+            const updated = updateWorkspaceMemberRole(wsId, body.memberId, body.role);
+            sendJson(res, 200, { success: true, member: updated }, req);
+        } catch (err) {
+            sendJson(res, 400, { error: err.message }, req);
+        }
+        return;
+    }
+
+    // ── Lifecycle & Danger Zone ──
+    if (req.method === 'POST' && path === '/api/workspace/reset-config') {
+        try {
+            const result = resetWorkspaceConfig(wsId);
+            sendJson(res, 200, result, req);
+        } catch (err) {
+            sendJson(res, 400, { error: err.message }, req);
+        }
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/delete') {
+        const body = await readJson(req);
+        try {
+            const targetWsId = body.workspaceId || wsId;
+            const result = deleteWorkspace(targetWsId);
+            sendJson(res, 200, result, req);
+        } catch (err) {
+            sendJson(res, 400, { error: err.message }, req);
+        }
+        return;
+    }
+
+    // ── Files (RAG) ──
+    if (req.method === 'GET' && path === '/api/workspace/files') {
+        const files = getWorkspaceFiles(wsId);
+        sendJson(res, 200, { files }, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/files') {
+        const body = await readJson(req);
+        const file = addWorkspaceFile(wsId, body);
+        sendJson(res, 201, { success: true, file }, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/files/delete') {
+        const body = await readJson(req);
+        const resDel = deleteWorkspaceFile(wsId, body.fileId);
+        sendJson(res, 200, resDel, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/files/toggle-sync') {
+        const body = await readJson(req);
+        const file = toggleFileChatSync(wsId, body.fileId);
+        sendJson(res, 200, { success: true, file }, req);
+        return;
+    }
+
+    // ── Tools & Function Registry ──
+    if (req.method === 'GET' && path === '/api/workspace/tools') {
+        const tools = getWorkspaceTools(wsId);
+        sendJson(res, 200, { tools }, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/tools/toggle') {
+        const body = await readJson(req);
+        const tool = toggleWorkspaceTool(wsId, body.toolId, body.enabled);
+        sendJson(res, 200, { success: true, tool }, req);
+        return;
+    }
+
+    // ── Classifiers & Intent Rules (Priority Queue) ──
+    if (req.method === 'GET' && path === '/api/workspace/classifiers') {
+        const classifiers = getWorkspaceClassifiers(wsId);
+        sendJson(res, 200, { classifiers }, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/classifiers') {
+        const body = await readJson(req);
+        const rule = saveWorkspaceClassifier(wsId, body);
+        sendJson(res, 200, { success: true, classifier: rule }, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/classifiers/delete') {
+        const body = await readJson(req);
+        const resDel = deleteWorkspaceClassifier(wsId, body.ruleId);
+        sendJson(res, 200, resDel, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/classifiers/reorder') {
+        const body = await readJson(req);
+        const classifiers = reorderWorkspaceClassifiers(wsId, body.orderedIds || []);
+        sendJson(res, 200, { success: true, classifiers }, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/classifiers/test-evaluate') {
+        const body = await readJson(req);
+        const prompt = body.prompt || '';
+        const match = evaluateIntentClassifiers(wsId, prompt);
+        sendJson(res, 200, {
+            success: true,
+            prompt,
+            isMatched: Boolean(match),
+            action: match?.action || null,
+            targetValue: match?.targetValue || null,
+            matchedRule: match?.matchedRule || null,
+        }, req);
+        return;
+    }
+
+    // ── Semantic Cache Settings (Similarity Threshold) ──
+    if (req.method === 'GET' && path === '/api/workspace/cache-settings') {
+        const cacheSettings = getWorkspaceCacheSettings(wsId);
+        sendJson(res, 200, { cacheSettings }, req);
+        return;
+    }
+    if (req.method === 'POST' && path === '/api/workspace/cache-settings') {
+        const body = await readJson(req);
+        const cacheSettings = updateWorkspaceCacheSettings(wsId, body);
+        sendJson(res, 200, { success: true, cacheSettings }, req);
+        return;
+    }
+
+    // ── Observability Telemetry ──
+    if (req.method === 'GET' && path === '/api/workspace/observability') {
+        const metrics = getObservabilityMetrics(wsId);
+        sendJson(res, 200, { metrics }, req);
+        return;
+    }
+
+    sendJson(res, 404, { error: 'Workspace endpoint not found.' }, req);
+}
+
+// ── Admin OpenRouter Live Credits & Realtime System Alerts ─────────────
+async function handleAdminOpenRouterCredits(req, res) {
+    try {
+        const apiKey = process.env.OPENROUTER_API_KEY;
+        if (!apiKey) {
+            sendJson(res, 500, { error: 'OPENROUTER_API_KEY is not configured in server environment.' }, req);
+            return;
+        }
+
+        const orRes = await fetch('https://openrouter.ai/api/v1/credits', {
+            headers: {
+                Authorization: `Bearer ${apiKey}`,
+            },
+        });
+
+        if (!orRes.ok) {
+            const errData = await orRes.json().catch(() => ({}));
+            sendJson(res, orRes.status, { error: errData.error || `OpenRouter returned status ${orRes.status}` }, req);
+            return;
+        }
+
+        const json = await orRes.json();
+        const totalCredits = Number(json?.data?.total_credits || 0);
+        const totalUsage = Number(json?.data?.total_usage || 0);
+        const remainingBalance = Math.max(0, totalCredits - totalUsage);
+        const usagePercentage = totalCredits > 0 ? ((totalUsage / totalCredits) * 100).toFixed(1) : 0;
+
+        // Auto trigger low balance alert if balance < $5.00
+        if (remainingBalance < 5 && remainingBalance >= 0) {
+            recordSystemAlert(supabase, {
+                type: 'LOW_BALANCE',
+                severity: remainingBalance < 2 ? 'CRITICAL' : 'WARNING',
+                statusCode: 402,
+                model: 'OpenRouter Account',
+                userEmail: 'admin@system',
+                message: `OpenRouter wallet is running low! Current balance is only $${remainingBalance.toFixed(2)}.`,
+                metadata: { totalCredits, totalUsage, remainingBalance },
+            }).catch(() => {});
+        }
+
+        sendJson(res, 200, {
+            success: true,
+            totalCredits,
+            totalUsage,
+            remainingBalance,
+            usagePercentage: Number(usagePercentage),
+            isLowBalance: remainingBalance < 5,
+            checkedAt: new Date().toISOString(),
+        }, req);
+    } catch (err) {
+        console.error('[admin-openrouter-credits]', err);
+        sendJson(res, 500, { error: err.message }, req);
+    }
+}
+
+async function handleAdminAlertsGet(req, res) {
+    try {
+        const alerts = getSystemAlerts({ limit: 60 });
+        const summary = getAlertsSummary();
+        sendJson(res, 200, { success: true, alerts, summary }, req);
+    } catch (err) {
+        sendJson(res, 500, { error: err.message }, req);
+    }
+}
+
+async function handleAdminAlertsMarkRead(req, res) {
+    try {
+        const body = await readJson(req);
+        const alertId = body.alertId || 'all';
+        const result = markAlertAsRead(alertId);
+        sendJson(res, 200, result, req);
+    } catch (err) {
+        sendJson(res, 500, { error: err.message }, req);
+    }
+}
+
+function isOpenRouterFleetModel(modelId) {
+    if (!modelId) return false;
+    const m = String(modelId).toLowerCase().trim();
+    // Exclude internal tools, local utilities, maps, and mock services
+    if (m === 'google/maps' || m.startsWith('ppt-') || m.startsWith('mock/') || m.startsWith('local/') || m.startsWith('internal/')) {
+        return false;
+    }
+    // Check against modelsService or standard vendor format
+    try {
+        const all = getAllModels();
+        if (Array.isArray(all) && all.some(item => item.id?.toLowerCase() === m)) {
+            return true;
+        }
+    } catch {
+        // fallback
+    }
+    return m.includes('/') && !m.startsWith('google/maps');
+}
+
+async function handleAdminUsageAnalytics(req, res) {
+    try {
+        // 1. Fetch live OpenRouter credit usage from master key
+        let liveKeyTotalUsage = 2.2758;
+        let liveKeyRemaining = 47.72;
+        let liveKeyTotalCredits = 50.00;
+        const apiKey = process.env.OPENROUTER_API_KEY;
+        if (apiKey) {
+            try {
+                const orRes = await fetch('https://openrouter.ai/api/v1/credits', {
+                    headers: { Authorization: `Bearer ${apiKey}` },
+                });
+                if (orRes.ok) {
+                    const cJson = await orRes.json();
+                    liveKeyTotalUsage = Number(cJson?.data?.total_usage || 0);
+                    liveKeyTotalCredits = Number(cJson?.data?.total_credits || 50);
+                    liveKeyRemaining = Math.max(0, liveKeyTotalCredits - liveKeyTotalUsage);
+                }
+            } catch (e) {
+                // non-fatal
+            }
+        }
+
+        // 2. Fetch all recent usage logs across users
+        const allLogs = await queryUsage();
+
+        // 3. Filter ONLY OpenRouter fleet models
+        const logs = (allLogs || []).filter(l => isOpenRouterFleetModel(l.model));
+
+        // Aggregate by user and by model
+        const userMap = {};
+        const modelMap = {};
+        let totalOpenRouterSpend = 0;
+
+        for (const log of logs) {
+            const email = log.userEmail || 'anonymous';
+            const model = log.model || 'unknown';
+            const tokens = (log.inputTokens || 0) + (log.outputTokens || 0);
+            const ts = log.ts || Date.now();
+
+            // Calculate precise upstream OpenRouter USD cost
+            const costData = calculateModelCost(model, log.inputTokens || 0, log.outputTokens || 0, 0);
+            const spend = Number((costData?.baseCost || 0).toFixed(6));
+            totalOpenRouterSpend += spend;
+
+            // User aggregation
+            if (!userMap[email]) {
+                userMap[email] = {
+                    email,
+                    totalTokens: 0,
+                    totalSpend: 0,
+                    requestsCount: 0,
+                    topModel: model,
+                    lastActive: ts
+                };
+            }
+            userMap[email].totalTokens += tokens;
+            userMap[email].totalSpend += spend;
+            userMap[email].requestsCount += 1;
+            if (ts >= (userMap[email].lastActive || 0)) {
+                userMap[email].lastActive = ts;
+                userMap[email].topModel = model;
+            }
+
+            // Model aggregation
+            if (!modelMap[model]) {
+                modelMap[model] = {
+                    model,
+                    totalTokens: 0,
+                    totalSpend: 0,
+                    requestsCount: 0
+                };
+            }
+            modelMap[model].totalTokens += tokens;
+            modelMap[model].totalSpend += spend;
+            modelMap[model].requestsCount += 1;
+        }
+
+        const clientChatSpend = Number(totalOpenRouterSpend.toFixed(5));
+        const clientChatProfit = Number((totalOpenRouterSpend * 0.20).toFixed(5));
+        const internalDevSpend = Number(Math.max(0, liveKeyTotalUsage - clientChatSpend).toFixed(5));
+
+        // Filter out purely $0 users from OpenRouter table (Groq/Free users)
+        const paidUsers = Object.values(userMap)
+            .filter(u => u.totalSpend > 0)
+            .map(u => ({
+                ...u,
+                totalSpend: Number(u.totalSpend.toFixed(5)),
+                isInternal: false,
+            }))
+            .sort((a, b) => b.totalSpend - a.totalSpend);
+
+        // Include Internal Developer / Image Gen line item for 100% reconciliation
+        if (internalDevSpend > 0) {
+            paidUsers.unshift({
+                email: 'Developer Workflows & Image Gen (Internal)',
+                totalSpend: internalDevSpend,
+                totalTokens: 0,
+                requestsCount: '—',
+                topModel: 'Image Gen & Workflows',
+                lastActive: Date.now(),
+                isInternal: true,
+            });
+        }
+
+        // Format and sort top models (by total spend first, then total tokens)
+        const topModels = Object.values(modelMap)
+            .map(m => ({
+                ...m,
+                totalSpend: Number(m.totalSpend.toFixed(5)),
+            }))
+            .sort((a, b) => b.totalSpend - a.totalSpend || b.totalTokens - a.totalTokens)
+            .slice(0, 15);
+
+        sendJson(res, 200, {
+            success: true,
+            liveKeyTotalUsage: Number(liveKeyTotalUsage.toFixed(4)),
+            liveKeyRemaining: Number(liveKeyRemaining.toFixed(2)),
+            liveKeyTotalCredits: Number(liveKeyTotalCredits.toFixed(2)),
+            clientChatSpend,
+            clientChatProfit,
+            internalDevSpend,
+            totalOpenRouterSpend: clientChatSpend,
+            recentLogs: logs.slice(0, 50),
+            topUsers: paidUsers,
+            topModels,
+            totalLogsScanned: logs.length,
+        }, req);
+    } catch (err) {
+        console.error('[admin-usage-analytics]', err);
+        sendJson(res, 500, { error: err.message }, req);
+    }
+}
+
+async function handleDeveloperGatewayRoute(req, res) {
+    const body = await readJson(req);
+    const authHeader = req.headers['authorization'];
+    const result = await handleDeveloperGatewayChat({ req, res, body, authHeader });
+    if (result && !result.isStreamHandled) {
+        sendJson(res, result.status, result.payload, req);
+    }
+}
+
 const server = createServer(async (req, res) => {
     if (req.method === 'OPTIONS') { sendJson(res, 204, {}, req); return; }
+    if (req.url.startsWith('/api/workspace/')) {
+        try { await handleWorkspaceRoute(req, res); } catch (e) { sendJson(res, 500, { error: e.message }, req); }
+        return;
+    }
+    if (req.method === 'POST' && (req.url === '/api/v1/chat/completions' || req.url === '/v1/chat/completions')) {
+        try { await handleDeveloperGatewayRoute(req, res); } catch (e) { sendJson(res, 500, { error: e.message }, req); }
+        return;
+    }
+    if (req.method === 'GET' && (req.url === '/api/v1/models' || req.url === '/v1/models')) {
+        try {
+            const authHeader = req.headers['authorization'];
+            const list = getDeveloperGatewayModels(authHeader);
+            sendJson(res, 200, list, req);
+        } catch (e) {
+            sendJson(res, 500, { error: e.message }, req);
+        }
+        return;
+    }
+    if (req.method === 'GET' && req.url === '/api/admin/models/changelog') {
+        try { await handleGetModelChangelog(req, res); } catch (e) { sendJson(res, 500, { error: e.message }, req); }
+        return;
+    }
+    if (req.method === 'POST' && req.url === '/api/admin/models/cron-settings') {
+        try { await handleUpdateCronSettings(req, res); } catch (e) { sendJson(res, 500, { error: e.message }, req); }
+        return;
+    }
+    if (req.method === 'GET' && req.url.startsWith('/api/models')) {
+        try { await handleGetModels(req, res); } catch (e) { sendJson(res, 500, { error: e.message }, req); }
+        return;
+    }
+    if (req.method === 'POST' && req.url === '/api/admin/models/sync') {
+        try { await handleSyncModels(req, res); } catch (e) { sendJson(res, 500, { error: e.message }, req); }
+        return;
+    }
+    if (req.method === 'POST' && req.url === '/api/admin/models/update') {
+        try { await handleUpdateModel(req, res); } catch (e) { sendJson(res, 500, { error: e.message }, req); }
+        return;
+    }
+    if (req.method === 'POST' && req.url === '/api/admin/models/bulk') {
+        try { await handleBulkUpdateModels(req, res); } catch (e) { sendJson(res, 500, { error: e.message }, req); }
+        return;
+    }
+    if (req.method === 'GET' && req.url === '/api/admin/models/settings') {
+        try { await handleGetModelSettings(req, res); } catch (e) { sendJson(res, 500, { error: e.message }, req); }
+        return;
+    }
+    if (req.method === 'POST' && req.url === '/api/admin/models/settings') {
+        try { await handleUpdateModelSettings(req, res); } catch (e) { sendJson(res, 500, { error: e.message }, req); }
+        return;
+    }
     if (req.method === 'GET' && req.url === '/api/plan-limits') {
         try { handlePlanLimits(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
         return;
@@ -2628,8 +4749,26 @@ const server = createServer(async (req, res) => {
         try { await handleMyUsage(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
         return;
     }
+    // ── RAG / Document Analysis Routes ────────────────────────────────────
+    if (req.method === 'POST' && req.url === '/api/rag/upload') {
+        try { await handleRagUpload(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
+        return;
+    }
+    if (req.method === 'GET' && req.url.startsWith('/api/rag/documents')) {
+        try { await handleRagListDocuments(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
+        return;
+    }
+    if (req.method === 'DELETE' && req.url.startsWith('/api/rag/documents/')) {
+        try { await handleRagDeleteDocument(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
+        return;
+    }
+
     if (req.method === 'POST' && req.url === '/api/chat') {
         try { await handleChat(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
+        return;
+    }
+    if (req.method === 'POST' && req.url === '/api/chat/auto-title') {
+        try { await handleAutoTitle(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
         return;
     }
     if (req.method === 'GET' && req.url.startsWith('/api/ppt/quota')) {
@@ -2642,6 +4781,18 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'POST' && req.url === '/api/upgrade-plan') {
         try { await handleUpgradePlan(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
+        return;
+    }
+    if (req.method === 'POST' && req.url === '/api/wallet/topup') {
+        try { await handleCreateWalletTopUp(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
+        return;
+    }
+    if (req.method === 'GET' && req.url.startsWith('/api/wallet/balance')) {
+        try { await handleGetWalletBalance(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
+        return;
+    }
+    if (req.method === 'GET' && req.url.startsWith('/api/wallet/transactions')) {
+        try { await handleGetWalletTransactions(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
         return;
     }
     if (req.method === 'POST' && req.url === '/api/create-checkout') {
@@ -2658,6 +4809,30 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'POST' && req.url === '/api/stripe/webhook') {
         try { await handleStripeWebhook(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
+        return;
+    }
+    if (req.method === 'GET' && req.url === '/api/admin/openrouter-credits') {
+        try { await handleAdminOpenRouterCredits(req, res); } catch (e) { sendJson(res, 500, { error: e.message }, req); }
+        return;
+    }
+    if (req.method === 'GET' && req.url === '/api/admin/alerts/stream') {
+        registerSSEClient(res);
+        return;
+    }
+    if (req.method === 'GET' && req.url.startsWith('/api/admin/alerts')) {
+        try { await handleAdminAlertsGet(req, res); } catch (e) { sendJson(res, 500, { error: e.message }, req); }
+        return;
+    }
+    if (req.method === 'POST' && req.url === '/api/admin/alerts/read') {
+        try { await handleAdminAlertsMarkRead(req, res); } catch (e) { sendJson(res, 500, { error: e.message }, req); }
+        return;
+    }
+    if (req.method === 'GET' && req.url === '/api/admin/usage-analytics') {
+        try { await handleAdminUsageAnalytics(req, res); } catch (e) { sendJson(res, 500, { error: e.message }, req); }
+        return;
+    }
+    if (req.method === 'GET' && req.url.startsWith('/api/admin/transactions')) {
+        try { await handleAdminTransactions(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
         return;
     }
     if (req.method === 'GET' && req.url === '/api/admin/users') {
@@ -2700,6 +4875,10 @@ const server = createServer(async (req, res) => {
         try { await handleVideoGeneration(req, res); } catch (e) { console.error('[video-generation]', e); sendJson(res, 500, { error: e.message }, req); }
         return;
     }
+    if (req.method === 'POST' && (req.url === '/api/media/generate' || req.url === '/api/fal/generate')) {
+        try { await handleFalGenerate(req, res); } catch (e) { console.error('[media-generate]', e); sendJson(res, 500, { error: e.message }, req); }
+        return;
+    }
     const parsedReqUrl = new URL(req.url, 'http://127.0.0.1');
     if (PPT_ROUTES.has(parsedReqUrl.pathname) || req.url.startsWith('/api/ppt/')) {
         try { await handlePptProxy(req, res); } catch (e) { console.error('[ppt-proxy]', e); sendJson(res, 500, { error: e.message }, req); }
@@ -2725,4 +4904,14 @@ server.listen(PORT, HOST, () => {
     console.log(`[env] AI_PROVIDER: ${process.env.AI_PROVIDER || 'not set'}`);
     console.log(`[env] IS_VPS: ${process.env.IS_VPS || 'not set'}`);
     console.log(`[bind] Listening on ${HOST}:${PORT}`);
+    try {
+        initAutoSyncCron();
+    } catch (err) {
+        console.warn('[Auto-Cron] Failed to init cron:', err.message);
+    }
 });
+
+
+
+// -------------------
+

@@ -10,6 +10,9 @@ import {
   Sparkles,
   HelpCircle,
   Presentation,
+  LayoutGrid,
+  Cpu,
+  Wand2,
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
@@ -19,12 +22,15 @@ import { useTranslation } from "react-i18next";
 
 const navItems = [
   { icon: Home, path: "/dashboard", label: "Home" },
+  { icon: Cpu, path: "/app/models", label: "AI Models & Compare" },
+  { icon: LayoutGrid, path: "/workspace", label: "Developer Workspace" },
   { icon: MessageSquare, path: "/threads", label: "Threads" },
   { icon: History, path: "/history", label: "History" },
   { icon: FolderOpen, path: "/files", label: "Files" },
   { icon: Share2, path: "/shared", label: "Shared" },
   { icon: Database, path: "/plugins", label: "Plugins" },
   { icon: Sparkles, path: "/image-studio", label: "Image Studio" },
+  { icon: Wand2, path: "/edit-studio", label: "AI Workflow Edit Studio" },
   { icon: Presentation, path: "/ppt-studio", label: "NetRoot AI PPT Studio" },
 ];
 
@@ -77,8 +83,8 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex flex-col items-center gap-1 flex-1">
-        {navItems.filter(({ path }) => path === "/dashboard" || canUse(path === "/threads" ? "threads" : path === "/files" ? "files" : path === "/plugins" ? "plugins" : path === "/image-studio" ? "image-studio" : path === "/ppt-studio" ? "ppt-studio" : "none")).map(({ icon: Icon, path, label }) => {
-          const active = location.pathname === path;
+        {navItems.filter(({ path }) => path === "/dashboard" || path === "/app/models" || path === "/workspace" || path === "/edit-studio" || canUse(path === "/threads" ? "threads" : path === "/files" ? "files" : path === "/plugins" ? "plugins" : path === "/image-studio" ? "image-studio" : path === "/ppt-studio" ? "ppt-studio" : "none")).map(({ icon: Icon, path, label }) => {
+          const active = location.pathname === path || (path === '/app/models' && location.pathname.startsWith('/app/models'));
 
           return (
             <button
@@ -121,9 +127,9 @@ export default function Sidebar() {
         </button>
 
         {canUse("project-settings") && <button
-          onClick={() => navigate("/project-settings")}
-          title={t("sidebar.projectSettings")}
-          className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${location.pathname === "/project-settings"
+          onClick={() => navigate("/workspace?tab=billing")}
+          title={t("sidebar.projectSettings") || "Workspace & Settings"}
+          className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${location.pathname === "/workspace"
             ? darkMode
               ? "bg-white/10 text-white"
               : "bg-blue-50 text-blue-600"

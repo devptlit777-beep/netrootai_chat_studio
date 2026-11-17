@@ -41,7 +41,8 @@ export default function PricingPage() {
     const proModelsCount = planLimits.pro?.allowedModels?.length || DEFAULT_PLAN_LIMITS.pro.allowedModels.length;
     const fluxImageLimit = getModelImageLimit('pro', 'black-forest-labs/FLUX.1-schnell');
     const proFeatures = [
-        t('plans.tokensPerDay', { count: proLimit.toLocaleString() }),
+        `${proLimit.toLocaleString()} tokens / day`,
+        months === 3 ? 'Includes $35.00 Free Wallet Credits' : 'Includes $12.00 Free Wallet Credits',
         t('plans.modelsAvailable', { count: proModelsCount }),
         t('plans.fluxImages', { count: fluxImageLimit }),
         'Unlimited AI presentations & edits',
@@ -98,9 +99,31 @@ export default function PricingPage() {
                 <div className={`max-w-2xl mx-auto mb-6 rounded-2xl border px-5 py-4 ${darkMode ? 'border-[#2a2a2a] bg-[#141414]' : 'border-gray-200 bg-white'}`}>
                     <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('plans.chooseDuration')}</p>
                     <div className="mt-3 flex flex-wrap gap-2">
-                        {[1, 2, 3, 6, 12].map(value => <button key={value} type="button" onClick={() => setMonths(value)} className={`px-3 py-2 rounded-lg text-sm font-semibold border ${months === value ? 'bg-blue-600 border-blue-500 text-white' : darkMode ? 'border-[#333] text-gray-400 hover:text-white' : 'border-gray-200 text-gray-600'}`}>{value} {t(value === 1 ? 'common.month' : 'common.months')}</button>)}
+                        {[1, 3].map(value => (
+                            <button
+                                key={value}
+                                type="button"
+                                onClick={() => setMonths(value)}
+                                className={`px-4 py-2.5 rounded-xl text-sm font-semibold border transition-all flex items-center gap-2 ${
+                                    months === value
+                                        ? 'bg-blue-600 border-blue-500 text-white shadow-md shadow-blue-500/25'
+                                        : darkMode ? 'border-[#333] text-gray-400 hover:text-white bg-[#1a1a1a]' : 'border-gray-200 text-gray-600 bg-gray-50'
+                                }`}
+                            >
+                                <span>{value} {value === 1 ? 'Month ($19/mo)' : 'Months ($49/3mo)'}</span>
+                                {value === 3 && (
+                                    <span className="text-[10px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                                        Save $8
+                                    </span>
+                                )}
+                            </button>
+                        ))}
                     </div>
-                    <p className={`text-xs mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>${(19 * months).toFixed(2)} is billed every {months} month{months === 1 ? '' : 's'} until cancelled.</p>
+                    <p className={`text-xs mt-2.5 font-medium ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                        {months === 3
+                            ? '✨ Special: $49 billed every 3 months (Includes $35 Wallet Credits)'
+                            : '✨ $19 billed every month (Includes $12 Wallet Credits)'}
+                    </p>
                     <label className={`mt-3 flex items-center gap-2 text-xs cursor-pointer ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}><input type="checkbox" checked={autoRenewChoice} onChange={event => setAutoRenewChoice(event.target.checked)} className="accent-blue-600" /> {t('plans.autoRenew')}</label>
                 </div>
 
@@ -156,10 +179,17 @@ export default function PricingPage() {
                             <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{t('plans.proDescription')}</p>
                         </div>
                         <div className="mb-6">
-                            <span className={`text-4xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                {PRO_PLAN.currencySymbol}{PRO_PLAN.price}
+                            <div className="flex items-baseline gap-1">
+                                <span className={`text-4xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                    ${months === 3 ? '49' : '19'}
+                                </span>
+                                <span className={`text-sm ml-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                                    /{months === 3 ? '3 months' : 'month'}
+                                </span>
+                            </div>
+                            <span className="inline-block text-[11px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full mt-2 font-mono">
+                                + ${months === 3 ? '35.00' : '12.00'} Wallet Credits Included
                             </span>
-                            <span className={`text-sm ml-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{t('plans.perMonth')}</span>
                         </div>
                         <ul className="space-y-3 mb-8 flex-1">
                             {proFeatures.map((f) => (

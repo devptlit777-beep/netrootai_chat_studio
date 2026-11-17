@@ -35,6 +35,7 @@ const vite = isWindows
 
 let server;
 let pptService;
+let editStudioService;
 
 async function startBackendIfNeeded() {
     const running = await isPortOpen(3001);
@@ -75,13 +76,36 @@ async function startPptServiceIfNeeded() {
     });
 }
 
+async function startEditStudioBackendIfNeeded() {
+    const running = await isPortOpen(8000);
+    if (running) {
+        console.log('Edit Studio Python backend already running on port 8000');
+        return;
+    }
+
+    editStudioService = spawn('python', ['backend.py'], {
+        cwd: projectRoot,
+        stdio: 'inherit',
+        shell: false,
+        env: { ...process.env },
+    });
+
+    editStudioService.on('exit', code => {
+        if (code && code !== 0) {
+            console.error(`Edit Studio Python backend exited with code ${code}`);
+        }
+    });
+}
+
 startBackendIfNeeded();
 startPptServiceIfNeeded();
+startEditStudioBackendIfNeeded();
 
 vite.on('exit', code => {
     if (code && code !== 0) {
         if (server) server.kill('SIGTERM');
         if (pptService) pptService.kill('SIGTERM');
+        if (editStudioService) editStudioService.kill('SIGTERM');
         process.exit(code);
     }
 });

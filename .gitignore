@@ -35,6 +35,9 @@ pnpm-debug.log*
 *.temp
 tmp/
 temp/
+runtime/
+testa.py
+Netroot AI ChatBix/
 
 # ================================
 # Server generated data

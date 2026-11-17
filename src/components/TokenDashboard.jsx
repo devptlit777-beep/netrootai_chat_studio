@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Sparkles, RefreshCw, BarChart3, Clock, Cpu } from 'lucide-react';
+import { Sparkles, RefreshCw, BarChart3, Clock, Cpu, Layers, Activity, Zap } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import API_BASE from '../lib/api';
 import { useTranslation } from 'react-i18next';
@@ -301,6 +301,128 @@ export default function TokenDashboard({ darkMode }) {
                         </div>
                     ))}
                 </div>
+            </div>
+
+            {/* Per-Model Usage Breakdown Section */}
+            <div className={`mt-6 rounded-3xl border p-6 ${darkMode ? 'border-[#242424] bg-[#181818]' : 'border-gray-200 bg-gray-50'}`}>
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <div>
+                        <h3 className={`text-base font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                            <Layers className="w-4 h-4 text-emerald-400" />
+                            Model Token Consumption Breakdown
+                        </h3>
+                        <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            Detailed token telemetry and requests count per model used during {usageData.periodLabel.toLowerCase()}.
+                        </p>
+                    </div>
+                    <span className={`text-xs font-mono px-3 py-1 rounded-full border ${darkMode ? 'bg-[#121212] border-[#333] text-gray-300' : 'bg-white border-gray-200 text-gray-700'}`}>
+                        {Object.keys(usageData.perModel || {}).length} Models Active
+                    </span>
+                </div>
+
+                {Object.keys(usageData.perModel || {}).length === 0 ? (
+                    <div className={`py-12 text-center rounded-2xl border ${darkMode ? 'bg-[#121212] border-[#262626]' : 'bg-white border-gray-200'}`}>
+                        <Activity className="w-8 h-8 text-gray-500 mx-auto mb-2 opacity-50" />
+                        <p className={`text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            No individual model usage recorded for {usageData.periodLabel.toLowerCase()}
+                        </p>
+                        <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                            Chat with any model in Chat Studio to track per-model tokens and request telemetry.
+                        </p>
+                    </div>
+                ) : (
+                    <div className={`rounded-2xl border overflow-hidden ${darkMode ? 'bg-[#121212] border-[#262626]' : 'bg-white border-gray-200'}`}>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs">
+                                <thead className={`border-b text-[11px] font-semibold uppercase tracking-wider ${
+                                    darkMode ? 'bg-[#161616] border-[#262626] text-gray-400' : 'bg-gray-100 border-gray-200 text-gray-600'
+                                }`}>
+                                    <tr>
+                                        <th className="py-3 px-4">Model & Provider</th>
+                                        <th className="py-3 px-4">Requests</th>
+                                        <th className="py-3 px-4">Prompt / Completion</th>
+                                        <th className="py-3 px-4">Total Tokens</th>
+                                        <th className="py-3 px-4">Share of Usage</th>
+                                        <th className="py-3 px-4">Avg Latency</th>
+                                        <th className="py-3 px-4 text-right">Last Used</th>
+                                    </tr>
+                                </thead>
+                                <tbody className={`divide-y ${darkMode ? 'divide-[#222]' : 'divide-gray-100'}`}>
+                                    {Object.entries(usageData.perModel || {})
+                                        .map(([modelId, data]) => ({ id: modelId, ...data }))
+                                        .sort((a, b) => (b.tokens || 0) - (a.tokens || 0))
+                                        .map(m => {
+                                            const totalTok = usageData.totalTokens || 1;
+                                            const pct = Math.min(100, Math.round(((m.tokens || 0) / totalTok) * 100));
+                                            const provider = m.id.includes('/') ? m.id.split('/')[0] : (m.id === 'ppt-studio' ? 'NetRoot AI' : 'NetRoot');
+                                            const displayName = m.id === 'ppt-studio'
+                                                ? 'NetRoot AI PPT Studio'
+                                                : m.id.split('/').pop().replace(/[-_]/g, ' ').toUpperCase();
+
+                                            return (
+                                                <tr key={m.id} className={`${darkMode ? 'hover:bg-white/[0.02]' : 'hover:bg-gray-50'} transition-colors`}>
+                                                    <td className="py-3 px-4">
+                                                        <div className="flex items-center gap-2.5">
+                                                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                                                                darkMode ? 'bg-[#1e1e1e] text-blue-400' : 'bg-blue-50 text-blue-600'
+                                                            }`}>
+                                                                <Cpu className="w-3.5 h-3.5" />
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                                    <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                                        {displayName}
+                                                                    </span>
+                                                                    <span className={`text-[9px] uppercase font-mono px-1.5 py-0.5 rounded ${
+                                                                        darkMode ? 'bg-[#222] text-gray-400' : 'bg-gray-200 text-gray-700'
+                                                                    }`}>
+                                                                        {provider}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="text-[10px] text-gray-500 font-mono truncate max-w-[200px]">
+                                                                    {m.id}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3 px-4 font-mono font-semibold">
+                                                        <span className="px-2 py-0.5 rounded-full text-[11px] bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                                            {formatNumber(m.requests || 0)} calls
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3 px-4 font-mono text-gray-400 text-[11px]">
+                                                        <span className="text-emerald-400">{formatNumber(m.inputTokens || 0)}</span> in / <span className="text-indigo-400">{formatNumber(m.outputTokens || 0)}</span> out
+                                                    </td>
+                                                    <td className="py-3 px-4 font-mono font-bold text-white text-xs">
+                                                        {formatNumber(m.tokens || 0)}
+                                                    </td>
+                                                    <td className="py-3 px-4 min-w-[120px]">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                                                                <div
+                                                                    className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-blue-500"
+                                                                    style={{ width: `${Math.max(4, pct)}%` }}
+                                                                />
+                                                            </div>
+                                                            <span className="text-[10px] font-mono text-gray-400 w-8 text-right">
+                                                                {pct}%
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3 px-4 font-mono text-gray-400 text-[11px]">
+                                                        {m.avgLatencyMs ? `${m.avgLatencyMs}ms` : '—'}
+                                                    </td>
+                                                    <td className="py-3 px-4 font-mono text-gray-400 text-[11px] text-right">
+                                                        {m.lastUsed ? new Date(m.lastUsed).toLocaleDateString() : '—'}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

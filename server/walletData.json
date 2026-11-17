@@ -1,0 +1,107 @@
+{
+  "balances": {
+    "test@gmail.com": 70,
+    "ashishpatel2100@gmail.com": 35,
+    "devdipakpatel2004@gmail.com": 12,
+    "babariyanir@gmail.com": 12,
+    "devptlit777@gmail.com": 12
+  },
+  "transactions": [
+    {
+      "id": "tx_pro_b626205c",
+      "user_email": "devptlit777@gmail.com",
+      "type": "deposit",
+      "amount": 12,
+      "balance_after": 12,
+      "stripe_session_id": null,
+      "metadata": {
+        "note": "Pro Plan Included Credits (12)"
+      },
+      "created_at": "2026-10-31T07:57:10.905Z"
+    },
+    {
+      "id": "tx_pro_0a11c7dd",
+      "user_email": "babariyanir@gmail.com",
+      "type": "deposit",
+      "amount": 12,
+      "balance_after": 12,
+      "stripe_session_id": null,
+      "metadata": {
+        "note": "Pro Plan Included Credits (12)"
+      },
+      "created_at": "2026-10-31T07:57:10.905Z"
+    },
+    {
+      "id": "tx_pro_926566db",
+      "user_email": "devdipakpatel2004@gmail.com",
+      "type": "deposit",
+      "amount": 12,
+      "balance_after": 12,
+      "stripe_session_id": null,
+      "metadata": {
+        "note": "Pro Plan Included Credits (12)"
+      },
+      "created_at": "2026-10-31T07:57:10.905Z"
+    },
+    {
+      "id": "tx_pro_76d9f352",
+      "user_email": "ashishpatel2100@gmail.com",
+      "type": "deposit",
+      "amount": 35,
+      "balance_after": 35,
+      "stripe_session_id": null,
+      "metadata": {
+        "note": "Pro Plan Included Credits (35)"
+      },
+      "created_at": "2026-10-31T07:57:10.904Z"
+    },
+    {
+      "id": "tx_29831a2e",
+      "user_email": "test@gmail.com",
+      "type": "deposit",
+      "amount": 11,
+      "balance_after": 70,
+      "stripe_session_id": "cs_test_a1Nlkf4qxhtJdz41s4hCndZlGYQNk68hwufyTUTMcognZ7KMO9iJVCAxwX",
+      "metadata": {
+        "note": "Stripe Top-Up (11)"
+      },
+      "created_at": "2026-10-30T11:46:58.918Z"
+    },
+    {
+      "id": "tx_62d9cb71",
+      "user_email": "test@gmail.com",
+      "type": "deposit",
+      "amount": 12,
+      "balance_after": 59,
+      "stripe_session_id": "cs_test_a1vSQPAR7G9xxduRvKQI0r4ZBcvV258W09PIX1jsfPejOrkBddsmUCthOn",
+      "metadata": {
+        "note": "Pro Plan Included Credits (12)"
+      },
+      "created_at": "2026-10-30T11:42:52.966Z"
+    },
+    {
+      "id": "tx_dbfcb056",
+      "user_email": "test@gmail.com",
+      "type": "deposit",
+      "amount": 12,
+      "balance_after": 47,
+      "stripe_session_id": "cs_test_a1vSQPAR7G9xxduRvKQI0r4ZBcvV258W09PIX1jsfPejOrkBddsmUCthOn",
+      "metadata": {
+        "note": "Pro Plan Included Credits (12)"
+      },
+      "created_at": "2026-10-30T11:42:52.708Z"
+    },
+    {
+      "id": "tx_e8a51133",
+      "user_email": "test@gmail.com",
+      "type": "deposit",
+      "amount": 35,
+      "balance_after": 70,
+      "stripe_session_id": "cs_test_a1nqzlbtfs7seWlgmePQ8AaCr9XLw34tyafX6MbtMZIWX1kwISjF92BTCP",
+      "metadata": {
+        "note": "Pro Plan Included Credits (35)"
+      },
+      "created_at": "2026-10-30T11:13:07.386Z"
+    }
+  ]
+}

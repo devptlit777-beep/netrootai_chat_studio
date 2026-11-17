@@ -2,11 +2,16 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  Users, Zap, TrendingUp, LogOut, RefreshCw, Search, Shield,
+  Users, Zap, TrendingUp, LogOut, RefreshCw, Search, Shield, CreditCard, DollarSign, Wallet,
   ChevronDown, ChevronUp, X, Clock, Activity, MessageSquare, Cpu, Mail, RotateCw,
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import API_BASE from '../lib/api';
+import AdminModelsManager from '../components/admin/AdminModelsManager';
+import AdminTransactionsManager from '../components/admin/AdminTransactionsManager';
+import AdminNotificationBell from '../components/admin/AdminNotificationBell';
+import AdminOpenRouterWidget from '../components/admin/AdminOpenRouterWidget';
+import { Receipt } from 'lucide-react';
 
 const ADMIN_EMAIL = 'admin@netrootai.com';
 const ADMIN_PASSWORD = 'NetrootAdmin@2024';
@@ -29,6 +34,7 @@ export default function AdminPage() {
   const navigate = useNavigate();
 
   const [authed, setAuthed] = useState(() => sessionStorage.getItem('admin_authed') === '1');
+  const [adminTab, setAdminTab] = useState('users'); // 'users' or 'models'
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPw, setLoginPw] = useState('');
   const [loginErr, setLoginErr] = useState('');
@@ -39,6 +45,8 @@ export default function AdminPage() {
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState('tokens');
   const [sortDir, setSortDir] = useState('desc');
+  const [financials, setFinancials] = useState({ totalDeposits: 0, totalBaseCost: 0, totalProfit: 0, totalWalletReserves: 0, marginPercentage: 20 });
+  const [filterMode, setFilterMode] = useState('all'); // 'all' | 'profitable' | 'heavy' | 'low_balance'
 
   // selected user detail
   const [selectedUser, setSelectedUser] = useState(null);
@@ -75,6 +83,7 @@ export default function AdminPage() {
       const uj = await ur.json();
       const u2j = await ur2.json();
       setUsers(uj.users || []);
+      if (uj.financials) setFinancials(uj.financials);
       setUsageData(u2j);
     } catch (e) { console.error(e); }
     setLoading(false);
@@ -151,10 +160,27 @@ export default function AdminPage() {
   }
 
   const filtered = users
-    .filter(u => u.email.toLowerCase().includes(search.toLowerCase()) || (u.full_name || '').toLowerCase().includes(search.toLowerCase()))
+    .filter(u => {
+      const matchesSearch = (u.email || '').toLowerCase().includes(search.toLowerCase()) ||
+        (u.full_name || '').toLowerCase().includes(search.toLowerCase());
+      if (!matchesSearch) return false;
+      if (filterMode === 'profitable') return (u.profit_usd || 0) > 0;
+      if (filterMode === 'low_balance') return (u.wallet_balance || 0) < 2.0;
+      if (filterMode === 'heavy') return (u.tokens || 0) > 10000 || (u.openrouter_cost || 0) > 0.05;
+      return true;
+    })
     .sort((a, b) => {
-      const av = sortField === 'tokens' ? (a.tokens || 0) : sortField === 'email' ? a.email : sortField === 'plan' ? (a.plan || '') : sortField === 'status' ? (a.plan_status || '') : sortField === 'end_date' ? (a.current_period_end || '') : (a.created_at || '');
-      const bv = sortField === 'tokens' ? (b.tokens || 0) : sortField === 'email' ? b.email : sortField === 'plan' ? (b.plan || '') : sortField === 'status' ? (b.plan_status || '') : sortField === 'end_date' ? (b.current_period_end || '') : (b.created_at || '');
+      let av = 0, bv = 0;
+      if (sortField === 'tokens') { av = a.tokens || 0; bv = b.tokens || 0; }
+      else if (sortField === 'profit') { av = a.profit_usd || 0; bv = b.profit_usd || 0; }
+      else if (sortField === 'openrouter_cost') { av = a.openrouter_cost || 0; bv = b.openrouter_cost || 0; }
+      else if (sortField === 'billed_cost') { av = a.billed_cost || 0; bv = b.billed_cost || 0; }
+      else if (sortField === 'wallet_balance') { av = a.wallet_balance || 0; bv = b.wallet_balance || 0; }
+      else if (sortField === 'email') { av = a.email; bv = b.email; }
+      else if (sortField === 'plan') { av = a.plan || ''; bv = b.plan || ''; }
+      else if (sortField === 'status') { av = a.plan_status || ''; bv = b.plan_status || ''; }
+      else if (sortField === 'end_date') { av = a.current_period_end || ''; bv = b.current_period_end || ''; }
+      else { av = a.created_at || ''; bv = b.created_at || ''; }
       if (av < bv) return sortDir === 'asc' ? -1 : 1;
       if (av > bv) return sortDir === 'asc' ? 1 : -1;
       return 0;
@@ -208,20 +234,49 @@ export default function AdminPage() {
 
   // ── Dashboard ─────────────────────────────────────────────────────────────
   return (
-    <div className={`min-h-screen ${dark ? 'bg-[#0e0e0e] text-white' : 'bg-gray-50 text-gray-900'}`}>
+    <div className={`min-h-screen w-full overflow-x-hidden ${dark ? 'bg-[#0e0e0e] text-white' : 'bg-gray-50 text-gray-900'}`}>
       {/* Header */}
-      <div className={`border-b px-6 py-4 flex items-center justify-between sticky top-0 z-30 ${dark ? 'bg-[#111] border-[#222]' : 'bg-white border-gray-200'}`}>
-        <div className="flex items-center gap-3">
-          <img src="/image.png" alt="NetRoot AI logo" className="w-9 h-9 object-contain" />
-          {/* <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${dark ? 'bg-blue-500/10' : 'bg-blue-50'}`}>
-            <Shield className="w-5 h-5 text-blue-500" />
-          </div> */}
+      <div className={`border-b px-4 sm:px-6 py-3.5 flex flex-wrap md:flex-nowrap items-center justify-between gap-3 sticky top-0 z-30 ${dark ? 'bg-[#111] border-[#222]' : 'bg-white border-gray-200'}`}>
+        <div className="flex items-center gap-3 shrink-0 min-w-max">
+          <img src="/image.png" alt="NetRoot AI logo" className="w-9 h-9 object-contain shrink-0" />
           <div>
             <h1 className="font-bold text-lg leading-none">{t('admin.dashboard')}</h1>
             <p className={`text-xs mt-0.5 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>NetRoot AI</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0">
+          <div className={`flex items-center p-1 rounded-xl border mr-2 ${dark ? 'bg-[#181818] border-[#2a2a2a]' : 'bg-gray-100 border-gray-200'}`}>
+            <button
+              onClick={() => setAdminTab('users')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                adminTab === 'users' ? 'bg-blue-600 text-white shadow-sm' : dark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              Users & Usage
+            </button>
+            <button
+              onClick={() => setAdminTab('transactions')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                adminTab === 'transactions' ? 'bg-blue-600 text-white shadow-sm' : dark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Receipt className="w-3.5 h-3.5" />
+              Payments & Billing Log
+            </button>
+            <button
+              onClick={() => setAdminTab('models')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                adminTab === 'models' ? 'bg-blue-600 text-white shadow-sm' : dark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Cpu className="w-3.5 h-3.5" />
+              AI Models & Dynamic Pricing
+            </button>
+          </div>
+          {/* Real-Time Live Notification Center for Model & OpenRouter Alerts */}
+          <AdminNotificationBell dark={dark} />
+
           <button onClick={fetchData} disabled={loading} className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-colors ${dark ? 'border-[#333] text-gray-400 hover:text-white' : 'border-gray-200 text-gray-500 hover:text-gray-700'}`}>
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> {t('admin.refresh')}
           </button>
@@ -232,7 +287,88 @@ export default function AdminPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Stats */}
+        {/* ── OpenRouter Live Master Balance & Real-Time Usage Tracking ── */}
+        <AdminOpenRouterWidget dark={dark} />
+
+        {adminTab === 'models' ? (
+          <AdminModelsManager dark={dark} />
+        ) : adminTab === 'transactions' ? (
+          <AdminTransactionsManager dark={dark} />
+        ) : (
+          <>
+            {/* Stats */}
+                {/* ── Global Financial Overview Cards (NetRoot AI & OpenRouter P&L) ── */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-400 font-mono flex items-center gap-1.5">
+              <DollarSign className="w-3.5 h-3.5" /> Platform Financial Revenue & P&L Engine
+            </span>
+            <span className={`text-xs px-2.5 py-0.5 rounded-full font-mono font-bold ${
+              dark ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+            }`}>
+              +{financials.marginPercentage || 20}% Net Margin Applied
+            </span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Card 1: Total Deposits */}
+            <div className={`rounded-2xl border p-5 relative overflow-hidden ${
+              dark ? 'bg-[#111] border-[#222]' : 'bg-white border-gray-200'
+            }`}>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3 bg-blue-500/10 text-blue-400">
+                <CreditCard className="w-4.5 h-4.5" />
+              </div>
+              <p className={`text-xs font-medium ${dark ? 'text-gray-400' : 'text-gray-500'}`}>Total Wallet Deposits</p>
+              <p className="text-2xl font-black mt-0.5 font-mono text-blue-400">
+                ${(financials.totalDeposits || 0).toFixed(2)}
+              </p>
+              <p className={`text-[10px] mt-1.5 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>Stripe collections into NetRoot</p>
+            </div>
+
+            {/* Card 2: OpenRouter Base Cost */}
+            <div className={`rounded-2xl border p-5 relative overflow-hidden ${
+              dark ? 'bg-[#111] border-[#222]' : 'bg-white border-gray-200'
+            }`}>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3 bg-orange-500/10 text-orange-400">
+                <Cpu className="w-4.5 h-4.5" />
+              </div>
+              <p className={`text-xs font-medium ${dark ? 'text-gray-400' : 'text-gray-500'}`}>OpenRouter Paid (Base Cost)</p>
+              <p className="text-2xl font-black mt-0.5 font-mono text-orange-400">
+                ${Number(financials.totalBaseCost || 0) > 0 && Number(financials.totalBaseCost || 0) < 0.05 ? Number(financials.totalBaseCost || 0).toFixed(4) : Number(financials.totalBaseCost || 0).toFixed(2)}
+              </p>
+              <p className={`text-[10px] mt-1.5 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>Upstream provider token cost</p>
+            </div>
+
+            {/* Card 3: Net Profit */}
+            <div className={`rounded-2xl border p-5 relative overflow-hidden ${
+              dark ? 'bg-emerald-500/5 border-emerald-500/30' : 'bg-emerald-50/50 border-emerald-200'
+            }`}>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3 bg-emerald-500/15 text-emerald-400">
+                <TrendingUp className="w-4.5 h-4.5" />
+              </div>
+              <p className={`text-xs font-medium ${dark ? 'text-emerald-300' : 'text-emerald-800'}`}>NetRoot Profit Earned</p>
+              <p className="text-2xl font-black mt-0.5 font-mono text-emerald-400">
+                +${Number(financials.totalProfit || 0) > 0 && Number(financials.totalProfit || 0) < 0.05 ? Number(financials.totalProfit || 0).toFixed(4) : Number(financials.totalProfit || 0).toFixed(2)}
+              </p>
+              <p className={`text-[10px] mt-1.5 ${dark ? 'text-emerald-400/70' : 'text-emerald-700'}`}>Net margin retained in your bank</p>
+            </div>
+
+            {/* Card 4: Wallet Reserves */}
+            <div className={`rounded-2xl border p-5 relative overflow-hidden ${
+              dark ? 'bg-[#111] border-[#222]' : 'bg-white border-gray-200'
+            }`}>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3 bg-purple-500/10 text-purple-400">
+                <Wallet className="w-4.5 h-4.5" />
+              </div>
+              <p className={`text-xs font-medium ${dark ? 'text-gray-400' : 'text-gray-500'}`}>Active Wallet Reserves</p>
+              <p className="text-2xl font-black mt-0.5 font-mono text-purple-400">
+                ${(financials.totalWalletReserves || 0).toFixed(2)}
+              </p>
+              <p className={`text-[10px] mt-1.5 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>Unspent user credit balances</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Existing Fleet Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 mb-8">
           {[
             { icon: Users, label: t('admin.totalUsers'), value: users.length, color: 'blue' },
@@ -253,12 +389,78 @@ export default function AdminPage() {
 
         {/* Users table */}
         <div className={`rounded-2xl border ${dark ? 'bg-[#111] border-[#222]' : 'bg-white border-gray-200'}`}>
-          <div className={`flex items-center justify-between px-5 py-4 border-b ${dark ? 'border-[#222]' : 'border-gray-100'}`}>
-            <h2 className="font-semibold">{t('admin.allUsers')} <span className={`text-sm font-normal ml-1 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{t('admin.clickRowForQueries')}</span></h2>
-            <div className={`flex items-center gap-2 border rounded-lg px-3 py-1.5 ${dark ? 'bg-[#1a1a1a] border-[#333]' : 'bg-gray-50 border-gray-200'}`}>
-              <Search className={`w-3.5 h-3.5 ${dark ? 'text-gray-500' : 'text-gray-400'}`} />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t('admin.searchUsers')}
-                className={`bg-transparent text-sm outline-none w-44 ${dark ? 'text-white placeholder-gray-600' : 'text-gray-900 placeholder-gray-400'}`} />
+          <div className={`flex flex-col md:flex-row md:items-center justify-between px-5 py-4 border-b gap-3 ${dark ? 'border-[#222]' : 'border-gray-100'}`}>
+            <div>
+              <h2 className="font-semibold flex items-center gap-2">
+                <span>{t('admin.allUsers')}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-mono ${dark ? 'bg-white/10 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+                  {filtered.length} of {users.length}
+                </span>
+              </h2>
+              <p className={`text-xs mt-0.5 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>
+                Click any user row to view model-by-model profit breakdown & query latency
+              </p>
+            </div>
+
+            {/* Smart Filters & Search */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className={`flex items-center p-1 rounded-xl border text-xs ${dark ? 'bg-[#181818] border-[#2a2a2a]' : 'bg-gray-100 border-gray-200'}`}>
+                <button
+                  type="button"
+                  onClick={() => setFilterMode('all')}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                    filterMode === 'all' ? 'bg-blue-600 text-white shadow-xs' : dark ? 'text-gray-400 hover:text-white' : 'text-gray-600'
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterMode('pro_users')}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                    filterMode === 'pro_users' ? 'bg-purple-600 text-white shadow-xs' : dark ? 'text-gray-400 hover:text-white' : 'text-gray-600'
+                  }`}
+                >
+                  ⭐ Pro Users ({proUsers})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterMode('profitable')}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                    filterMode === 'profitable' ? 'bg-emerald-600 text-white shadow-xs' : dark ? 'text-gray-400 hover:text-white' : 'text-gray-600'
+                  }`}
+                >
+                  🔥 Profitable
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterMode('heavy')}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                    filterMode === 'heavy' ? 'bg-orange-600 text-white shadow-xs' : dark ? 'text-gray-400 hover:text-white' : 'text-gray-600'
+                  }`}
+                >
+                  ⚡ Heavy Usage
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterMode('low_balance')}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                    filterMode === 'low_balance' ? 'bg-red-600 text-white shadow-xs' : dark ? 'text-gray-400 hover:text-white' : 'text-gray-600'
+                  }`}
+                >
+                  ⚠️ Low Balance
+                </button>
+              </div>
+
+              <div className={`flex items-center gap-2 border rounded-xl px-3 py-1.5 ${dark ? 'bg-[#1a1a1a] border-[#333]' : 'bg-gray-50 border-gray-200'}`}>
+                <Search className={`w-3.5 h-3.5 ${dark ? 'text-gray-500' : 'text-gray-400'}`} />
+                <input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder={t('admin.searchUsers')}
+                  className={`bg-transparent text-xs outline-none w-36 ${dark ? 'text-white placeholder-gray-600' : 'text-gray-900 placeholder-gray-400'}`}
+                />
+              </div>
             </div>
           </div>
           {notificationMessage && <p className={`px-5 py-2 text-xs ${notificationMessage.startsWith(t('common.notificationSentPrefix')) ? 'text-emerald-400' : 'text-red-400'}`}>{notificationMessage}</p>}
@@ -271,19 +473,19 @@ export default function AdminPage() {
                 <thead>
                   <tr className={`border-b ${dark ? 'border-[#222]' : 'border-gray-100'}`}>
                     {[
-                      { label: '#', field: null, w: 'w-10' },
+                      { label: '#', field: null, w: 'w-8' },
                       { label: t('admin.email'), field: 'email' },
-                      { label: t('admin.name'), field: 'name' },
                       { label: t('admin.plan'), field: 'plan' },
-                      { label: t('admin.status'), field: 'status' },
-                      { label: t('admin.planEnd'), field: 'end_date' },
-                      { label: t('admin.renewal'), field: null },
+                      { label: 'Wallet', field: 'wallet_balance' },
+                      { label: 'OpenRouter Paid', field: 'openrouter_cost' },
+                      { label: 'Billed Cost', field: 'billed_cost' },
+                      { label: '💰 Net Profit', field: 'profit' },
                       { label: t('admin.tokens30d'), field: 'tokens' },
-                      { label: t('admin.joined'), field: 'created_at' },
+                      { label: t('admin.status'), field: 'status' },
                       { label: t('admin.action'), field: null },
                     ].map(({ label, field, w }) => (
                       <th key={label} onClick={() => field && toggleSort(field)}
-                        className={`text-left px-5 py-3 font-medium ${dark ? 'text-gray-500' : 'text-gray-500'} ${field ? 'cursor-pointer select-none' : ''} ${w || ''}`}>
+                        className={`text-left px-4 py-3 font-medium ${dark ? 'text-gray-400' : 'text-gray-600'} ${field ? 'cursor-pointer select-none hover:text-white' : ''} ${w || ''}`}>
                         <div className="flex items-center gap-1">{label}{field && <SortIcon field={field} />}</div>
                       </th>
                     ))}
@@ -294,51 +496,64 @@ export default function AdminPage() {
                     <tr><td colSpan={10} className={`text-center py-12 ${dark ? 'text-gray-600' : 'text-gray-400'}`}>{t('admin.noUsersFound')}</td></tr>
                   ) : filtered.map((u, i) => (
                     <tr key={u.id} onClick={() => openUser(u)}
-                      className={`border-b last:border-0 cursor-pointer transition-colors ${dark ? 'border-[#1a1a1a] hover:bg-white/[0.03]' : 'border-gray-50 hover:bg-blue-50/40'} ${selectedUser?.id === u.id ? dark ? 'bg-blue-500/5' : 'bg-blue-50' : ''}`}>
-                      <td className={`px-5 py-3.5 ${dark ? 'text-gray-600' : 'text-gray-400'}`}>{i + 1}</td>
-                      <td className={`px-5 py-3.5 font-medium ${dark ? 'text-gray-200' : 'text-gray-800'}`}>{u.email}</td>
-                      <td className={`px-5 py-3.5 ${dark ? 'text-gray-400' : 'text-gray-600'}`}>{u.full_name || '—'}</td>
-                      <td className="px-5 py-3.5">
-                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${u.plan === 'pro' ? 'bg-purple-500/15 text-purple-400' : dark ? 'bg-white/5 text-gray-500' : 'bg-gray-100 text-gray-500'}`}>
-                          {u.plan || 'free'}
+                      className={`border-b last:border-0 cursor-pointer transition-colors ${dark ? 'border-[#1a1a1a] hover:bg-white/[0.04]' : 'border-gray-50 hover:bg-blue-50/40'} ${selectedUser?.id === u.id ? dark ? 'bg-blue-500/5' : 'bg-blue-50' : ''}`}>
+                      <td className={`px-4 py-3.5 text-xs ${dark ? 'text-gray-600' : 'text-gray-400'}`}>{i + 1}</td>
+                      <td className="px-4 py-3.5">
+                        <div className="flex flex-col">
+                          <span className={`font-medium text-xs ${dark ? 'text-gray-200' : 'text-gray-900'}`}>{u.email}</span>
+                          {u.full_name && <span className={`text-[11px] ${dark ? 'text-gray-500' : 'text-gray-500'}`}>{u.full_name}</span>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        {u.plan === 'pro' ? (
+                          <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full font-mono flex items-center gap-1 w-max ${
+                            u.interval_months === 3
+                              ? 'bg-purple-500/15 text-purple-300 border border-purple-500/30'
+                              : 'bg-blue-500/15 text-blue-300 border border-blue-500/30'
+                          }`}>
+                            {u.interval_months === 3 ? 'Pro (3 Mo - $49)' : 'Pro (1 Mo - $19)'}
+                          </span>
+                        ) : (
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${dark ? 'bg-white/5 text-gray-400 border border-[#2a2a2a]' : 'bg-gray-100 text-gray-600'}`}>
+                            {u.plan || 'free'}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5 font-mono text-xs">
+                        <span className={`font-bold ${(u.wallet_balance || 0) < 1 ? 'text-amber-400' : 'text-blue-400'}`}>
+                          ${Number(u.wallet_balance || 0).toFixed(2)}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5"><StatusBadge status={u.plan_status} /></td>
-                      <td className={`px-5 py-3.5 text-xs whitespace-nowrap ${dark ? 'text-gray-400' : 'text-gray-600'}`}>{fmtPlanDate(u.current_period_end)}</td>
-                      <td className={`px-5 py-3.5 text-xs font-medium whitespace-nowrap ${u.auto_renew ? 'text-emerald-400' : dark ? 'text-gray-500' : 'text-gray-500'}`}>{u.plan === 'free' ? t('admin.notApplicable') : u.auto_renew ? t('admin.everyMonths', { count: u.interval_months || 1 }) : t('admin.endsAtPeriodEnd')}</td>
-                      <td className="px-5 py-3.5">
+                      <td className={`px-4 py-3.5 font-mono text-xs ${dark ? 'text-gray-400' : 'text-gray-600'}`}>
+                        ${Number(u.openrouter_cost || 0) > 0 && Number(u.openrouter_cost || 0) < 0.05 ? Number(u.openrouter_cost || 0).toFixed(4) : Number(u.openrouter_cost || 0).toFixed(2)}
+                      </td>
+                      <td className={`px-4 py-3.5 font-mono text-xs font-medium ${dark ? 'text-gray-300' : 'text-gray-800'}`}>
+                        ${Number(u.billed_cost || 0) > 0 && Number(u.billed_cost || 0) < 0.05 ? Number(u.billed_cost || 0).toFixed(4) : Number(u.billed_cost || 0).toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3.5 font-mono text-xs">
+                        <span className="font-bold text-emerald-400">
+                          +${Number(u.profit_usd || 0) > 0 && Number(u.profit_usd || 0) < 0.05 ? Number(u.profit_usd || 0).toFixed(4) : Number(u.profit_usd || 0).toFixed(2)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5">
                         <div className="flex items-center gap-2">
-                          <div className={`h-1.5 w-20 rounded-full overflow-hidden ${dark ? 'bg-white/5' : 'bg-gray-100'}`}>
+                          <div className={`h-1.5 w-16 rounded-full overflow-hidden ${dark ? 'bg-white/5' : 'bg-gray-100'}`}>
                             <div className="h-full rounded-full bg-blue-500" style={{ width: `${Math.min(100, ((u.tokens || 0) / maxTokens) * 100)}%` }} />
                           </div>
                           <span className={`text-xs font-mono ${dark ? 'text-gray-300' : 'text-gray-700'}`}>{fmt(u.tokens)}</span>
                         </div>
                       </td>
-                      <td className={`px-5 py-3.5 text-xs ${dark ? 'text-gray-500' : 'text-gray-400'}`}>
-                        {u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}
-                      </td>
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 py-3.5"><StatusBadge status={u.plan_status} /></td>
+                      <td className="px-4 py-3.5">
                         {u.plan_status === 'expired' && (
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={event => reactivateUser(event, u)}
-                              disabled={reactivatingEmail === u.email}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-emerald-500/20 disabled:cursor-wait disabled:opacity-60"
-                              title={t('admin.activateFreeTitle')}
-                            >
-                              <RotateCw className="h-3.5 w-3.5" />
-                              {reactivatingEmail === u.email ? t('admin.activating') : t('admin.activateFree')}
-                            </button>
-                            <button
-                              onClick={event => notifyExpiredUser(event, u)}
-                              disabled={notifyingEmail === u.email}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20 disabled:cursor-wait disabled:opacity-60"
-                              title={t('admin.sendExpiredNotice')}
-                            >
-                              <Mail className="h-3.5 w-3.5" />
-                              {notifyingEmail === u.email ? t('admin.sending') : t('admin.notify')}
-                            </button>
-                          </div>
+                          <button
+                            onClick={event => reactivateUser(event, u)}
+                            disabled={reactivatingEmail === u.email}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-xs font-medium text-emerald-400 transition-colors hover:bg-emerald-500/20 disabled:cursor-wait disabled:opacity-60"
+                            title={t('admin.activateFreeTitle')}
+                          >
+                            <RotateCw className="h-3 w-3" /> Reactivate
+                          </button>
                         )}
                       </td>
                     </tr>
@@ -348,6 +563,8 @@ export default function AdminPage() {
             </div>
           )}
         </div>
+        </>
+      )}
       </div>
 
       {/* ── User Detail Drawer ─────────────────────────────────────────────── */}

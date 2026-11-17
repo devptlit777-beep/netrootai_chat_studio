@@ -1,4 +1,5 @@
 @import "./styles/pptTheme.css";
+@import "./landing/landing.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -56,4 +57,19 @@
   .light *::-webkit-scrollbar-thumb:hover {
     background: #9ca3af;
   }
+}
+
+
+/* KaTeX math styling & error suppression */
+.katex-error {
+  color: inherit !important;
+  background: transparent !important;
+  font-family: inherit !important;
+}
+
+.katex-display {
+  margin: 1.25rem 0 !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.5rem 0;
 }

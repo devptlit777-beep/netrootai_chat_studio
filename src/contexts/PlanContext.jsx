@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import API_BASE from '../lib/api';
 
@@ -10,8 +10,11 @@ const PlanContext = createContext({
   autoRenew: false,
   featureAccess: {},
   lifetimePptCount: 0,
+  walletBalance: 0.00,
   loading: true,
   refresh: async () => { },
+  refreshWallet: async () => { },
+  setWalletBalance: () => { },
 });
 
 function normalizePlan(value) {
@@ -29,8 +32,9 @@ export function PlanProvider({ children }) {
   const [autoRenew, setAutoRenew] = useState(false);
   const [featureAccess, setFeatureAccess] = useState({});
   const [lifetimePptCount, setLifetimePptCount] = useState(0);
+  const [walletBalance, setWalletBalance] = useState(0.00);
 
-  async function fetchPlan() {
+  const fetchPlan = useCallback(async () => {
     if (!user?.email) {
       setPlan('free');
       setAccessExpired(false);
@@ -38,6 +42,7 @@ export function PlanProvider({ children }) {
       setAutoRenew(false);
       setFeatureAccess({});
       setLifetimePptCount(0);
+      setWalletBalance(0.00);
       setLoading(false);
       return;
     }
@@ -50,6 +55,9 @@ export function PlanProvider({ children }) {
       setAutoRenew(Boolean(data.auto_renew));
       setFeatureAccess(data.feature_access || {});
       setLifetimePptCount(Number(data.lifetime_ppt_count || 0));
+      if (data.wallet_balance !== undefined) {
+        setWalletBalance(Number(data.wallet_balance) || 0.00);
+      }
     } catch {
       setPlan('free');
       setAccessExpired(false);
@@ -57,14 +65,28 @@ export function PlanProvider({ children }) {
       setAutoRenew(false);
       setFeatureAccess({});
       setLifetimePptCount(0);
+      setWalletBalance(0.00);
     } finally {
       setLoading(false);
     }
-  }
+  }, [user]);
+
+  const refreshWallet = useCallback(async () => {
+    if (!user?.email) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/wallet/balance?email=${encodeURIComponent(user.email)}`);
+      const data = await res.json();
+      if (data.balance !== undefined) {
+        setWalletBalance(Number(data.balance) || 0.00);
+      }
+    } catch (e) {
+      console.warn('Failed to refresh wallet:', e.message);
+    }
+  }, [user]);
 
   useEffect(() => {
     fetchPlan();
-  }, [user]);
+  }, [fetchPlan]);
 
   const planName =
     plan === 'pro' ? 'NetRoot AI Pro' :
@@ -72,7 +94,20 @@ export function PlanProvider({ children }) {
         'Free';
 
   return (
-    <PlanContext.Provider value={{ plan, planName, loading, accessExpired, planEndDate, autoRenew, featureAccess, lifetimePptCount, refresh: fetchPlan }}>
+    <PlanContext.Provider value={{
+      plan,
+      planName,
+      loading,
+      accessExpired,
+      planEndDate,
+      autoRenew,
+      featureAccess,
+      lifetimePptCount,
+      walletBalance,
+      setWalletBalance,
+      refresh: fetchPlan,
+      refreshWallet,
+    }}>
       {children}
     </PlanContext.Provider>
   );

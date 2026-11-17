@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Activity, ArrowLeft, Clock, Cpu, LogOut, MessageSquare, RefreshCw, RotateCw, Search, Shield, Zap } from 'lucide-react';
+import { Activity, ArrowLeft, Clock, Cpu, LogOut, MessageSquare, RefreshCw, RotateCw, Search, Shield, Zap, CreditCard, DollarSign, Wallet, TrendingUp } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import API_BASE from '../lib/api';
 
@@ -10,7 +10,10 @@ function fmtMs(ms) { return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms
 function fmtDate(ts) {
     return new Date(ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
-function fmtPlanDate(ts, t) { return ts ? new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : t('common.noPaidPlan'); }
+function fmtPlanDate(ts, isPaid, t) {
+    if (ts) return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    return isPaid ? 'Active (Auto-renew)' : t('common.noPaidPlan');
+}
 
 export default function AdminUserPage() {
     const { t } = useTranslation();
@@ -141,10 +144,19 @@ export default function AdminUserPage() {
                         <section className={`rounded-2xl border p-5 ${dark ? 'bg-[#111] border-[#222]' : 'bg-white border-gray-200'}`}>
                             <h3 className="font-semibold mb-4">{t('admin.planStatus')}</h3>
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-                                <div><p className="text-xs text-gray-500">{t('admin.plan')}</p><p className="font-semibold mt-1 capitalize">{detail.subscription?.plan || 'free'}</p></div>
+                                <div>
+                                    <p className="text-xs text-gray-500">{t('admin.plan')}</p>
+                                    <p className="font-semibold mt-1">
+                                        {detail.subscription?.plan === 'pro'
+                                            ? detail.subscription?.interval_months === 3
+                                                ? 'Pro (3 Months - $49)'
+                                                : 'Pro (1 Month - $19)'
+                                            : 'Free'}
+                                    </p>
+                                </div>
                                 <div><p className="text-xs text-gray-500">{t('admin.status')}</p><p className={`font-semibold mt-1 capitalize ${detail.subscription?.plan_status === 'expired' ? 'text-red-400' : 'text-emerald-400'}`}>{detail.subscription?.plan_status === 'expired' ? t('admin.expired') : t('admin.active')}</p></div>
-                                <div><p className="text-xs text-gray-500">{t('admin.planEndDate')}</p><p className="font-semibold mt-1">{fmtPlanDate(detail.subscription?.current_period_end, t)}</p></div>
-                                <div><p className="text-xs text-gray-500">{t('admin.renewal')}</p><p className={`font-semibold mt-1 ${detail.subscription?.auto_renew ? 'text-emerald-400' : 'text-gray-500'}`}>{detail.subscription?.plan === 'free' ? t('admin.notApplicable') : detail.subscription?.auto_renew ? t('admin.everyMonths', { count: detail.subscription?.interval_months || 1 }) : t('admin.off')}</p></div>
+                                <div><p className="text-xs text-gray-500">{t('admin.planEndDate')}</p><p className="font-semibold mt-1">{fmtPlanDate(detail.subscription?.current_period_end, detail.subscription?.plan === 'pro', t)}</p></div>
+                                <div><p className="text-xs text-gray-500">{t('admin.renewal')}</p><p className={`font-semibold mt-1 ${detail.subscription?.auto_renew ? 'text-emerald-400' : 'text-gray-500'}`}>{detail.subscription?.plan === 'free' ? t('admin.notApplicable') : detail.subscription?.auto_renew ? (detail.subscription?.interval_months === 3 ? 'Every 3 Months ($49)' : 'Every Month ($19)') : t('admin.off')}</p></div>
                             </div>
                             {(detail.subscription?.plan_status === 'expired' || reactivateMessage) && (
                                 <div className="mt-4 flex items-center gap-3">
@@ -173,7 +185,63 @@ export default function AdminUserPage() {
                                 ))}
                             </div>
                         </section>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                                {/* ── User Financial & Margin Summary ── */}
+                        <section className="mb-2">
+                            <div className="flex items-center justify-between mb-3">
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-400 font-mono flex items-center gap-1.5">
+                                    <DollarSign className="w-3.5 h-3.5" /> User Wallet & OpenRouter P&L
+                                </h3>
+                                <span className={`text-xs px-2.5 py-0.5 rounded-full font-mono font-bold ${
+                                    dark ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                }`}>
+                                    +{detail.marginPercentage || 20}% Net Profit Margin
+                                </span>
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                <div className={`rounded-xl border p-4 ${dark ? 'bg-[#111] border-[#222]' : 'bg-white border-gray-200'}`}>
+                                    <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                                        <span>Wallet Balance</span>
+                                        <Wallet className="w-3.5 h-3.5 text-blue-400" />
+                                    </div>
+                                    <p className="text-xl font-bold font-mono text-blue-400">
+                                        ${Number(detail.wallet?.balance || 0).toFixed(2)}
+                                    </p>
+                                    <span className="text-[10px] text-gray-500">Available prepaid credits</span>
+                                </div>
+                                <div className={`rounded-xl border p-4 ${dark ? 'bg-[#111] border-[#222]' : 'bg-white border-gray-200'}`}>
+                                    <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                                        <span>OpenRouter Paid</span>
+                                        <Cpu className="w-3.5 h-3.5 text-orange-400" />
+                                    </div>
+                                    <p className="text-xl font-bold font-mono text-orange-400">
+                                        ${Number(detail.wallet?.totalBaseCost || 0) > 0 && Number(detail.wallet?.totalBaseCost || 0) < 0.05 ? Number(detail.wallet?.totalBaseCost || 0).toFixed(4) : Number(detail.wallet?.totalBaseCost || 0).toFixed(2)}
+                                    </p>
+                                    <span className="text-[10px] text-gray-500">Base provider cost (30d)</span>
+                                </div>
+                                <div className={`rounded-xl border p-4 ${dark ? 'bg-[#111] border-[#222]' : 'bg-white border-gray-200'}`}>
+                                    <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                                        <span>Billed to User</span>
+                                        <CreditCard className="w-3.5 h-3.5 text-indigo-400" />
+                                    </div>
+                                    <p className="text-xl font-bold font-mono text-indigo-400">
+                                        ${Number(detail.wallet?.totalBilled || 0) > 0 && Number(detail.wallet?.totalBilled || 0) < 0.05 ? Number(detail.wallet?.totalBilled || 0).toFixed(4) : Number(detail.wallet?.totalBilled || 0).toFixed(2)}
+                                    </p>
+                                    <span className="text-[10px] text-gray-500">Deducted with margin</span>
+                                </div>
+                                <div className={`rounded-xl border p-4 ${dark ? 'bg-emerald-500/5 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200'}`}>
+                                    <div className="flex items-center justify-between text-xs text-emerald-400 mb-1">
+                                        <span>NetRoot Profit</span>
+                                        <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                                    </div>
+                                    <p className="text-xl font-bold font-mono text-emerald-400">
+                                        +${Number(detail.wallet?.totalProfit || 0) > 0 && Number(detail.wallet?.totalProfit || 0) < 0.05 ? Number(detail.wallet?.totalProfit || 0).toFixed(4) : Number(detail.wallet?.totalProfit || 0).toFixed(2)}
+                                    </p>
+                                    <span className="text-[10px] text-emerald-400/70">Your retained cash</span>
+                                </div>
+                            </div>
+                        </section>
+
+<div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             {[
                                 [t('admin.tokens24h'), fmt(detail.tokens24h)],
                                 [t('admin.tokens30dShort'), fmt(detail.tokens30d)],
@@ -221,19 +289,111 @@ export default function AdminUserPage() {
 
                         {Object.keys(detail.perModel || {}).length > 0 && (
                             <section>
-                                <h3 className={`text-xs font-semibold uppercase tracking-wider mb-2 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{t('admin.modelUsage30d')}</h3>
-                                <div className="grid sm:grid-cols-2 gap-2">
+                                <div className="flex items-center justify-between mb-3">
+                                    <h3 className={`text-xs font-semibold uppercase tracking-wider ${dark ? 'text-gray-400' : 'text-gray-600'}`}>
+                                        {t('admin.modelUsage30d')} & Financial P&L
+                                    </h3>
+                                    <span className="text-[11px] text-gray-500">Breakdown by model</span>
+                                </div>
+                                <div className="grid sm:grid-cols-2 gap-3">
                                     {Object.entries(detail.perModel).map(([model, stats]) => (
-                                        <div key={model} className={`flex items-center justify-between rounded-lg px-3 py-2 border ${dark ? 'bg-[#111] border-[#222]' : 'bg-white border-gray-200'}`}>
-                                            <span className="flex items-center gap-2 text-sm font-mono"><Cpu className="w-3.5 h-3.5 text-gray-500" />{model}</span>
-                                            <span className={`text-xs ${dark ? 'text-gray-400' : 'text-gray-600'}`}>{fmt(stats.tokens)} tokens · {stats.requests} req</span>
+                                        <div key={model} className={`flex flex-col p-3.5 rounded-xl border ${dark ? 'bg-[#111] border-[#222]' : 'bg-white border-gray-200'}`}>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="flex items-center gap-1.5 text-xs font-bold font-mono">
+                                                    <Cpu className="w-3.5 h-3.5 text-blue-500" />
+                                                    {model.split('/').pop() || model}
+                                                </span>
+                                                <span className={`text-[11px] font-mono ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                    {fmt(stats.tokens)} tok · {stats.requests} req
+                                                </span>
+                                            </div>
+                                            <div className={`flex items-center justify-between pt-2 border-t text-xs font-mono ${dark ? 'border-white/5' : 'border-gray-100'}`}>
+                                                <div>
+                                                    <span className="text-[10px] text-gray-500 block">OpenRouter Cost</span>
+                                                    <span className="text-orange-400 font-medium">${Number(stats.base_cost || 0).toFixed(4)}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-[10px] text-gray-500 block">Billed to User</span>
+                                                    <span className={`font-medium ${dark ? 'text-gray-300' : 'text-gray-700'}`}>${Number(stats.billed_cost || 0).toFixed(4)}</span>
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className="text-[10px] text-emerald-400 block">Net Profit</span>
+                                                    <span className="text-emerald-400 font-bold">+${Number(stats.profit_usd || 0).toFixed(4)}</span>
+                                                </div>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
                             </section>
                         )}
 
-                        <section className={`rounded-2xl border p-5 ${dark ? 'bg-[#111] border-[#222]' : 'bg-white border-gray-200'}`}>
+                        
+
+                        {/* ── User Wallet Activity Ledger ── */}
+                        {detail.wallet?.transactions?.length > 0 && (
+                            <section className={`rounded-2xl border p-5 ${dark ? 'bg-[#111] border-[#222]' : 'bg-white border-gray-200'}`}>
+                                <div className="flex items-center justify-between mb-4">
+                                    <div>
+                                        <h3 className="font-semibold text-sm">Recent Wallet & Usage Ledger</h3>
+                                        <p className="text-xs text-gray-500 mt-0.5">Top-up deposits & per-request token debits</p>
+                                    </div>
+                                    <span className="text-xs text-gray-500 font-mono">
+                                        {detail.wallet.transactions.length} entries
+                                    </span>
+                                </div>
+                                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                                    {detail.wallet.transactions.slice(0, 15).map((t, idx) => (
+                                        <div key={t.id || idx} className={`flex items-center justify-between p-2.5 rounded-xl border text-xs ${dark ? 'bg-[#161616] border-[#242424]' : 'bg-gray-50 border-gray-100'}`}>
+                                            <div className="flex items-center gap-2.5">
+                                                <span className={`px-2 py-0.5 rounded-md font-mono font-bold text-[10px] ${
+                                                    t.type === 'deposit'
+                                                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                                        : 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
+                                                }`}>
+                                                    {t.type === 'deposit' ? 'DEPOSIT' : 'USAGE'}
+                                                </span>
+                                                <div className="flex flex-col">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`font-medium ${dark ? 'text-gray-300' : 'text-gray-800'}`}>
+                                                            {t.model ? t.model.split('/').pop() : t.metadata?.note || 'Stripe Deposit'}
+                                                        </span>
+                                                        {t.tokens_total > 0 && (
+                                                            <span className="text-[11px] text-gray-500 font-mono">
+                                                                ({t.tokens_total.toLocaleString()} tok)
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-2 text-[10px] text-gray-500 font-mono mt-0.5">
+                                                        {t.created_at && (
+                                                            <span>{new Date(t.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                                        )}
+                                                        {t.stripe_session_id && (
+                                                            <span className="text-gray-400">Ref: {t.stripe_session_id.slice(0, 16)}...</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-4 font-mono">
+                                                {t.base_cost > 0 && (
+                                                    <span className="text-[11px] text-orange-400/80">
+                                                        OR: ${Number(t.base_cost).toFixed(4)}
+                                                    </span>
+                                                )}
+                                                {t.profit_usd > 0 && (
+                                                    <span className="text-[11px] text-emerald-400 font-bold">
+                                                        +${Number(t.profit_usd).toFixed(4)}
+                                                    </span>
+                                                )}
+                                                <span className={`font-bold ${t.amount > 0 ? 'text-emerald-400' : dark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                    {t.amount > 0 ? `+${Number(t.amount).toFixed(2)}` : `-${Math.abs(Number(t.amount)).toFixed(4)}`}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
+                        )}
+<section className={`rounded-2xl border p-5 ${dark ? 'bg-[#111] border-[#222]' : 'bg-white border-gray-200'}`}>
                             <div className="flex items-center justify-between gap-4 mb-4">
                                 <h3 className="font-semibold">{t('admin.recentQueries', { count: filteredQueries.length })}</h3>
                                 <div className={`flex items-center gap-2 border rounded-lg px-2.5 py-1.5 ${dark ? 'bg-[#1a1a1a] border-[#333]' : 'bg-gray-50 border-gray-200'}`}>

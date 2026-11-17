@@ -1,0 +1,16 @@
+# NetRoot AI — Unified All-in-One AI Studio & Developer Gateway
+> https://netrootai.tech
+
+## Overview
+NetRoot AI is a unified AI platform combining an Executive Presentation Generator (PPT Studio), 4K Generative Media Studio (Images & Videos), and a high-throughput Developer Gateway supporting 470+ frontier and open-weight models.
+
+## Core Capabilities
+- **NetRoot AI PPT Studio**: Automated 16:9 widescreen PowerPoint deck generation from natural language prompts. Features 10 smart layouts (Hero, Stats, Bento Grid, Timelines, Charts, Flowcharts), automatic Unsplash and Wikipedia image integration, and native binary .pptx export.
+- **Generative Media Studio**: 4K high-resolution image generation powered by Black Forest Labs FLUX.1 Schnell, and cinematic video generation powered by Agnes Video 2.5 Flash, Kling, and Luma.
+- **AI Model Hub & Fleet**: Unified access to over 470 models including Groq LPU native models (GPT OSS 20B, ALLaM 2 7B, Qwen 27B Vision, Compound Mini) offering < 40ms latency, plus OpenAI (GPT-4o, o3-mini), Anthropic (Claude 3.5 Sonnet), Google (Gemini 1.5/2.5), NVIDIA, and DeepSeek (R1, V3).
+- **Enterprise Developer Gateway**: Drop-in OpenAI-compatible endpoint (/api/v1/chat/completions) with PII masking, safety guardrails, BYOK (Bring Your Own Key), semantic caching, RAG document management, and live observability logs.
+
+## Pricing & Accessibility
+- **Free Tier**: 100% free forever with 50,000 daily tokens on open-weight models, core search & math plugins, and presentation drafting without credit card requirement.
+- **Pro Tier**: $19/month for 200,000 daily tokens, unlimited PPT Studio lifetime edits, all 470+ models unlocked, and 10 FLUX 4K image generations per month.
+- **Pay-as-you-go Wallet**: Stripe-backed credit top-ups with transparent token-level pricing and zero commitment.
