@@ -8,6 +8,58 @@
   },
   "transactions": [
     {
+      "id": "tx_2abac10e",
+      "user_id": "9dafed4d-a88f-40e8-ba66-772edf3a13e9",
+      "user_email": "test@gmail.com",
+      "type": "deposit",
+      "amount": 0.01,
+      "balance_after": 70,
+      "stripe_session_id": null,
+      "metadata": {
+        "note": "Test refund verification"
+      },
+      "created_at": "2026-11-17T16:06:00.606Z"
+    },
+    {
+      "id": "tx_dcf79910",
+      "user_id": "9dafed4d-a88f-40e8-ba66-772edf3a13e9",
+      "user_email": "test@gmail.com",
+      "type": "usage_debit",
+      "amount": -0.01,
+      "balance_after": 69.99,
+      "model": "openai/gpt-4.1",
+      "tokens_total": 300,
+      "base_cost": 0.008,
+      "profit_usd": 0.002,
+      "created_at": "2026-11-17T16:05:59.458Z"
+    },
+    {
+      "id": "tx_566056df",
+      "user_id": "9dafed4d-a88f-40e8-ba66-772edf3a13e9",
+      "user_email": "test@gmail.com",
+      "type": "deposit",
+      "amount": 0.005,
+      "balance_after": 70,
+      "stripe_session_id": null,
+      "metadata": {
+        "note": "Test refund verification"
+      },
+      "created_at": "2026-11-17T16:05:16.044Z"
+    },
+    {
+      "id": "tx_baf420f0",
+      "user_id": "9dafed4d-a88f-40e8-ba66-772edf3a13e9",
+      "user_email": "test@gmail.com",
+      "type": "usage_debit",
+      "amount": -0.005,
+      "balance_after": 69.995,
+      "model": "openai/gpt-4.1",
+      "tokens_total": 150,
+      "base_cost": 0.004,
+      "profit_usd": 0.001,
+      "created_at": "2026-11-17T16:05:14.443Z"
+    },
+    {
       "id": "tx_pro_b626205c",
       "user_email": "devptlit777@gmail.com",
       "type": "deposit",

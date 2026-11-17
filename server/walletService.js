@@ -53,29 +53,60 @@ export function isModelFree(modelId) {
   return freeList.some(f => id === f || id.includes(f));
 }
 
+// Auth email to userId cache with 60-second TTL
+let authUsersCache = null;
+let authUsersCacheTime = 0;
+
+export async function getUserIdByEmail(sb, cleanEmail) {
+  if (!sb || !cleanEmail) return null;
+  const now = Date.now();
+  if (!authUsersCache || now - authUsersCacheTime > 60_000) {
+    try {
+      const { data, error } = await sb.auth.admin.listUsers({ page: 1, perPage: 1000 });
+      if (!error && data?.users) {
+        authUsersCache = new Map();
+        for (const u of data.users) {
+          if (u.email) {
+            authUsersCache.set(u.email.toLowerCase(), u.id);
+          }
+        }
+        authUsersCacheTime = now;
+      }
+    } catch (e) {
+      console.warn('[walletService] listUsers warning:', e.message);
+    }
+  }
+  return authUsersCache?.get(cleanEmail) || null;
+}
+
 /**
  * Get the current wallet balance for a user.
  */
-export async function getUserWallet(email) {
+export async function getUserWallet(email, userId = null) {
   const cleanEmail = String(email || '').trim().toLowerCase();
-  if (!cleanEmail) return { balance: 0.00 };
+  let resolvedUserId = userId;
 
   const sb = getSupabase();
   if (sb) {
     try {
-      // Find profile by email (or auth user id)
-      const { data, error } = await sb
-        .from('profiles')
-        .select('id, email, wallet_balance')
-        .ilike('email', cleanEmail)
-        .maybeSingle();
+      if (!resolvedUserId && cleanEmail) {
+        resolvedUserId = await getUserIdByEmail(sb, cleanEmail);
+      }
 
-      if (!error && data && data.wallet_balance !== undefined && data.wallet_balance !== null) {
-        return {
-          userId: data.id,
-          email: cleanEmail,
-          balance: Number(data.wallet_balance) || 0,
-        };
+      if (resolvedUserId) {
+        const { data, error } = await sb
+          .from('profiles')
+          .select('id, wallet_balance')
+          .eq('id', resolvedUserId)
+          .maybeSingle();
+
+        if (!error && data && data.wallet_balance !== undefined && data.wallet_balance !== null) {
+          return {
+            userId: data.id,
+            email: cleanEmail,
+            balance: Number(data.wallet_balance) || 0,
+          };
+        }
       }
     } catch (err) {
       console.warn('[walletService] Supabase getUserWallet warning:', err.message);
@@ -85,17 +116,17 @@ export async function getUserWallet(email) {
   // Local fallback
   const local = loadLocalWalletData();
   const bal = Number(local.balances?.[cleanEmail] ?? 0);
-  return { email: cleanEmail, balance: bal };
+  return { userId: resolvedUserId, email: cleanEmail, balance: bal };
 }
 
 /**
  * Credit user wallet (e.g. from Stripe payment or admin topup).
  */
-export async function creditUserWallet(email, amount, { stripeSessionId = null, note = 'Stripe Top-Up' } = {}) {
+export async function creditUserWallet(email, amount, { userId = null, stripeSessionId = null, note = 'Stripe Top-Up' } = {}) {
   const cleanEmail = String(email || '').trim().toLowerCase();
   const addAmount = Number(amount);
-  if (!cleanEmail || isNaN(addAmount) || addAmount <= 0) {
-    throw new Error('Valid email and positive amount are required.');
+  if ((!cleanEmail && !userId) || isNaN(addAmount) || addAmount <= 0) {
+    throw new Error('Valid email or userId and positive amount are required.');
   }
 
   // Idempotency check: If this Stripe checkout session was already credited, skip to prevent double addition!
@@ -110,7 +141,7 @@ export async function creditUserWallet(email, amount, { stripeSessionId = null, 
           .limit(1);
         if (existingTx && existingTx.length > 0) {
           console.log(`[walletService] Session ${stripeSessionId} already credited in Supabase. Skipping duplicate.`);
-          const current = await getUserWallet(cleanEmail);
+          const current = await getUserWallet(cleanEmail, userId);
           return { success: true, balance: current.balance, duplicate: true };
         }
       } catch (err) {
@@ -124,35 +155,39 @@ export async function creditUserWallet(email, amount, { stripeSessionId = null, 
     );
     if (isAlreadyCredited) {
       console.log(`[walletService] Session ${stripeSessionId} already credited in local store. Skipping duplicate.`);
-      const current = await getUserWallet(cleanEmail);
+      const current = await getUserWallet(cleanEmail, userId);
       return { success: true, balance: current.balance, duplicate: true };
     }
   }
 
-  const current = await getUserWallet(cleanEmail);
+  const current = await getUserWallet(cleanEmail, userId);
+  const targetUserId = current.userId || userId;
   const newBalance = Number((current.balance + addAmount).toFixed(5));
 
   const sb = getSupabase();
   let recordedInDb = false;
 
-  if (sb && current.userId) {
+  if (sb && targetUserId) {
     try {
       const { error: updateErr } = await sb
         .from('profiles')
         .update({ wallet_balance: newBalance })
-        .eq('id', current.userId);
+        .eq('id', targetUserId);
 
       if (!updateErr) {
         recordedInDb = true;
-        await sb.from('wallet_transactions').insert({
-          user_id: current.userId,
+        const { error: txErr } = await sb.from('wallet_transactions').insert({
+          user_id: targetUserId,
           user_email: cleanEmail,
           type: 'deposit',
           amount: addAmount,
           balance_after: newBalance,
           stripe_session_id: stripeSessionId,
           metadata: { note },
-        }).catch(e => console.warn('[walletService] transaction insert warning:', e.message));
+        });
+        if (txErr) console.warn('[walletService] transaction insert warning:', txErr.message);
+      } else {
+        console.warn('[walletService] Supabase credit update error:', updateErr.message);
       }
     } catch (err) {
       console.warn('[walletService] Supabase credit error:', err.message);
@@ -162,10 +197,11 @@ export async function creditUserWallet(email, amount, { stripeSessionId = null, 
   // Always mirror to local store as safety net
   const local = loadLocalWalletData();
   local.balances = local.balances || {};
-  local.balances[cleanEmail] = newBalance;
+  if (cleanEmail) local.balances[cleanEmail] = newBalance;
   local.transactions = local.transactions || [];
   local.transactions.unshift({
     id: `tx_${crypto.randomBytes(4).toString('hex')}`,
+    user_id: targetUserId,
     user_email: cleanEmail,
     type: 'deposit',
     amount: addAmount,
@@ -177,7 +213,7 @@ export async function creditUserWallet(email, amount, { stripeSessionId = null, 
   if (local.transactions.length > 500) local.transactions = local.transactions.slice(0, 500);
   saveLocalWalletData(local);
 
-  console.log(`[walletService] Credited ${cleanEmail} +$${addAmount}. New Balance: $${newBalance}`);
+  console.log(`[walletService] Credited ${cleanEmail || targetUserId} +$${addAmount}. New Balance: $${newBalance}`);
   return { success: true, balance: newBalance };
 }
 
@@ -186,6 +222,7 @@ export async function creditUserWallet(email, amount, { stripeSessionId = null, 
  */
 export async function deductUserWallet({
   email,
+  userId = null,
   model,
   promptTokens = 0,
   completionTokens = 0,
@@ -195,24 +232,25 @@ export async function deductUserWallet({
 }) {
   const cleanEmail = String(email || '').trim().toLowerCase();
   const deductAmount = Number(billedCost);
-  if (!cleanEmail || isNaN(deductAmount) || deductAmount <= 0) {
+  if ((!cleanEmail && !userId) || isNaN(deductAmount) || deductAmount <= 0) {
     return { success: true, deducted: 0 };
   }
 
-  const current = await getUserWallet(cleanEmail);
+  const current = await getUserWallet(cleanEmail, userId);
+  const targetUserId = current.userId || userId;
   const newBalance = Number(Math.max(0, current.balance - deductAmount).toFixed(5));
 
   const sb = getSupabase();
-  if (sb && current.userId) {
+  if (sb && targetUserId) {
     try {
       const { error: updateErr } = await sb
         .from('profiles')
         .update({ wallet_balance: newBalance })
-        .eq('id', current.userId);
+        .eq('id', targetUserId);
 
       if (!updateErr) {
-        await sb.from('wallet_transactions').insert({
-          user_id: current.userId,
+        const { error: txErr } = await sb.from('wallet_transactions').insert({
+          user_id: targetUserId,
           user_email: cleanEmail,
           type: 'usage_debit',
           amount: -deductAmount,
@@ -225,7 +263,11 @@ export async function deductUserWallet({
             prompt_tokens: promptTokens,
             completion_tokens: completionTokens,
           },
-        }).catch(e => console.warn('[walletService] usage transaction warning:', e.message));
+        });
+        if (txErr) console.warn('[walletService] usage transaction warning:', txErr.message);
+        console.log(`[walletService] Deducted $${deductAmount.toFixed(5)} from ${cleanEmail || targetUserId} for ${model}. Remaining: $${newBalance}`);
+      } else {
+        console.warn('[walletService] Supabase deduct update error:', updateErr.message);
       }
     } catch (err) {
       console.warn('[walletService] Supabase deduct error:', err.message);
@@ -235,10 +277,11 @@ export async function deductUserWallet({
   // Mirror to local store
   const local = loadLocalWalletData();
   local.balances = local.balances || {};
-  local.balances[cleanEmail] = newBalance;
+  if (cleanEmail) local.balances[cleanEmail] = newBalance;
   local.transactions = local.transactions || [];
   local.transactions.unshift({
     id: `tx_${crypto.randomBytes(4).toString('hex')}`,
+    user_id: targetUserId,
     user_email: cleanEmail,
     type: 'usage_debit',
     amount: -deductAmount,
@@ -252,7 +295,6 @@ export async function deductUserWallet({
   if (local.transactions.length > 500) local.transactions = local.transactions.slice(0, 500);
   saveLocalWalletData(local);
 
-  console.log(`[walletService] Deducted $${deductAmount.toFixed(5)} from ${cleanEmail} for ${model}. Remaining: $${newBalance}`);
   return { success: true, balance: newBalance, deducted: deductAmount };
 }
 
@@ -358,10 +400,17 @@ export async function getPlatformFinancialMetrics() {
 
   if (sb) {
     try {
-      const { data: profiles } = await sb.from('profiles').select('email, wallet_balance');
+      const [{ data: profiles }, { data: authData }] = await Promise.all([
+        sb.from('profiles').select('id, wallet_balance'),
+        sb.auth.admin.listUsers({ page: 1, perPage: 1000 }),
+      ]);
+      const idToEmail = new Map();
+      for (const u of authData?.users || []) {
+        if (u.id && u.email) idToEmail.set(u.id, u.email.toLowerCase());
+      }
       for (const p of profiles || []) {
         const bal = Number(p.wallet_balance || 0);
-        const e = String(p.email || '').toLowerCase();
+        const e = idToEmail.get(p.id);
         if (e) {
           userBalancesMap[e] = bal;
           if (!perUser[e]) {
@@ -370,7 +419,9 @@ export async function getPlatformFinancialMetrics() {
           perUser[e].wallet_balance = bal;
         }
       }
-    } catch {}
+    } catch (err) {
+      console.warn('[walletService] getPlatformFinancialMetrics profiles error:', err.message);
+    }
   }
 
   // Overlay local balances

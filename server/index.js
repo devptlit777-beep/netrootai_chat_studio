@@ -855,7 +855,7 @@ async function handleImageStudio(req, res) {
     } catch (e) {
         console.error('[image-studio] error:', e.message);
         sendJson(res, 500, { error: e.message }, req);
-
+    }
 }
 
 async function handleFalGenerate(req, res) {
@@ -1004,10 +1004,121 @@ async function handleVideoGeneration(req, res) {
         return;
     }
 
-    const apiKey = process.env.MAGIC_HOUR_API_KEY;
-    if (!apiKey) { sendJson(res, 500, { error: 'MAGIC_HOUR_API_KEY is not configured.' }, req); return; }
+    const openRouterKey = process.env.OPENROUTER_API_KEY;
+    const magicHourKey = process.env.MAGIC_HOUR_API_KEY;
+    if (!openRouterKey && !magicHourKey) {
+        sendJson(res, 500, { error: 'Neither OPENROUTER_API_KEY nor MAGIC_HOUR_API_KEY is configured.' }, req);
+        return;
+    }
 
     try {
+        if (openRouterKey) {
+            const videoModel = process.env.VIDEO_MODEL || 'alibaba/wan-3.0';
+            console.log(`[video-generation] starting OpenRouter video job (${videoModel}):`, prompt.slice(0, 80));
+
+            const openRouterHeaders = {
+                Authorization: `Bearer ${openRouterKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://netrootai.tech',
+                'X-Title': 'NetRoot AI Studio',
+            };
+
+            const createResponse = await fetch('https://openrouter.ai/api/v1/videos', {
+                method: 'POST',
+                headers: openRouterHeaders,
+                body: JSON.stringify({
+                    model: videoModel,
+                    prompt,
+                    aspect_ratio: aspectRatio,
+                    duration: 5,
+                    resolution: '720p',
+                }),
+                signal: AbortSignal.timeout(45_000),
+            });
+
+            const createText = await createResponse.text();
+            let task;
+            try {
+                task = JSON.parse(createText);
+            } catch {
+                throw new Error(`OpenRouter video creation returned invalid JSON (${createResponse.status}): ${createText.slice(0, 200)}`);
+            }
+
+            if (!createResponse.ok || !task?.id) {
+                const message = task?.error?.message || task?.message || createText.slice(0, 300);
+                throw new Error(`OpenRouter video creation failed (${createResponse.status}): ${message}`);
+            }
+
+            const jobId = task.id;
+            console.log(`[video-generation] OpenRouter video job created: ${jobId}`);
+
+            const deadline = Date.now() + 10 * 60 * 1000;
+            let finalResult;
+            while (Date.now() < deadline) {
+                await new Promise(resolve => setTimeout(resolve, 4000));
+                const pollResponse = await fetch(`https://openrouter.ai/api/v1/videos/${jobId}`, {
+                    headers: openRouterHeaders,
+                    signal: AbortSignal.timeout(30_000),
+                });
+                const pollText = await pollResponse.text();
+                let pollResult;
+                try {
+                    pollResult = JSON.parse(pollText);
+                } catch {
+                    continue;
+                }
+
+                if (!pollResponse.ok) {
+                    const message = pollResult?.error?.message || pollResult?.message || pollText.slice(0, 300);
+                    throw new Error(`OpenRouter video status check failed (${pollResponse.status}): ${message}`);
+                }
+
+                const status = String(pollResult.status || '').toLowerCase();
+                if (status === 'completed' || status === 'success') {
+                    finalResult = pollResult;
+                    break;
+                }
+                if (status === 'failed' || status === 'error' || status === 'canceled') {
+                    const message = pollResult.error?.message || pollResult.error || `The provider reported a ${status} job.`;
+                    throw new Error(`OpenRouter video generation failed: ${message}`);
+                }
+            }
+
+            if (!finalResult) {
+                throw new Error('OpenRouter video generation timed out after 10 minutes.');
+            }
+
+            const directUrl = finalResult.urls?.[0];
+            const contentUrl = `https://openrouter.ai/api/v1/videos/${jobId}/content`;
+            const videoDownloadUrl = directUrl || contentUrl;
+            console.log(`[video-generation] downloading generated video from ${videoDownloadUrl}`);
+
+            const videoResponse = await fetch(videoDownloadUrl, {
+                headers: directUrl ? {} : openRouterHeaders,
+                signal: AbortSignal.timeout(120_000),
+            });
+
+            if (!videoResponse.ok) {
+                throw new Error(`Could not download the generated video (${videoResponse.status}).`);
+            }
+
+            const videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
+            if (!videoBuffer.length) throw new Error('OpenRouter returned an empty video.');
+
+            const origin = req?.headers?.origin || '';
+            const allowed = ['http://127.0.0.1:5173', 'http://localhost:5173', 'https://netrootai.tech', 'https://ampjiasvmmhxeqwdullc.supabase.co'];
+            const contentType = videoResponse.headers.get('content-type') || '';
+            res.writeHead(200, {
+                'Content-Type': contentType.startsWith('video/') ? contentType : 'video/mp4',
+                'Content-Length': videoBuffer.length,
+                'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+                'Access-Control-Allow-Origin': allowed.includes(origin) ? origin : '*',
+            });
+            res.end(videoBuffer);
+            return;
+        }
+
+        const apiKey = magicHourKey;
         const fetchMagicHour = async (url, options, operation) => {
             try {
                 return await fetch(url, options);
@@ -1123,7 +1234,7 @@ async function handleVideoGeneration(req, res) {
         });
         res.end(videoBuffer);
     } catch (error) {
-        console.error('[video-generation] Magic Hour API error:', error);
+        console.error('[video-generation] error:', error);
         sendJson(res, 502, { error: `Video generation failed: ${error.message}` }, req);
     }
 }
@@ -1977,6 +2088,7 @@ async function pipeStreamToClient({
     clientReq,
     model,
     email,
+    userId,
     plan,
     prompt,
     saveTurnMemory,
@@ -2068,6 +2180,26 @@ async function pipeStreamToClient({
                 plan,
                 prompt,
             }).catch(() => {});
+            if (!isModelFree(model) && (email || userId)) {
+                const globalSettings = getGlobalSettings();
+                const marginPct = Number(globalSettings?.global_margin_percentage || 20);
+                const { baseCost, netrootProfit, billedCost } = calculateModelCost(
+                    model,
+                    estInTokens,
+                    estOutTokens,
+                    marginPct
+                );
+                deductUserWallet({
+                    email,
+                    userId,
+                    model,
+                    promptTokens: estInTokens,
+                    completionTokens: estOutTokens,
+                    billedCost,
+                    baseCost,
+                    profitUsd: netrootProfit,
+                }).catch(err => console.warn('[stream] deductUserWallet error:', err.message));
+            }
         }
     }
 }
@@ -2328,6 +2460,7 @@ async function handleChat(req, res) {
                     clientReq: req,
                     model: selectedModel,
                     email,
+                    userId,
                     plan,
                     prompt,
                     saveTurnMemory,
@@ -2366,6 +2499,7 @@ async function handleChat(req, res) {
                                 clientReq: req,
                                 model: selectedModel,
                                 email,
+                                userId,
                                 plan,
                                 prompt,
                                 saveTurnMemory,
@@ -2427,6 +2561,7 @@ async function handleChat(req, res) {
                                     clientReq: req,
                                     model: selectedModel,
                                     email,
+                                    userId,
                                     plan,
                                     prompt,
                                     saveTurnMemory,
@@ -2550,6 +2685,7 @@ async function handleChat(req, res) {
                                 clientReq: req,
                                 model: selectedModel,
                                 email,
+                                userId,
                                 plan,
                                 prompt,
                                 saveTurnMemory,
@@ -2691,6 +2827,7 @@ async function handleChat(req, res) {
                     clientReq: req,
                     model: groqModel,
                     email,
+                    userId,
                     plan,
                     prompt,
                     saveTurnMemory,
@@ -3811,7 +3948,7 @@ async function handleAdminUsers(req, res) {
 
     // Get all profiles and subscription state for plan administration and financials
     const [{ data: profiles }, { data: subscriptions }, financialMetrics] = await Promise.all([
-        supabase.from('profiles').select('id, email, plan, full_name, free_trial_ends_at, wallet_balance'),
+        supabase.from('profiles').select('id, plan, full_name, free_trial_ends_at, wallet_balance'),
         supabase.from('subscriptions').select('user_id, plan, status, current_period_end, cancel_at_period_end, interval_months, stripe_subscription_id'),
         getPlatformFinancialMetrics().catch(err => {
             console.warn('[admin] getPlatformFinancialMetrics warning:', err.message);
