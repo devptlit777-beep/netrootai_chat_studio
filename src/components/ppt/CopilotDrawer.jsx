@@ -31,6 +31,7 @@ export default function CopilotDrawer({
   const { theme } = useTheme();
   const { user } = useAuth();
   const { plan, lifetimePptCount = 0, featureAccess } = usePlan();
+  const { t } = useTranslation();
   const darkMode = theme === 'dark';
 
   const isPro = plan === 'pro' || plan === 'enterprise' || Boolean(featureAccess?.['ppt-studio']);
