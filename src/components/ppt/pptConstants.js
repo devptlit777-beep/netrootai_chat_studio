@@ -2,7 +2,10 @@
 
 import API_BASE from '../../lib/api';
 
-export const PPT_API_BASE = import.meta.env.VITE_PPT_API_URL || API_BASE || '';
+const rawPptUrl = import.meta.env.VITE_PPT_API_URL;
+export const PPT_API_BASE = (rawPptUrl && (!import.meta.env.PROD || (!rawPptUrl.includes('127.0.0.1') && !rawPptUrl.includes('localhost'))))
+  ? rawPptUrl
+  : (import.meta.env.DEV ? 'http://127.0.0.1:8001' : '/ppt-api');
 
 export const THEME_OPTIONS = [
   { id: 'auto', label: 'Auto (AI Dynamic)', icon: '✨', seed: '#0EA5E9' },
