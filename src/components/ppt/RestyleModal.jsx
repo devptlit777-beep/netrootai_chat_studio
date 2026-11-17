@@ -88,7 +88,7 @@ export default function RestyleModal({
               <Wand2 className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white">{t('ppt.restyleWithAI', 'Restyle with NetRoot AI')}</h2>
+              <h2 className="text-sm font-bold text-white">{t('ppt.restyleWithAI')}</h2>
               <p className="text-xs text-slate-400">{t('ppt.restyleDescription')}</p>
             </div>
           </div>
@@ -172,7 +172,7 @@ export default function RestyleModal({
                 value={instruction}
                 onChange={(e) => setInstruction(e.target.value)}
                 disabled={isEditLimitReached || isRestyling}
-                placeholder={t('ppt.restylePlaceholder') || 'e.g. Simplify language, make it executive-level, add a metaphor...'}
+                placeholder={t('ppt.restylePlaceholder')}
                 className="flex-1 bg-[#18181b] border border-[#2b2b30] focus:border-purple-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 outline-none disabled:opacity-50"
               />
               {isEditLimitReached ? (
@@ -182,7 +182,7 @@ export default function RestyleModal({
                   className="px-4 py-2 bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-amber-200" />
-                  <span>Upgrade to Pro</span>
+                  <span>{t('ppt.upgradeToPro', { defaultValue: 'Upgrade to Pro' })}</span>
                 </button>
               ) : (
                 <button
@@ -196,7 +196,7 @@ export default function RestyleModal({
                   ) : (
                     <Check className="w-3.5 h-3.5" />
                   )}
-                  <span>{t('ppt.apply') || 'Apply'}</span>
+                  <span>{t('ppt.apply')}</span>
                 </button>
               )}
             </div>

@@ -1,5 +1,11 @@
 Options -MultiViews
 RewriteEngine On
+
+# Proxy /api/* to Node.js backend on port 3001
+RewriteCond %{REQUEST_URI} ^/api/ [NC]
+RewriteRule ^api/(.*)$ http://127.0.0.1:3001/api/$1 [P,L,QSA]
+
+# SPA fallback — serve index.html for all non-file, non-api routes
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.html [QSA,L]

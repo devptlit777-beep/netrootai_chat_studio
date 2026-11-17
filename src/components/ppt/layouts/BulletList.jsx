@@ -77,7 +77,7 @@ export default function BulletList({
               </span>
 
               {/* Semantic Icon */}
-              <span className="text-sm select-none shrink-0 py-0.5" title={t('ppt.semanticIcon') || 'Point bullet'}>
+              <span className="text-sm select-none shrink-0 py-0.5" title={t('ppt.semanticIcon')}>
                 {icon}
               </span>
 

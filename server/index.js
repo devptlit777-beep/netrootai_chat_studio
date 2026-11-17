@@ -4,6 +4,8 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import { calculateRoute, createChatMap, geocode, isCurrentLocationPrompt, searchPlaces } from './googleMaps.js';
+// import { createLiveKitRoom, createLiveKitToken } from './livekit.js';
 import { Resend } from 'resend';
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
@@ -126,6 +128,14 @@ function formatCleanAiError(rawError) {
         .replace(/\s{2,}/g, ' ')
         .trim() || 'AI engine request failed. Please try again.';
 }
+
+const IMAGE_STUDIO_MODELS = new Set([
+    'black-forest-labs/flux.1-schnell',
+    'black-forest-labs/flux-2-klein-4b',
+]);
+const MAP_DAILY_LIMITS = { free: 20, pro: 100, enterprise: 200 };
+const mapUsageCounters = new Map();
+
 
 
 loadEnvFile();
@@ -281,17 +291,58 @@ async function getTodayUserUsageAsync(userEmail) {
     // Exclude PPT Studio and Image models so PPT tokens never count against chat models' daily token pool
     const chatEntries = entries.filter(e => {
         const m = String(e.model || '').toLowerCase();
-        return m !== 'ppt-studio' && m !== 'ppt-generator' && m !== 'black-forest-labs/flux.1-schnell';
+        return m !== 'ppt-studio' && m !== 'ppt-generator' && !IMAGE_STUDIO_MODELS.has(m);
     });
     return chatEntries.reduce((sum, e) => sum + e.inputTokens + e.outputTokens, 0);
 }
 
-async function getCurrentMonthImageUsageAsync(userEmail, modelName) {
+async function getCurrentMonthImageUsageAsync(userEmail) {
     if (!userEmail) return 0;
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
     const entries = await queryUsage({ userEmail, since: monthStart });
-    return entries.filter(e => e.model === modelName).length;
+    return entries.filter(e => IMAGE_STUDIO_MODELS.has(String(e.model || '').toLowerCase())).length;
+}
+
+function getLocalDateKey(date = new Date()) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+async function consumeMapDailyUsage(req, plan, email, userId) {
+    const normalizedEmail = String(email || '').toLowerCase();
+    const identity = normalizedEmail || userId || req.socket.remoteAddress || 'anonymous';
+    const dateKey = getLocalDateKey();
+    const counterKey = `${dateKey}:${identity}`;
+    const dailyLimit = MAP_DAILY_LIMITS[normalizePlan(plan)] || MAP_DAILY_LIMITS.free;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const persistedCount = normalizedEmail
+        ? (await queryUsage({ userEmail: normalizedEmail, since: today.getTime() }))
+            .filter(entry => entry.model === 'google/maps').length
+        : 0;
+    const used = Math.max(mapUsageCounters.get(counterKey) || 0, persistedCount);
+
+    if (used >= dailyLimit) {
+        return { error: `You have reached your daily maps limit (${dailyLimit} requests). Try again tomorrow.`, status: 429 };
+    }
+
+    for (const key of mapUsageCounters.keys()) {
+        if (!key.startsWith(`${dateKey}:`)) mapUsageCounters.delete(key);
+    }
+    mapUsageCounters.set(counterKey, used + 1);
+    await recordUsage({
+        inputTokens: 0,
+        outputTokens: 0,
+        cachedTokens: 0,
+        model: 'google/maps',
+        userEmail: normalizedEmail,
+        plan,
+        prompt: 'Map API request',
+    });
+    return { used: used + 1, limit: dailyLimit, remaining: dailyLimit - used - 1 };
 }
 
 async function getUserLifetimePptCount(sb, userId, userEmail) {
@@ -458,6 +509,7 @@ async function handleUsage(req, res, userEmail = null) {
         'groq/compound': { dailyLimit: null, contextWindow: 131072, displayName: 'Compound' },
         'groq/compound-mini': { dailyLimit: null, contextWindow: 131072, displayName: 'Compound Mini' },
         'black-forest-labs/FLUX.1-schnell': { dailyLimit: 100000, contextWindow: 0, displayName: 'FLUX.1 Schnell' },
+        'black-forest-labs/FLUX-2-Klein-4B': { dailyLimit: 100000, contextWindow: 0, displayName: 'FLUX.2 Klein 4B' },
         'ppt-studio': { dailyLimit: null, contextWindow: 131072, displayName: 'NetRoot AI PPT Studio' },
         'ppt-generator': { dailyLimit: null, contextWindow: 131072, displayName: 'NetRoot AI PPT Studio' },
     };
@@ -707,40 +759,104 @@ async function runPdfSearch(prompt, attachments) {
         return `PDF search failed: ${error.message}`;
     }
 }
-// Image Generation — FLUX.1-schnell via HuggingFace (nscale provider)
-function hfRequest(prompt, token) {
-    return new Promise((resolve, reject) => {
-        const data = JSON.stringify({
-            model: 'black-forest-labs/FLUX.1-schnell',
-            prompt,
-            num_inference_steps: 4,
-            width: 1024,
-            height: 1024,
-        });
-        const options = {
-            hostname: 'router.huggingface.co',
-            path: '/nscale/v1/images/generations',
+// Image Generation — FLUX.1-schnell via Cloudflare Workers AI
+async function cloudflareFluxRequest(prompt, imageInput = null) {
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+    const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+    if (!accountId || !apiToken) {
+        throw new Error('CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN must be configured.');
+    }
+
+    const model = imageInput
+        ? '@cf/black-forest-labs/flux-2-klein-4b'
+        : '@cf/black-forest-labs/flux-1-schnell';
+    const requestBody = imageInput
+        ? (() => {
+            const form = new FormData();
+            form.append('prompt', prompt);
+            form.append('image', new Blob([imageInput.buffer], { type: imageInput.contentType }), imageInput.fileName);
+            return form;
+        })()
+        : JSON.stringify({ prompt, steps: 4 });
+    const response = await fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/ai/run/${model}`,
+        {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(data),
+                Authorization: `Bearer ${apiToken}`,
+                ...(imageInput ? {} : { 'Content-Type': 'application/json' }),
             },
-            timeout: 120000,
-        };
-        const req = https.request(options, (hfRes) => {
-            const chunks = [];
-            hfRes.on('data', c => chunks.push(c));
-            hfRes.on('end', () => resolve({ status: hfRes.statusCode, buffer: Buffer.concat(chunks) }));
-        });
-        req.on('error', reject);
-        req.on('timeout', () => { req.destroy(); reject(new Error('HuggingFace request timed out')); });
-        req.write(data);
-        req.end();
-    });
+            body: requestBody,
+            signal: AbortSignal.timeout(120000),
+        },
+    );
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!response.ok) {
+        let detail = buffer.toString().slice(0, 300);
+        try {
+            const errorJson = JSON.parse(detail);
+            detail = errorJson.errors?.map(error => error.message).filter(Boolean).join('; ') || detail;
+        } catch {}
+        throw new Error(`Cloudflare request failed (${response.status})${detail ? `: ${detail}` : ''}`);
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('json')) {
+        if (!buffer.length) throw new Error('Cloudflare returned an empty image response.');
+        return buffer.toString('base64');
+    }
+
+    const data = JSON.parse(buffer.toString());
+    if (!data.success) {
+        throw new Error(data.errors?.map(error => error.message).filter(Boolean).join('; ') || 'Cloudflare image generation failed.');
+    }
+    const image = data.result?.image;
+    if (typeof image !== 'string' || !image) throw new Error('Cloudflare returned no image data.');
+    return image;
 }
 
-const AGNES_VIDEO_MODEL = 'agnes-video-2.5-flash';
+async function handleImageStudio(req, res) {
+    const body = await readJson(req);
+    const prompt = String(body.prompt || '').trim();
+    if (!prompt) { sendJson(res, 400, { error: 'Prompt is required.' }, req); return; }
+    if (prompt.length > 2048) { sendJson(res, 400, { error: 'Prompt must be 2,048 characters or fewer.' }, req); return; }
+
+    const { accessExpired, featureAccess, plan, email } = await resolveUserPlan(req, body);
+    if (accessExpired && !featureAccess?.['image-studio']) {
+        sendJson(res, 403, { error: 'Upgrade to Pro to access Image Studio.' }, req);
+        return;
+    }
+
+    const selectedModel = 'black-forest-labs/FLUX.1-schnell';
+    const imageLimit = getModelImageLimit(plan, selectedModel);
+    const usedImagesThisMonth = email ? await getCurrentMonthImageUsageAsync(email) : 0;
+    if (!canUseImageGeneration(plan, selectedModel, usedImagesThisMonth)) {
+        sendJson(res, 429, {
+            error: `You have reached your monthly image limit for the ${plan} plan. Pro/Enterprise users can generate up to ${imageLimit} images per month.`,
+        }, req);
+        return;
+    }
+
+    console.log('[image-studio] generating via Cloudflare:', prompt.slice(0, 80));
+
+    try {
+        const b64 = await cloudflareFluxRequest(prompt);
+        await recordUsage({
+            inputTokens: estimateRequestTokens(prompt),
+            outputTokens: 0,
+            cachedTokens: 0,
+            model: selectedModel,
+            userEmail: email,
+            plan,
+            prompt,
+        });
+        sendJson(res, 200, { imageUrl: `data:image/png;base64,${b64}` }, req);
+    } catch (e) {
+        console.error('[image-studio] error:', e.message);
+        sendJson(res, 500, { error: e.message }, req);
+
+}
 
 async function handleFalGenerate(req, res) {
     const body = await readJson(req);
@@ -807,6 +923,66 @@ async function handleFalGenerate(req, res) {
     } catch (err) {
         console.error('[handleFalGenerate] Error:', err.message);
         sendJson(res, 502, { error: err.message }, req);
+
+    }
+}
+
+async function handleImageStudioEdit(req, res) {
+    const body = await readJson(req);
+    const prompt = String(body.prompt || '').trim();
+    const imageData = String(body.image || '');
+    const imageMatch = imageData.match(/^data:image\/(png|jpeg);base64,([A-Za-z0-9+/]+={0,2})$/);
+    if (!prompt) { sendJson(res, 400, { error: 'Edit instructions are required.' }, req); return; }
+    if (prompt.length > 2048) { sendJson(res, 400, { error: 'Prompt must be 2,048 characters or fewer.' }, req); return; }
+    if (!imageMatch) { sendJson(res, 400, { error: 'Upload a valid PNG or JPEG image.' }, req); return; }
+
+    const imageBuffer = Buffer.from(imageMatch[2], 'base64');
+    if (imageBuffer.length > 2 * 1024 * 1024) {
+        sendJson(res, 400, { error: 'Images must be 2 MB or smaller.' }, req);
+        return;
+    }
+    const isPng = imageMatch[1] === 'png' &&
+        imageBuffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    const isJpeg = imageMatch[1] === 'jpeg' &&
+        imageBuffer[0] === 0xff && imageBuffer[1] === 0xd8 && imageBuffer[2] === 0xff;
+    if (!isPng && !isJpeg) { sendJson(res, 400, { error: 'The uploaded file is not a valid PNG or JPEG image.' }, req); return; }
+
+    const { accessExpired, featureAccess, plan, email } = await resolveUserPlan(req, body);
+    if (accessExpired && !featureAccess?.['image-studio']) {
+        sendJson(res, 403, { error: 'Upgrade to Pro to access Image Studio.' }, req);
+        return;
+    }
+
+    const selectedModel = 'black-forest-labs/FLUX-2-Klein-4B';
+    const imageLimit = getModelImageLimit(plan, selectedModel);
+    const usedImagesThisMonth = email ? await getCurrentMonthImageUsageAsync(email) : 0;
+    if (!canUseImageGeneration(plan, selectedModel, usedImagesThisMonth)) {
+        sendJson(res, 429, {
+            error: `You have reached your monthly image limit for the ${plan} plan. Pro/Enterprise users can generate up to ${imageLimit} images per month.`,
+        }, req);
+        return;
+    }
+
+    console.log('[image-studio] editing uploaded image:', prompt.slice(0, 80));
+    try {
+        const b64 = await cloudflareFluxRequest(prompt, {
+            buffer: imageBuffer,
+            contentType: imageMatch[1] === 'png' ? 'image/png' : 'image/jpeg',
+            fileName: imageMatch[1] === 'png' ? 'upload.png' : 'upload.jpg',
+        });
+        await recordUsage({
+            inputTokens: estimateRequestTokens(prompt),
+            outputTokens: 0,
+            cachedTokens: 0,
+            model: selectedModel,
+            userEmail: email,
+            plan,
+            prompt,
+        });
+        sendJson(res, 200, { imageUrl: `data:image/png;base64,${b64}` }, req);
+    } catch (e) {
+        console.error('[image-studio] edit error:', e.message);
+        sendJson(res, 500, { error: e.message }, req);
     }
 }
 
@@ -828,102 +1004,63 @@ async function handleVideoGeneration(req, res) {
         return;
     }
 
-    const apiKey = process.env.AGNES_API_KEY;
-    if (!apiKey) { sendJson(res, 500, { error: 'AGNES_API_KEY is not configured.' }, req); return; }
+    const apiKey = process.env.MAGIC_HOUR_API_KEY;
+    if (!apiKey) { sendJson(res, 500, { error: 'MAGIC_HOUR_API_KEY is not configured.' }, req); return; }
 
     try {
-        const fetchAgnes = async (url, options, operation) => {
+        const fetchMagicHour = async (url, options, operation) => {
             try {
                 return await fetch(url, options);
             } catch (error) {
                 const errorCode = typeof error?.cause?.code === 'string' ? ` (${error.cause.code})` : '';
-                throw new Error(`Agnes ${operation} request failed${errorCode}: ${error.message}`, { cause: error });
+                throw new Error(`Magic Hour ${operation} request failed${errorCode}: ${error.message}`, { cause: error });
             }
         };
-        const apiBase = new URL(process.env.AGNES_BASE_URL || 'https://apihub.agnes-ai.com/v1');
-        if (apiBase.protocol !== 'https:') throw new Error('AGNES_BASE_URL must use HTTPS.');
-        apiBase.pathname = apiBase.pathname.replace(/\/+$/, '');
+        const apiBase = new URL('https://api.magichour.ai');
 
         const headers = {
             Authorization: `Bearer ${apiKey}`,
             'Content-Type': 'application/json',
+            Accept: 'application/json',
         };
-        const createUrl = new URL(`${apiBase.pathname}/videos`, apiBase.origin);
+        const createUrl = new URL('/v1/text-to-video', apiBase.origin);
         const createBody = JSON.stringify({
-            model: AGNES_VIDEO_MODEL,
-            prompt,
-            mode: 'text',
-            seconds: '5',
-            size: '720P',
+            end_seconds: 5,
             aspect_ratio: aspectRatio,
+            style: { prompt },
         });
-        const maxCreateAttempts = 3;
+        const createResponse = await fetchMagicHour(createUrl, {
+            method: 'POST',
+            headers,
+            body: createBody,
+            signal: AbortSignal.timeout(30_000),
+        }, 'video task creation');
+        const createText = await createResponse.text();
         let task;
-        for (let attempt = 0; attempt < maxCreateAttempts; attempt++) {
-            const createResponse = await fetchAgnes(createUrl, {
-                method: 'POST',
-                headers,
-                body: createBody,
-                signal: AbortSignal.timeout(30_000),
-            }, 'video task creation');
-            const createText = await createResponse.text();
-            let responseBody;
-            try {
-                responseBody = JSON.parse(createText);
-            } catch {
-                responseBody = null;
-            }
-
-            if (!createResponse.ok) {
-                const providerMessage = responseBody?.error?.message
-                    || responseBody?.error
-                    || responseBody?.message
-                    || createText.slice(0, 300);
-                const message = String(providerMessage);
-                const queueFull = createResponse.status === 503 && /video queue is full|queue is full/i.test(message);
-                if (!queueFull || attempt === maxCreateAttempts - 1) {
-                    if (queueFull) {
-                        throw new Error(`Agnes video queue is still full after ${maxCreateAttempts} attempts. Please wait at least a minute before trying again. ${message}`);
-                    }
-                    throw new Error(`Agnes task creation failed (${createResponse.status}): ${message}`);
-                }
-
-                const retryAfter = createResponse.headers.get('retry-after');
-                const retryAfterSeconds = retryAfter && /^\d+(?:\.\d+)?$/.test(retryAfter)
-                    ? Number(retryAfter) * 1000
-                    : retryAfter ? Date.parse(retryAfter) - Date.now() : NaN;
-                const minimumRetryMs = 60_000 * (attempt + 1);
-                const retryDelayMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
-                    ? Math.max(minimumRetryMs, retryAfterSeconds)
-                    : minimumRetryMs;
-                if (retryDelayMs > 5 * 60_000) {
-                    throw new Error(`Agnes video queue is full and requested a long retry delay. Please wait ${Math.ceil(retryDelayMs / 60_000)} minutes before trying again. ${message}`);
-                }
-                console.warn(`[video-generation] Agnes video queue is full; retrying in ${retryDelayMs}ms (attempt ${attempt + 2}/${maxCreateAttempts}).`);
-                await new Promise(resolve => setTimeout(resolve, retryDelayMs));
-                continue;
-            }
-
-            if (!responseBody || typeof responseBody !== 'object' || Array.isArray(responseBody)) {
-                throw new Error(`Agnes task creation returned invalid JSON (${createResponse.status}).`);
-            }
-            task = responseBody;
-            break;
+        try {
+            task = JSON.parse(createText);
+        } catch {
+            throw new Error(`Magic Hour task creation returned invalid JSON (${createResponse.status}).`);
+        }
+        if (!createResponse.ok) {
+            const message = task?.message || task?.error?.message || task?.error || createText.slice(0, 300);
+            throw new Error(`Magic Hour task creation failed (${createResponse.status}): ${message}`);
+        }
+        if (!task || typeof task !== 'object' || Array.isArray(task)) {
+            throw new Error(`Magic Hour task creation returned an invalid response (${createResponse.status}).`);
         }
 
-        const videoId = task.video_id;
+        const videoId = task.id;
         if (typeof videoId !== 'string' || !videoId) {
-            throw new Error('Agnes task creation response did not include a video_id.');
+            throw new Error('Magic Hour task creation response did not include a project id.');
         }
 
-        const pollUrl = new URL('/agnesapi', apiBase.origin);
-        pollUrl.searchParams.set('video_id', videoId);
-        pollUrl.searchParams.set('model_name', AGNES_VIDEO_MODEL);
+        const pollUrl = new URL(`/v1/video-projects/${encodeURIComponent(videoId)}`, apiBase.origin);
         const deadline = Date.now() + 10 * 60 * 1000;
         let result;
         while (Date.now() < deadline) {
             const remainingMs = deadline - Date.now();
-            const pollResponse = await fetchAgnes(pollUrl, {
+            const pollResponse = await fetchMagicHour(pollUrl, {
                 headers: { Authorization: headers.Authorization },
                 signal: AbortSignal.timeout(Math.min(30_000, remainingMs)),
             }, 'video status check');
@@ -931,39 +1068,40 @@ async function handleVideoGeneration(req, res) {
             try {
                 result = JSON.parse(pollText);
             } catch {
-                throw new Error(`Agnes status check returned invalid JSON (${pollResponse.status}).`);
+                throw new Error(`Magic Hour status check returned invalid JSON (${pollResponse.status}).`);
             }
             if (!result || typeof result !== 'object' || Array.isArray(result)) {
-                throw new Error('Agnes status check returned an invalid response.');
+                throw new Error('Magic Hour status check returned an invalid response.');
             }
             if (!pollResponse.ok) {
                 const message = result.error?.message || result.error || result.message || pollText.slice(0, 300);
-                throw new Error(`Agnes status check failed (${pollResponse.status}): ${message}`);
+                throw new Error(`Magic Hour status check failed (${pollResponse.status}): ${message}`);
             }
 
             const status = String(result.status || '').toLowerCase();
-            if (status === 'completed') break;
-            if (status === 'failed') {
-                const message = result.error?.message || result.error || result.message || 'The provider reported a failed task.';
-                throw new Error(`Agnes video generation failed: ${message}`);
+            if (status === 'complete') break;
+            if (status === 'error' || status === 'canceled') {
+                const message = result.error?.message || result.error || result.message || `The provider reported a ${status} task.`;
+                throw new Error(`Magic Hour video generation failed: ${message}`);
             }
-            if (!['queued', 'in_progress', 'pending', 'running'].includes(status)) {
-                throw new Error(`Agnes returned an unexpected video task status: ${status || 'missing'}.`);
+            if (!['queued', 'rendering'].includes(status)) {
+                throw new Error(`Magic Hour returned an unexpected video task status: ${status || 'missing'}.`);
             }
             await new Promise(resolve => setTimeout(resolve, Math.min(2000, Math.max(0, deadline - Date.now()))));
         }
-        if (!result || String(result.status || '').toLowerCase() !== 'completed') {
-            throw new Error('Agnes video generation timed out after 10 minutes.');
+        if (!result || String(result.status || '').toLowerCase() !== 'complete') {
+            throw new Error('Magic Hour video generation timed out after 10 minutes.');
         }
-        if (typeof result.url !== 'string' || !result.url) {
-            throw new Error('Agnes completed the task without returning a video URL.');
+        const videoDownloadUrl = result.downloads?.[0]?.url;
+        if (typeof videoDownloadUrl !== 'string' || !videoDownloadUrl) {
+            throw new Error('Magic Hour completed the task without returning a video URL.');
         }
 
-        const videoUrl = new URL(result.url);
-        if (videoUrl.protocol !== 'https:' || videoUrl.username || videoUrl.password) {
-            throw new Error('Agnes returned an invalid video URL.');
+        const videoUrl = new URL(videoDownloadUrl);
+        if (videoUrl.protocol !== 'https:' || videoUrl.username || videoUrl.password || !videoUrl.hostname.endsWith('.magichour.ai')) {
+            throw new Error('Magic Hour returned an invalid video URL.');
         }
-        const videoResponse = await fetchAgnes(
+        const videoResponse = await fetchMagicHour(
             videoUrl,
             { signal: AbortSignal.timeout(120_000) },
             'generated video download',
@@ -972,7 +1110,7 @@ async function handleVideoGeneration(req, res) {
             throw new Error(`Could not download the generated video (${videoResponse.status}).`);
         }
         const videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
-        if (!videoBuffer.length) throw new Error('Agnes returned an empty video.');
+        if (!videoBuffer.length) throw new Error('Magic Hour returned an empty video.');
 
         const origin = req?.headers?.origin || '';
         const allowed = ['http://127.0.0.1:5173', 'http://localhost:5173', 'https://netrootai.tech', 'https://ampjiasvmmhxeqwdullc.supabase.co'];
@@ -985,7 +1123,7 @@ async function handleVideoGeneration(req, res) {
         });
         res.end(videoBuffer);
     } catch (error) {
-        console.error('[video-generation] Agnes AI error:', error);
+        console.error('[video-generation] Magic Hour API error:', error);
         sendJson(res, 502, { error: `Video generation failed: ${error.message}` }, req);
     }
 }
@@ -2074,7 +2212,7 @@ async function handleChat(req, res) {
 
     if (selectedModel === 'black-forest-labs/FLUX.1-schnell') {
         const imageLimit = getModelImageLimit(plan, selectedModel);
-        const usedImagesThisMonth = email ? await getCurrentMonthImageUsageAsync(email, selectedModel) : 0;
+        const usedImagesThisMonth = email ? await getCurrentMonthImageUsageAsync(email) : 0;
         if (!canUseImageGeneration(plan, selectedModel, usedImagesThisMonth)) {
             sendJson(res, 429, {
                 error: `You have reached your monthly image limit for the ${plan} plan. Pro/Enterprise users can generate up to ${imageLimit} images per month.`,
@@ -2082,16 +2220,8 @@ async function handleChat(req, res) {
             return;
         }
 
-        const hfToken = process.env.HF_IMAGE_TOKEN || process.env.HF_TOKEN;
-        if (!hfToken) { sendJson(res, 500, { error: 'HF_IMAGE_TOKEN is not configured (set it or provide the legacy HF_TOKEN).' }); return; }
         try {
-            const { status, buffer } = await hfRequest(prompt, hfToken);
-            const data = JSON.parse(buffer.toString());
-            const b64 = data?.data?.[0]?.b64_json;
-            if (status !== 200 || !b64) {
-                sendJson(res, 502, { error: `Image generation failed (${status}).` });
-                return;
-            }
+            const b64 = await cloudflareFluxRequest(prompt);
             await recordUsage({
                 inputTokens: estimateRequestTokens(prompt),
                 outputTokens: 0,
@@ -2698,6 +2828,153 @@ Example: Sound Synthesis in AI`;
         console.error('[auto-title] exception:', e);
         sendJson(res, 500, { error: e.message }, req);
     }
+}
+
+async function handleMapsApi(req, res, operation) {
+    const body = await readJson(req);
+    const query = String(body.query || '').trim();
+    const location = String(body.location || '').trim();
+    const origin = String(body.origin || '').trim();
+    const destination = String(body.destination || '').trim();
+    const prompt = String(body.prompt || '').trim();
+    const languageCode = String(body.languageCode || 'en').slice(0, 35);
+    const rawCoordinates = body.coordinates;
+    const coordinates = rawCoordinates
+        && Number.isFinite(Number(rawCoordinates.lat))
+        && Number.isFinite(Number(rawCoordinates.lon))
+        && Number(rawCoordinates.lat) >= -90
+        && Number(rawCoordinates.lat) <= 90
+        && Number(rawCoordinates.lon) >= -180
+        && Number(rawCoordinates.lon) <= 180
+        ? { lat: Number(rawCoordinates.lat), lon: Number(rawCoordinates.lon) }
+        : null;
+    if (rawCoordinates && !coordinates) {
+        sendJson(res, 400, { error: 'Location coordinates are invalid.' }, req);
+        return;
+    }
+    if (operation === 'geocode' && (!query || query.length > 200)) {
+        sendJson(res, 400, { error: 'Enter a location of 1 to 200 characters.' }, req);
+        return;
+    }
+    if (operation === 'places' && ((!location && !coordinates) || location.length > 200)) {
+        sendJson(res, 400, { error: 'Enter a city or address, or share your current location.' }, req);
+        return;
+    }
+    if (operation === 'route' && (!origin || !destination || origin.length > 200 || destination.length > 200)) {
+        sendJson(res, 400, { error: 'Enter an origin and destination of 1 to 200 characters each.' }, req);
+        return;
+    }
+    if (operation === 'chat' && (!prompt || prompt.length > 500)) {
+        sendJson(res, 400, { error: 'Map prompts must be 1 to 500 characters.' }, req);
+        return;
+    }
+    if (operation === 'chat' && isCurrentLocationPrompt(prompt) && !coordinates) {
+        sendJson(res, 200, { mapData: await createChatMap(prompt) }, req);
+        return;
+    }
+    if (!process.env.GOOGLE_MAPS_API_KEY) {
+        sendJson(res, 503, { error: 'Maps are not configured. Set GOOGLE_MAPS_API_KEY on the server.' }, req);
+        return;
+    }
+
+    const { plan, email, userId } = await resolveUserPlan(req, body);
+    const usage = await consumeMapDailyUsage(req, plan, email, userId);
+    if (usage.error) {
+        sendJson(res, usage.status, { error: usage.error, usage: { used: usage.limit, limit: usage.limit, remaining: 0 } }, req);
+        return;
+    }
+
+    try {
+        let result;
+        if (operation === 'geocode') {
+            result = { locations: await geocode(query) };
+        } else if (operation === 'places') {
+            result = await searchPlaces(location, String(body.category || 'all'), coordinates);
+        } else if (operation === 'route') {
+            result = await calculateRoute(origin, destination, String(body.mode || 'drive'), languageCode);
+        } else {
+            result = { mapData: await createChatMap(prompt, coordinates, languageCode) };
+        }
+        sendJson(res, 200, { ...result, usage }, req);
+    } catch (error) {
+        console.error(`[maps:${operation}]`, error.message);
+        sendJson(res, error.statusCode || 502, { error: error.message, usage }, req);
+    }
+}
+
+async function handleWebinarsApi(req, res, operation) {
+    const body = await readJson(req);
+    const authorization = req.headers.authorization || '';
+    const accessToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+    const supabase = getSupabaseClient();
+    if (!accessToken || !supabase) {
+        sendJson(res, accessToken ? 503 : 401, {
+            error: accessToken ? 'Webinar authentication is unavailable.' : 'Sign in to create or join a webinar.',
+        }, req);
+        return;
+    }
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(accessToken);
+    if (authError || !user) {
+        sendJson(res, 401, { error: 'Your session is no longer valid. Sign in again.' }, req);
+        return;
+    }
+
+    if (operation === 'create') {
+        const title = String(body.title || '').trim().replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 120);
+        const roomType = String(body.type || '');
+        if (!title || !['meeting', 'webinar'].includes(roomType)) {
+            sendJson(res, 400, { error: 'Enter a title and choose a one-to-one meeting or webinar.' }, req);
+            return;
+        }
+
+        const { data: room, error: insertError } = await supabase
+            .from('webinar_rooms')
+            .insert({ host_user_id: user.id, title, room_type: roomType })
+            .select('room_id, host_user_id, title, room_type')
+            .single();
+        if (insertError) {
+            console.error('[webinars:create] Could not save room:', insertError.message);
+            sendJson(res, 500, { error: 'Could not create the room. Make sure the webinar database migration is applied.' }, req);
+            return;
+        }
+
+        try {
+            await createLiveKitRoom(room.room_id, room.room_type);
+            sendJson(res, 201, await createLiveKitToken({ room, user, isHost: true }), req);
+        } catch (error) {
+            const { error: cleanupError } = await supabase.from('webinar_rooms').delete().eq('room_id', room.room_id);
+            if (cleanupError) console.error('[webinars:create] Could not remove failed room record:', cleanupError.message);
+            throw error;
+        }
+        return;
+    }
+
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(body.roomId || ''))) {
+        sendJson(res, 400, { error: 'Enter a valid webinar invitation link.' }, req);
+        return;
+    }
+    const { data: room, error: roomError } = await supabase
+        .from('webinar_rooms')
+        .select('room_id, host_user_id, title, room_type')
+        .eq('room_id', body.roomId)
+        .maybeSingle();
+    if (roomError) {
+        console.error('[webinars:join] Could not look up room:', roomError.message);
+        sendJson(res, 500, { error: 'Could not look up this room.' }, req);
+        return;
+    }
+    if (!room) {
+        sendJson(res, 404, { error: 'This invitation is invalid or the room is no longer available.' }, req);
+        return;
+    }
+
+    await createLiveKitRoom(room.room_id, room.room_type);
+    sendJson(res, 200, await createLiveKitToken({
+        room,
+        user,
+        isHost: room.host_user_id === user.id,
+    }), req);
 }
 
 async function handleGetPlan(req, res) {
@@ -4763,6 +5040,27 @@ const server = createServer(async (req, res) => {
         return;
     }
 
+
+    if (req.method === 'POST' && new URL(req.url, 'http://127.0.0.1').pathname.startsWith('/api/maps/')) {
+        const operation = new URL(req.url, 'http://127.0.0.1').pathname.slice('/api/maps/'.length).replace(/\/+$/, '');
+        if (['geocode', 'places', 'route', 'chat'].includes(operation)) {
+            try { await handleMapsApi(req, res, operation); } catch (e) { sendJson(res, 500, { error: e.message }, req); }
+            return;
+        }
+    }
+    // if (req.method === 'POST' && new URL(req.url, 'http://127.0.0.1').pathname.startsWith('/api/webinars/')) {
+    //     const operation = new URL(req.url, 'http://127.0.0.1').pathname.slice('/api/webinars/'.length).replace(/\/+$/, '');
+    //     if (['create', 'token'].includes(operation)) {
+    //         try {
+    //             await handleWebinarsApi(req, res, operation);
+    //         } catch (error) {
+    //             console.error(`[webinars:${operation}]`, error.message);
+    //             sendJson(res, error.statusCode || 500, { error: error.message || 'Webinar request failed.' }, req);
+    //         }
+    //         return;
+    //     }
+    // }
+
     if (req.method === 'POST' && req.url === '/api/chat') {
         try { await handleChat(req, res); } catch (e) { sendJson(res, 500, { error: e.message }); }
         return;
@@ -4869,6 +5167,11 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'POST' && req.url === '/api/image-studio') {
         try { await handleImageStudio(req, res); } catch (e) { console.error('[image-studio]', e); sendJson(res, 500, { error: e.message }, req); }
+        return;
+    }
+    const requestPath = new URL(req.url, 'http://127.0.0.1').pathname.replace(/\/+$/, '');
+    if (req.method === 'POST' && requestPath === '/api/image-studio/edit') {
+        try { await handleImageStudioEdit(req, res); } catch (e) { console.error('[image-studio-edit]', e); sendJson(res, 500, { error: e.message }, req); }
         return;
     }
     if (req.method === 'POST' && req.url === '/api/video-generation') {

@@ -1110,6 +1110,8 @@ import {
   FileText,
   Mic,
   MicOff,
+  Volume2,
+  VolumeX,
   Lock,
   Zap,
   Download,
@@ -1123,8 +1125,6 @@ import {
   ChevronRight,
   ThumbsUp,
   ThumbsDown,
-  Volume2,
-  VolumeX,
   Sparkles,
   CreditCard,
 } from 'lucide-react';
@@ -1142,7 +1142,9 @@ import API_BASE from '../lib/api';
 import { DEFAULT_PLAN_LIMITS, fetchPlanLimits, normalizePlan } from '../lib/planLimits';
 import { copyChatContext, downloadAsWord, downloadAsPdf, downloadAsPpt } from '../lib/chatExport';
 import PptChatDeckCard from '../components/ppt/PptChatDeckCard';
+import MapResultCard from '../components/maps/MapResultCard';
 import { getActiveDeckStorageKey, getSavedSlidesStorageKey } from '../components/ppt/pptConstants';
+import { getCurrentBrowserLocation, isMapPrompt, requestMapsApi } from '../lib/mapsApi';
 import { useTranslation } from 'react-i18next';
 import ChatHistorySidebar from '../components/chat/ChatHistorySidebar';
 import WalletTopUpModal from '../components/common/WalletTopUpModal';
@@ -1195,6 +1197,17 @@ function getFallbackAvatar(email) {
   return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed)}&backgroundColor=3b82f6,06b6d4`;
 }
 
+function speechTextFromMarkdown(markdown) {
+  return markdown
+    .replace(/```(?:\w+)?\s*([\s\S]*?)```/g, ' $1 ')
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[#>*_~`|\-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function ChatCodeBlock({ language, code, darkMode }) {
   const [copied, setCopied] = useState(false);
 
@@ -1234,7 +1247,7 @@ function ChatCodeBlock({ language, code, darkMode }) {
 }
 
 export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { plan, accessExpired, lifetimePptCount = 0, walletBalance = 0, refreshWallet, refresh: refreshPlan } = usePlan();
   const isPro = plan === 'pro' || plan === 'enterprise';
   const isFreeLimitReached = !isPro && lifetimePptCount >= 2;
@@ -1266,6 +1279,7 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
   const [copiedChat, setCopiedChat] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState(null);
   const [speakingMsgId, setSpeakingMsgId] = useState(null);
+  const [readingMsgId, setReadingMsgId] = useState(null);
   const [feedbackMap, setFeedbackMap] = useState({});
   const [editingMsgId, setEditingMsgId] = useState(null);
   const [editingContent, setEditingContent] = useState('');
@@ -1291,6 +1305,47 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
       abortControllerRef.current = null;
     }
     setSending(false);
+  }
+
+  useEffect(() => {
+    return () => {
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    };
+  }, []);
+
+  useEffect(() => {
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    setReadingMsgId(null);
+  }, [threadId]);
+
+  function handleReadMessage(messageId, text) {
+    if (!('speechSynthesis' in window) || typeof window.SpeechSynthesisUtterance !== 'function') {
+      setVoiceError(t('dashboard.readUnsupported'));
+      return;
+    }
+
+    if (readingMsgId === messageId) {
+      window.speechSynthesis.cancel();
+      setReadingMsgId(null);
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const spokenText = speechTextFromMarkdown(text);
+    if (!spokenText) return;
+
+    const utterance = new window.SpeechSynthesisUtterance(spokenText);
+    utterance.lang = i18n.resolvedLanguage || i18n.language || 'en';
+    utterance.rate = 1;
+    utterance.onend = () => setReadingMsgId(null);
+    utterance.onerror = (event) => {
+      if (event.error !== 'canceled' && event.error !== 'interrupted') {
+        setVoiceError(t('dashboard.readFailed'));
+      }
+      setReadingMsgId(null);
+    };
+    setReadingMsgId(messageId);
+    window.speechSynthesis.speak(utterance);
   }
 
   const MODEL_DAILY_LIMITS = {
@@ -2032,6 +2087,32 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
     }
   }
 
+  async function saveChatMapData(message, mapData) {
+    let text = parseMessageContent(message.content).text;
+    if (mapData.isCurrentLocation) text = t('maps.sharedLocationResponse');
+    if (mapData.dismissed) text = t('maps.dismissedLocationResponse');
+    const content = `${text}\n\n__MAP__${JSON.stringify(mapData)}__MAP__`;
+    const { error } = await supabase.from('messages').update({ content }).eq('id', message.id);
+    if (error) throw error;
+    setMessages((previous) => previous.map((item) => item.id === message.id ? { ...item, content } : item));
+  }
+
+  async function shareChatLocation(message, mapData) {
+    const coordinates = await getCurrentBrowserLocation();
+    const mapResponse = await requestMapsApi('chat', {
+      prompt: mapData.prompt,
+      coordinates,
+      languageCode: i18n.resolvedLanguage || i18n.language,
+      email: user?.email,
+      userId: user?.id,
+    });
+    await saveChatMapData(message, { ...mapResponse.mapData, usage: mapResponse.usage });
+  }
+
+  async function dismissChatLocation(message, mapData) {
+    await saveChatMapData(message, { ...mapData, needsLocation: false, dismissed: true });
+  }
+
   async function handleSaveEdit(msgIndex, newText) {
     if (sending || sendingRef.current) return;
     const targetUserMsg = messages[msgIndex];
@@ -2082,6 +2163,7 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
       aiMsgId,
       isRegeneration: false,
     });
+
   }
 
   function handleKeyDown(e) {
@@ -2274,6 +2356,7 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
   function parseMessageContent(content) {
     let images = [];
     let pptDeck = null;
+    let mapData = null;
     let text = content || '';
 
     const imgMatch = text.match(/^__IMAGES__(.*?)__IMAGES__([\s\S]*)$/);
@@ -2322,21 +2405,31 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
       text = text.replace(/__CITATIONS__[\s\S]*?__CITATIONS__/, '').trim();
     }
 
-    return { images, pptDeck, pptUpgradeNotice, citations, text };
+    const mapMatch = text.match(/__MAP__([\s\S]*?)__MAP__/);
+    if (mapMatch) {
+      try {
+        mapData = JSON.parse(mapMatch[1]);
+      } catch {
+        mapData = null;
+      }
+      text = text.replace(/__MAP__[\s\S]*?__MAP__/, '').trim();
+    }
+
+    return { images, pptDeck, pptUpgradeNotice, citations, mapData, text };
   }
 
   const lastUserMsgIndex = messages.map(m => m.role).lastIndexOf('user');
 
   return (
-    <div className={`flex flex-col h-screen overflow-hidden ${darkMode ? 'bg-[#0e0e0e] text-white' : 'bg-gray-50 text-gray-900'}`}>
-      <header className={`h-14 flex items-center justify-between px-6 border-b shrink-0 z-20 ${darkMode ? 'bg-[#0e0e0e] border-[#1f1f1f]' : 'bg-white border-gray-200'}`}>
-        <div className="flex items-center gap-2">
+    <div className={`flex h-dvh flex-col overflow-hidden ${darkMode ? 'bg-[#0e0e0e] text-white' : 'bg-gray-50 text-gray-900'}`}>
+      <header className={`z-20 flex h-14 shrink-0 items-center justify-between gap-2 border-b px-3 sm:px-6 ${darkMode ? 'bg-[#0e0e0e] border-[#1f1f1f]' : 'bg-white border-gray-200'}`}>
+        <div className="flex min-w-0 items-center gap-2">
           <h2 className={`text-xl font-medium truncate max-w-[300px] ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
             Netroot AI
           </h2>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
           {showSearch ? (
             <div className={`flex items-center gap-2 border rounded-lg px-3 py-1.5 ${darkMode ? 'bg-[#1a1a1a] border-[#2a2a2a]' : 'bg-gray-50 border-gray-300'}`}>
               <Search className={`w-3.5 h-3.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
@@ -2355,12 +2448,23 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
           ) : (
             <button
               onClick={() => { setShowSearch(true); setShowThreadPanel(true); }}
-              className={`flex items-center gap-2 border rounded-lg px-3 py-1.5 text-sm transition-all ${darkMode ? 'bg-[#1a1a1a] border-[#2a2a2a] hover:border-[#3a3a3a] text-gray-400 hover:text-gray-200' : 'bg-white border-gray-300 hover:border-gray-400 text-gray-500 hover:text-gray-700'}`}
+              aria-label="Search threads"
+              className={`flex items-center gap-2 border rounded-lg px-2.5 py-1.5 text-sm transition-all sm:px-3 ${darkMode ? 'bg-[#1a1a1a] border-[#2a2a2a] hover:border-[#3a3a3a] text-gray-400 hover:text-gray-200' : 'bg-white border-gray-300 hover:border-gray-400 text-gray-500 hover:text-gray-700'}`}
             >
               <Search className="w-3.5 h-3.5" />
-              Search Thread
+              <span className="hidden sm:inline">Search Thread</span>
             </button>
           )}
+
+          <button
+            onClick={newThread}
+            aria-label="New thread"
+            className="flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1.5 text-sm font-medium text-black transition-colors hover:bg-gray-100 sm:px-3"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">New Thread</span>
+          </button>
+
 
           {activeThread && (
             <div className="relative">
@@ -2456,12 +2560,13 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
           darkMode={darkMode}
         />
 
-        <main className={`flex-1 flex flex-col ${activeThread ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+
+        <main className={`flex min-w-0 flex-1 flex-col ${activeThread ? 'overflow-hidden' : 'overflow-y-auto'}`}>
           {activeThread ? (
             <div ref={chatScrollContainerRef} onScroll={handleChatScroll} className={`flex-1 overflow-y-auto ${darkMode ? 'bg-[#0b0f17]/40' : 'bg-gray-50/60'}`}>
               <div className="max-w-3xl lg:max-w-4xl mx-auto w-full px-4 sm:px-6 pt-6 pb-24 space-y-7 min-h-full flex flex-col justify-start">
                 {messages.map((msg, msgIndex) => {
-                  const { images, pptDeck, pptUpgradeNotice, citations, text } = parseMessageContent(msg.content);
+                  const { images, pptDeck, pptUpgradeNotice, citations, mapData, text } = parseMessageContent(msg.content);
                   const formattedText = formatMathInText(text);
                   const isLatestUserMsg = msg.role === 'user' && msgIndex === lastUserMsgIndex;
 
@@ -2736,6 +2841,18 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
                             ) : null}
 
                             {/* Render PPT Presentation Card if present */}
+                            {mapData && (
+                              <div className="mt-3">
+                                <MapResultCard
+                                  mapData={mapData}
+                                  darkMode={darkMode}
+                                  compact
+                                  onShareLocation={() => shareChatLocation(msg, mapData)}
+                                  onDismissLocation={() => dismissChatLocation(msg, mapData)}
+                                />
+                              </div>
+                            )}
+
                             {pptDeck && (
                               <PptChatDeckCard pptDeck={pptDeck} darkMode={darkMode} />
                             )}
@@ -2924,7 +3041,7 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
               </div>
             </div>
           ) : (
-            <div className={`flex-1 flex flex-col items-center justify-end pb-4 px-6 ${darkMode ? '' : 'bg-gray-50'}`}>
+            <div className={`flex-1 flex flex-col items-center justify-end pb-4 px-3 sm:px-6 ${darkMode ? '' : 'bg-gray-50'}`}>
               <img key={avatarUrl} src={avatarUrl} alt="avatar" className="w-16 h-16 rounded-full object-cover border-2 mb-5" />
               <h1 className={`text-3xl font-bold mb-1.5 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                 {t(getGreeting())}, {firstName}
@@ -2935,7 +3052,7 @@ export default function DashboardPage({ darkMode, onToggleDark, onNavigate }) {
             </div>
           )}
 
-          <div className="px-6 pb-6 shrink-0">
+          <div className="shrink-0 px-3 pb-3 sm:px-6 sm:pb-6">
             <div className="max-w-3xl mx-auto">
               <div className={`relative border rounded-2xl transition-colors ${darkMode ? 'bg-[#161616] border-[#2a2a2a]' : 'bg-white border-gray-300 shadow-sm'} ${!isModelBlocked ? darkMode ? 'focus-within:border-[#3a3a3a]' : 'focus-within:border-gray-400' : ''}`}>
                 {isModelBlocked ? (

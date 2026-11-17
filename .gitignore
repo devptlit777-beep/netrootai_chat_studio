@@ -1,26 +1,18 @@
-# ================================
-# Dependencies
-# ================================
+
 node_modules/
 **/node_modules/
 
-# ================================
-# Environment variables / Secrets
-# ================================
+
 .env
 .env.*
 !.env.example
 
-# ================================
-# Build output
-# ================================
+
 dist/
 build/
 .vite/
 
-# ================================
-# Logs
-# ================================
+
 *.log
 logs/
 npm-debug.log*
@@ -28,9 +20,6 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# ================================
-# Runtime / temporary files
-# ================================
 *.tmp
 *.temp
 tmp/
@@ -39,35 +28,25 @@ runtime/
 testa.py
 Netroot AI ChatBix/
 
-# ================================
-# Server generated data
-# ================================
+
 server/usage-data.json
 
-# ================================
-# Test / coverage
-# ================================
+
 coverage/
 .nyc_output/
 
-# ================================
-# Cache
-# ================================
+
 .cache/
 .parcel-cache/
 .eslintcache
 
-# ================================
-# OS files
-# ================================
+
 .DS_Store
 .DS_Store?
 Thumbs.db
 desktop.ini
 
-# ================================
-# IDE / Editors
-# ================================
+
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
@@ -78,14 +57,10 @@ desktop.ini
 *.swp
 *.swo
 
-# ================================
-# Local development
-# ================================
+
 .local/
 
-# ================================
-# Python
-# ================================
+
 __pycache__/
 *.py[cod]
 *$py.class

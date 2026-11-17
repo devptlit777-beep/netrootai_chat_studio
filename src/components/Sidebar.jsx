@@ -13,6 +13,8 @@ import {
   LayoutGrid,
   Cpu,
   Wand2,
+  Map,
+  Video,
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
@@ -32,6 +34,8 @@ const navItems = [
   { icon: Sparkles, path: "/image-studio", label: "Image Studio" },
   { icon: Wand2, path: "/edit-studio", label: "AI Workflow Edit Studio" },
   { icon: Presentation, path: "/ppt-studio", label: "NetRoot AI PPT Studio" },
+  { icon: Map, path: "/maps", label: "Maps" },
+  // { icon: Video, path: "/webinars", label: "Webinars" },
 ];
 
 function getFallbackAvatar(email) {
@@ -64,7 +68,7 @@ export default function Sidebar() {
 
   return (
     <div
-      className={`w-[60px] min-h-screen border-r flex flex-col items-center py-3 fixed left-0 top-0 z-40 ${darkMode
+      className={`fixed left-0 top-0 z-40 flex h-screen w-[60px] flex-col items-center border-r py-3 ${darkMode
         ? "bg-[#111111] border-[#222]"
         : "bg-white border-gray-200"
         }`}
@@ -72,7 +76,7 @@ export default function Sidebar() {
       {/* Logo */}
       <button
         onClick={() => navigate("/dashboard")}
-        className="w-10 h-10 flex items-center justify-center mb-6 hover:scale-105 transition-transform"
+        className="mb-6 flex h-10 w-10 shrink-0 items-center justify-center transition-transform hover:scale-105"
       >
         <img
           src="/image.png"
@@ -82,16 +86,18 @@ export default function Sidebar() {
       </button>
 
       {/* Navigation */}
-      <nav className="flex flex-col items-center gap-1 flex-1">
-        {navItems.filter(({ path }) => path === "/dashboard" || path === "/app/models" || path === "/workspace" || path === "/edit-studio" || canUse(path === "/threads" ? "threads" : path === "/files" ? "files" : path === "/plugins" ? "plugins" : path === "/image-studio" ? "image-studio" : path === "/ppt-studio" ? "ppt-studio" : "none")).map(({ icon: Icon, path, label }) => {
-          const active = location.pathname === path || (path === '/app/models' && location.pathname.startsWith('/app/models'));
+      <nav aria-label="Main navigation" className="flex flex-1 flex-col items-center gap-1">
+        {navItems.filter(({ path }) => path === "/dashboard" || path === "/app/models" || path === "/workspace" || path === "/edit-studio" || path === "/maps" || path === "/webinars" || canUse(path === "/threads" ? "threads" : path === "/files" ? "files" : path === "/plugins" ? "plugins" : path === "/image-studio" ? "image-studio" : path === "/ppt-studio" ? "ppt-studio" : "none")).map(({ icon: Icon, path, label }) => {
+          const active = location.pathname === path || (path === '/app/models' && location.pathname.startsWith('/app/models')) || (path === "/webinars" && location.pathname.startsWith("/webinars/"));
+          const itemLabel = path === "/maps" ? (t("sidebar.maps") || "Maps") : path === "/webinars" ? (t("sidebar.webinars") || "Webinars") : label;
 
           return (
             <button
               key={path}
               onClick={() => navigate(path)}
-              title={label}
-              className={`w-10 h-10 relative flex items-center justify-center rounded-xl transition-all ${active
+              title={itemLabel}
+              aria-label={itemLabel}
+              className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all ${active
                 ? darkMode
                   ? "bg-white/10 text-white"
                   : "bg-blue-50 text-blue-600"
@@ -110,11 +116,12 @@ export default function Sidebar() {
       </nav>
 
       {/* Bottom */}
-      <div className="flex flex-col items-center gap-2 mt-auto">
+      <div className="mt-auto flex flex-col items-center gap-2">
         <button
           onClick={() => navigate("/help")}
           title={t("sidebar.docsHelp")}
-          className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${location.pathname === "/help"
+          aria-label={t("sidebar.docsHelp")}
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all ${location.pathname === "/help"
             ? darkMode
               ? "bg-white/10 text-white"
               : "bg-blue-50 text-blue-600"
@@ -129,7 +136,8 @@ export default function Sidebar() {
         {canUse("project-settings") && <button
           onClick={() => navigate("/workspace?tab=billing")}
           title={t("sidebar.projectSettings") || "Workspace & Settings"}
-          className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${location.pathname === "/workspace"
+          aria-label={t("sidebar.projectSettings") || "Workspace & Settings"}
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all ${location.pathname.startsWith("/workspace")
             ? darkMode
               ? "bg-white/10 text-white"
               : "bg-blue-50 text-blue-600"

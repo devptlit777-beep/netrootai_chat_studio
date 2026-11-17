@@ -39,10 +39,10 @@ export default function ProjectSettingsPage() {
 
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-[#141414] text-white' : 'bg-gray-50 text-gray-900'}`}>
-      <div className="max-w-5xl mx-auto px-6 sm:px-8 py-10 transition-all duration-300">
+      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-8 sm:py-10 transition-all duration-300">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className={`text-3xl font-extrabold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+        <div className="mb-6 sm:mb-8">
+          <h1 className={`text-2xl font-bold sm:text-3xl ${darkMode ? 'text-white' : 'text-gray-900'}`}>
             {t('project.title') || 'Project Settings'}
           </h1>
           <p className={`text-xs mt-1.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -51,12 +51,12 @@ export default function ProjectSettingsPage() {
         </div>
 
         {/* Tabs */}
-        <div className={`flex gap-0 border-b mb-10 ${darkMode ? 'border-[#2a2a2a]' : 'border-gray-200'}`}>
+        <div className={`mb-8 flex gap-0 overflow-x-auto border-b sm:mb-10 ${darkMode ? 'border-[#2a2a2a]' : 'border-gray-200'}`}>
           {TABS.map(tabKey => (
             <button
               key={tabKey}
               onClick={() => setTab(tabKey)}
-              className={`px-5 py-2.5 text-sm font-medium whitespace-nowrap capitalize transition-all relative ${tab === tabKey
+              className={`relative shrink-0 whitespace-nowrap px-4 py-2.5 text-sm font-medium capitalize transition-all sm:px-5 ${tab === tabKey
                 ? darkMode ? 'text-white' : 'text-gray-900'
                 : darkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-500 hover:text-gray-700'
                 }`}
@@ -106,7 +106,7 @@ function GeneralTab({ darkMode }) {
   }
 
   return (
-    <div className="space-y-8 max-w-lg">
+    <div className="max-w-full space-y-8 lg:max-w-lg">
       <Field label={t('project.projectName')} darkMode={darkMode}>
         <input
           type="text"
@@ -304,7 +304,7 @@ function LimitsTab({ darkMode, onUpgrade }) {
   const proModelsCount = planLimits.pro?.allowedModels?.length || DEFAULT_PLAN_LIMITS.pro.allowedModels.length;
 
   return (
-    <div className="space-y-8 max-w-3xl">
+    <div className="max-w-full space-y-8 lg:max-w-3xl">
       <div className="flex items-center justify-between">
         <div>
           <h3 className={`text-base font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>

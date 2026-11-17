@@ -152,7 +152,7 @@ export default function Billing({ darkMode }) {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-full space-y-6 lg:max-w-4xl">
       {error && (
         <div className="p-4 rounded-xl text-xs font-medium bg-red-500/10 border border-red-500/25 text-red-400">
           {error}

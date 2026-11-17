@@ -55,7 +55,7 @@ export default function ResetPassword() {
     return (
         <div className={`min-h-screen flex items-center justify-center relative overflow-hidden ${darkMode ? 'bg-[#0a0a0f]' : 'bg-gradient-to-br from-blue-50 via-white to-cyan-50'}`}>
             <div className="relative z-10 w-full max-w-md mx-4">
-                <div className={`${darkMode ? 'bg-[#111118]/90 backdrop-blur-xl border-white/10' : 'bg-white border-gray-200'} border rounded-2xl px-8 py-10 shadow-2xl`}>
+                <div className={`${darkMode ? 'bg-[#111118]/90 backdrop-blur-xl border-white/10' : 'bg-white border-gray-200'} rounded-2xl border px-5 py-7 shadow-2xl sm:px-8 sm:py-10`}>
                     <h1 className={`text-2xl font-semibold text-center mb-6 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('auth.resetPassword')}</h1>
 
                     <p className={`text-sm text-center mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>

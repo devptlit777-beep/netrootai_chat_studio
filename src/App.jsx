@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
@@ -16,6 +17,7 @@ import ImageStudioPage from "./pages/ImageStudioPage";
 import EditStudioPage from "./pages/EditStudioPage";
 import PptStudioPage from "./pages/PptStudioPage";
 import WorkspacePage from "./pages/WorkspacePage";
+import MapsPage from "./pages/MapsPage";
 import ResetPassword from "./pages/ResetPassword";
 import ThreadsPage from "./pages/ThreadsPage";
 import HelpPage from "./pages/HelpPage";
@@ -24,6 +26,8 @@ import CheckoutSuccessPage from './pages/CheckoutSuccessPage';
 import { PlanProvider } from "./contexts/PlanContext";
 import Sidebar from "./components/Sidebar";
 import { useTranslation } from "react-i18next";
+
+const WebinarsPage = lazy(() => import("./pages/WebinarsPage"));
 
 // ── Landing & Showcase Portal (ChatBix) ──
 import LandingLayout from "./landing/LandingLayout";
@@ -100,7 +104,7 @@ function ProtectedLayout() {
     >
       <Sidebar />
 
-      <div className="flex-1 ml-[60px]">
+      <div className="min-w-0 flex-1 pl-[60px]">
         <Routes>
           <Route
             path="/dashboard"
@@ -155,6 +159,12 @@ function ProtectedLayout() {
           <Route path="/ppt-studio" element={<FeatureGate darkMode={darkMode} feature="ppt-studio"><PptStudioPage /></FeatureGate>} />
 
           <Route path="/workspace" element={<WorkspacePage />} />
+
+          <Route path="/maps" element={<MapsPage />} />
+
+          <Route path="/webinars" element={<Suspense fallback={null}><WebinarsPage /></Suspense>} />
+
+          <Route path="/webinars/:roomId" element={<Suspense fallback={null}><WebinarsPage /></Suspense>} />
 
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

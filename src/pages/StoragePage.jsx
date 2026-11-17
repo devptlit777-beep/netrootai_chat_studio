@@ -178,7 +178,7 @@ export default function StoragePage() {
 
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-[#0e0e0e] text-white' : 'bg-gray-50 text-gray-900'}`}>
-      <div className="max-w-5xl mx-auto px-6 py-8">
+      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
             <h1 className={`text-2xl font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
@@ -197,7 +197,7 @@ export default function StoragePage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
             <div className={`flex items-center gap-2 border rounded-lg px-3 py-2 ${darkMode ? 'bg-[#1a1a1a] border-[#2a2a2a]' : 'bg-white border-gray-300'}`}>
               <Search className={`w-4 h-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
               <input
@@ -205,7 +205,7 @@ export default function StoragePage() {
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder={t('storage.search')}
-                className={`bg-transparent text-sm outline-none w-48 ${darkMode ? 'text-white placeholder-gray-600' : 'text-gray-900 placeholder-gray-400'}`}
+                className={`w-full bg-transparent text-sm outline-none sm:w-48 ${darkMode ? 'text-white placeholder-gray-600' : 'text-gray-900 placeholder-gray-400'}`}
               />
               {searchQuery && (
                 <button onClick={() => setSearchQuery('')}>
@@ -284,8 +284,8 @@ export default function StoragePage() {
             </p>
           </div>
         ) : (
-          <div className={`rounded-2xl border overflow-hidden ${darkMode ? 'border-[#222] bg-[#111111]' : 'border-gray-200 bg-white'}`}>
-            <div className={`grid grid-cols-[1fr_120px_160px_120px] gap-4 px-5 py-3 text-xs font-semibold uppercase tracking-wider border-b ${darkMode ? 'border-[#222] text-gray-500' : 'border-gray-200 text-gray-500'}`}>
+          <div className={`overflow-x-auto rounded-2xl border ${darkMode ? 'border-[#222] bg-[#111111]' : 'border-gray-200 bg-white'}`}>
+            <div className={`grid min-w-[620px] grid-cols-[minmax(180px,1fr)_100px_140px_100px] gap-3 border-b px-5 py-3 text-xs font-semibold uppercase tracking-wider sm:min-w-0 sm:grid-cols-[minmax(0,1fr)_120px_160px_120px] sm:gap-4 ${darkMode ? 'border-[#222] text-gray-500' : 'border-gray-200 text-gray-500'}`}>
               <button
                 onClick={() => toggleSort('name')}
                 className="flex items-center gap-1.5 hover:text-gray-700 transition-colors text-left"
@@ -320,7 +320,7 @@ export default function StoragePage() {
               {sorted.map(attachment => (
                 <div
                   key={attachment.id}
-                  className={`grid grid-cols-[1fr_120px_160px_120px] gap-4 px-5 py-3.5 items-center transition-colors ${darkMode ? 'hover:bg-white/[0.02]' : 'hover:bg-gray-50'}`}
+                  className={`grid min-w-[620px] grid-cols-[minmax(180px,1fr)_100px_140px_100px] items-center gap-3 px-5 py-3.5 transition-colors sm:min-w-0 sm:grid-cols-[minmax(0,1fr)_120px_160px_120px] sm:gap-4 ${darkMode ? 'hover:bg-white/[0.02]' : 'hover:bg-gray-50'}`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <FileIcon mimeType={attachment.file_type} darkMode={darkMode} />

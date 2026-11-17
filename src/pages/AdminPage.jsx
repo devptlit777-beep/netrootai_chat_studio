@@ -236,7 +236,7 @@ export default function AdminPage() {
   return (
     <div className={`min-h-screen w-full overflow-x-hidden ${dark ? 'bg-[#0e0e0e] text-white' : 'bg-gray-50 text-gray-900'}`}>
       {/* Header */}
-      <div className={`border-b px-4 sm:px-6 py-3.5 flex flex-wrap md:flex-nowrap items-center justify-between gap-3 sticky top-0 z-30 ${dark ? 'bg-[#111] border-[#222]' : 'bg-white border-gray-200'}`}>
+      <div className={`sticky top-0 z-30 flex items-center justify-between gap-3 border-b px-4 py-3 sm:px-6 sm:py-4 flex-wrap md:flex-nowrap ${dark ? 'bg-[#111] border-[#222]' : 'bg-white border-gray-200'}`}>
         <div className="flex items-center gap-3 shrink-0 min-w-max">
           <img src="/image.png" alt="NetRoot AI logo" className="w-9 h-9 object-contain shrink-0" />
           <div>
@@ -277,16 +277,16 @@ export default function AdminPage() {
           {/* Real-Time Live Notification Center for Model & OpenRouter Alerts */}
           <AdminNotificationBell dark={dark} />
 
-          <button onClick={fetchData} disabled={loading} className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-colors ${dark ? 'border-[#333] text-gray-400 hover:text-white' : 'border-gray-200 text-gray-500 hover:text-gray-700'}`}>
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> {t('admin.refresh')}
+          <button onClick={fetchData} disabled={loading} aria-label={t('admin.refresh')} className={`flex items-center gap-1.5 text-sm px-2 sm:px-3 py-1.5 rounded-lg border transition-colors ${dark ? 'border-[#333] text-gray-400 hover:text-white' : 'border-gray-200 text-gray-500 hover:text-gray-700'}`}>
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> <span className="hidden sm:inline">{t('admin.refresh')}</span>
           </button>
-          <button onClick={handleLogout} className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 transition-colors">
-            <LogOut className="w-3.5 h-3.5" /> {t('admin.logout')}
+          <button onClick={handleLogout} aria-label={t('admin.logout')} className="flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/10 px-2 py-1.5 text-sm text-red-400 transition-colors hover:bg-red-500/20 sm:px-3">
+            <LogOut className="w-3.5 h-3.5" /> <span className="hidden sm:inline">{t('admin.logout')}</span>
           </button>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
         {/* ── OpenRouter Live Master Balance & Real-Time Usage Tracking ── */}
         <AdminOpenRouterWidget dark={dark} />
 
@@ -389,7 +389,7 @@ export default function AdminPage() {
 
         {/* Users table */}
         <div className={`rounded-2xl border ${dark ? 'bg-[#111] border-[#222]' : 'bg-white border-gray-200'}`}>
-          <div className={`flex flex-col md:flex-row md:items-center justify-between px-5 py-4 border-b gap-3 ${dark ? 'border-[#222]' : 'border-gray-100'}`}>
+          <div className={`flex flex-wrap items-center justify-between gap-3 px-4 py-4 border-b sm:px-5 ${dark ? 'border-[#222]' : 'border-gray-100'}`}>
             <div>
               <h2 className="font-semibold flex items-center gap-2">
                 <span>{t('admin.allUsers')}</span>
