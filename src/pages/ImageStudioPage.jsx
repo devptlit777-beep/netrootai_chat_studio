@@ -543,7 +543,7 @@ export default function ImageStudioPage() {
                 </button>
               ))}
             </div>
-            {mode === 'video' && <p className={`mb-4 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{t('imageStudio.model')} {VIDEO_MODEL}</p>}
+            {/* {mode === 'video' && <p className={`mb-4 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{t('imageStudio.model')} {VIDEO_MODEL}</p>} */}
             {mode === 'image' && (
               <div className={`mb-5 rounded-xl border p-3 ${darkMode ? 'border-[#2a2a2a] bg-[#1a1a1a]' : 'border-gray-200 bg-gray-50'}`}>
                 <input
@@ -623,21 +623,21 @@ export default function ImageStudioPage() {
                   ? selectedVideoAspectRatio === size.value
                   : selectedSize === size.value;
                 return (
-                <button
-                  key={size.value}
-                  onClick={() => mode === 'video' ? setSelectedVideoAspectRatio(size.value) : setSelectedSize(size.value)}
-                  className={`rounded-lg py-2 px-2 text-xs font-medium transition-all border ${selected
-                    ? 'bg-blue-500 text-white border-blue-500'
-                    : darkMode
-                      ? 'bg-[#1a1a1a] border-[#2a2a2a] text-gray-400 hover:border-[#444]'
-                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-                    }`}
-                >
-                  <div className="font-semibold">{t(`imageStudio.sizes.${size.label}`)}</div>
-                  <div className={selected ? 'text-blue-100' : darkMode ? 'text-gray-600' : 'text-gray-400'}>
-                    {size.ratio}
-                  </div>
-                </button>
+                  <button
+                    key={size.value}
+                    onClick={() => mode === 'video' ? setSelectedVideoAspectRatio(size.value) : setSelectedSize(size.value)}
+                    className={`rounded-lg py-2 px-2 text-xs font-medium transition-all border ${selected
+                      ? 'bg-blue-500 text-white border-blue-500'
+                      : darkMode
+                        ? 'bg-[#1a1a1a] border-[#2a2a2a] text-gray-400 hover:border-[#444]'
+                        : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}
+                  >
+                    <div className="font-semibold">{t(`imageStudio.sizes.${size.label}`)}</div>
+                    <div className={selected ? 'text-blue-100' : darkMode ? 'text-gray-600' : 'text-gray-400'}>
+                      {size.ratio}
+                    </div>
+                  </button>
                 );
               })}
             </div>
@@ -705,13 +705,12 @@ export default function ImageStudioPage() {
                     role="tab"
                     aria-selected={galleryView === view}
                     onClick={() => setGalleryView(view)}
-                    className={`rounded-full px-5 py-2 text-sm font-semibold transition-colors ${
-                      galleryView === view
+                    className={`rounded-full px-5 py-2 text-sm font-semibold transition-colors ${galleryView === view
                         ? 'bg-blue-500 text-white'
                         : darkMode
                           ? 'bg-[#1a1a1a] text-gray-400 hover:text-white'
                           : 'bg-gray-100 text-gray-600 hover:text-gray-900'
-                    }`}
+                      }`}
                   >
                     {t(view === 'examples' ? 'imageStudio.examplesTab' : 'imageStudio.creations')}
                   </button>
@@ -753,11 +752,10 @@ export default function ImageStudioPage() {
                       type="button"
                       onClick={loadMoreGallery}
                       disabled={loadingMoreGallery}
-                      className={`mt-4 rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-60 ${
-                        darkMode
+                      className={`mt-4 rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-60 ${darkMode
                           ? 'border-[#2a2a2a] text-gray-300 hover:bg-white/5'
                           : 'border-gray-200 text-gray-700 hover:bg-gray-100'
-                      }`}
+                        }`}
                     >
                       {loadingMoreGallery ? t('common.loading') : t('imageStudio.loadMore', { defaultValue: 'Load more' })}
                     </button>
@@ -845,11 +843,10 @@ export default function ImageStudioPage() {
                       type="button"
                       onClick={loadMoreGallery}
                       disabled={loadingMoreGallery}
-                      className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-60 ${
-                        darkMode
+                      className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-60 ${darkMode
                           ? 'border-[#2a2a2a] text-gray-300 hover:bg-white/5'
                           : 'border-gray-200 text-gray-700 hover:bg-gray-100'
-                      }`}
+                        }`}
                     >
                       {loadingMoreGallery ? t('common.loading') : t('imageStudio.loadMore', { defaultValue: 'Load more' })}
                     </button>

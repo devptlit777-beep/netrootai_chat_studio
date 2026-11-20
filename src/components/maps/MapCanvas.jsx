@@ -33,7 +33,6 @@ export default function MapCanvas({ locations = EMPTY_ARRAY, routeCoordinates = 
   const mapNode = useRef(null);
   const mapRef = useRef(null);
   const markerRefs = useRef(new Map());
-  const infoRefs = useRef(new Map());
   const routeMarkerRef = useRef(null);
   const progressRef = useRef(0);
   const [error, setError] = useState('');
@@ -57,19 +56,11 @@ export default function MapCanvas({ locations = EMPTY_ARRAY, routeCoordinates = 
       if (points.length === 1) map.setCenter(points[0]);
       else if (points.length > 1) map.fitBounds(bounds, 28);
       markerRefs.current.clear();
-      infoRefs.current.clear();
       validLocations.forEach((location, index) => {
         const marker = new maps.Marker({ position: { lat: location.lat, lng: location.lon }, map, title: location.name, label: validLocations.length > 1 ? String(index + 1) : undefined });
         const locationId = String(location.id || `${location.lat},${location.lon}`);
         markerRefs.current.set(locationId, marker);
-        if (location.address || location.name) {
-          const info = new maps.InfoWindow({ content: `<strong>${escapeHtml(location.isCurrentLocation ? 'Your location' : location.name)}</strong>${location.address ? `<div>${escapeHtml(location.address)}</div>` : ''}` });
-          infoRefs.current.set(locationId, info);
-          marker.addListener('click', () => {
-            onSelectLocation?.(locationId);
-            info.open({ map, anchor: marker });
-          });
-        }
+        marker.addListener('click', () => onSelectLocation?.(locationId));
       });
       if (validRoute.length > 1) {
         const path = validRoute.map(([lat, lng]) => ({ lat, lng }));
@@ -134,7 +125,6 @@ export default function MapCanvas({ locations = EMPTY_ARRAY, routeCoordinates = 
     if (!marker) return;
     mapRef.current.panTo(marker.getPosition());
     mapRef.current.setZoom(Math.max(mapRef.current.getZoom() || 0, 15));
-    infoRefs.current.get(String(selectedLocationId))?.open({ map: mapRef.current, anchor: marker });
   }, [selectedLocationId]);
 
   return <div className={`relative overflow-hidden rounded-xl border ${darkMode ? 'border-[#2a2a2a]' : 'border-gray-200'}`}>
@@ -189,6 +179,3 @@ function haversineDistance([firstLat, firstLng], [secondLat, secondLng]) {
   return 6371000 * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
 }
 
-function escapeHtml(value) {
-  return String(value || '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
-}

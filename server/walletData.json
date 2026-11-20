@@ -2,11 +2,129 @@
   "balances": {
     "test@gmail.com": 70,
     "ashishpatel2100@gmail.com": 35,
-    "devdipakpatel2004@gmail.com": 12,
+    "devdipakpatel2004@gmail.com": 41.99918,
     "babariyanir@gmail.com": 12,
-    "devptlit777@gmail.com": 12
+    "devptlit777@gmail.com": 12,
+    "kp623436@gmail.com": 42
   },
   "transactions": [
+    {
+      "id": "tx_789714c2",
+      "user_id": "3d44b7c9-fcc8-4a3c-8381-6c127647f1f6",
+      "user_email": "kp623436@gmail.com",
+      "type": "deposit",
+      "amount": 10,
+      "balance_after": 42,
+      "stripe_session_id": "cs_test_a0OrYvTTGIEGFEQkrHjCfh2vfvdmAJSRL58dWdBErs1jddAxNeJwRNSWDj",
+      "metadata": {
+        "note": "Stripe Top-Up (10)"
+      },
+      "created_at": "2026-11-20T12:40:45.834Z"
+    },
+    {
+      "id": "tx_a7780cc3",
+      "user_id": "6ab6317c-5113-4ed4-83b0-34685b79a1b7",
+      "user_email": "devdipakpatel2004@gmail.com",
+      "type": "deposit",
+      "amount": 10,
+      "balance_after": 41.99918,
+      "stripe_session_id": "cs_test_a08ufF6npHE2TpYmBXThHCbtUVpcwO6ypRUHKY5uA8YDtFE5tr3kWkrw5r",
+      "metadata": {
+        "note": "Stripe Top-Up (10)"
+      },
+      "created_at": "2026-11-20T12:39:42.583Z"
+    },
+    {
+      "id": "tx_9c7a936d",
+      "user_id": "3d44b7c9-fcc8-4a3c-8381-6c127647f1f6",
+      "user_email": "kp623436@gmail.com",
+      "type": "deposit",
+      "amount": 10,
+      "balance_after": 32,
+      "stripe_session_id": "cs_test_a0ML28rd2ItYQt3OO5erfAlvlG3W8nqG7bvGJRTJmDYhSgnNg7vZ3cUSqn",
+      "metadata": {
+        "note": "Stripe Top-Up (10)"
+      },
+      "created_at": "2026-11-20T12:31:28.932Z"
+    },
+    {
+      "id": "tx_9a9e248c",
+      "user_id": "3d44b7c9-fcc8-4a3c-8381-6c127647f1f6",
+      "user_email": "kp623436@gmail.com",
+      "type": "deposit",
+      "amount": 10,
+      "balance_after": 22,
+      "stripe_session_id": "cs_test_a0ML28rd2ItYQt3OO5erfAlvlG3W8nqG7bvGJRTJmDYhSgnNg7vZ3cUSqn",
+      "metadata": {
+        "note": "Stripe Top-Up (10)"
+      },
+      "created_at": "2026-11-20T12:31:28.514Z"
+    },
+    {
+      "id": "tx_3fb9305d",
+      "user_id": "6ab6317c-5113-4ed4-83b0-34685b79a1b7",
+      "user_email": "devdipakpatel2004@gmail.com",
+      "type": "deposit",
+      "amount": 10,
+      "balance_after": 31.99918,
+      "stripe_session_id": "cs_test_a0GGcVUc9OviubLh1e70oj5pKatXKXcEshH7D024Ip9e4A2VZ52OiOILkr",
+      "metadata": {
+        "note": "Stripe Top-Up (10)"
+      },
+      "created_at": "2026-11-20T12:29:42.201Z"
+    },
+    {
+      "id": "tx_b04c0194",
+      "user_id": "6ab6317c-5113-4ed4-83b0-34685b79a1b7",
+      "user_email": "devdipakpatel2004@gmail.com",
+      "type": "deposit",
+      "amount": 10,
+      "balance_after": 21.99918,
+      "stripe_session_id": "cs_test_a0GGcVUc9OviubLh1e70oj5pKatXKXcEshH7D024Ip9e4A2VZ52OiOILkr",
+      "metadata": {
+        "note": "Stripe Top-Up (10)"
+      },
+      "created_at": "2026-11-20T12:29:41.785Z"
+    },
+    {
+      "id": "tx_e0935360",
+      "user_id": "6ab6317c-5113-4ed4-83b0-34685b79a1b7",
+      "user_email": "devdipakpatel2004@gmail.com",
+      "type": "usage_debit",
+      "amount": -0.000495,
+      "balance_after": 11.99918,
+      "model": "deepseek/deepseek-v4.1-flash-1017",
+      "tokens_total": 1104,
+      "base_cost": 0.00041,
+      "profit_usd": 0.00008,
+      "created_at": "2026-11-20T11:17:01.191Z"
+    },
+    {
+      "id": "tx_fcd31bc0",
+      "user_id": "6ab6317c-5113-4ed4-83b0-34685b79a1b7",
+      "user_email": "devdipakpatel2004@gmail.com",
+      "type": "usage_debit",
+      "amount": -0.00023,
+      "balance_after": 11.99968,
+      "model": "deepseek/deepseek-v4.1-flash-1017",
+      "tokens_total": 662,
+      "base_cost": 0.00019,
+      "profit_usd": 0.00004,
+      "created_at": "2026-11-20T11:16:10.813Z"
+    },
+    {
+      "id": "tx_2e8a84c7",
+      "user_id": "6ab6317c-5113-4ed4-83b0-34685b79a1b7",
+      "user_email": "devdipakpatel2004@gmail.com",
+      "type": "usage_debit",
+      "amount": -0.000093,
+      "balance_after": 11.99991,
+      "model": "deepseek/deepseek-v4.1-flash-1017",
+      "tokens_total": 433,
+      "base_cost": 0.00008,
+      "profit_usd": 0.00002,
+      "created_at": "2026-11-20T11:14:02.168Z"
+    },
     {
       "id": "tx_2abac10e",
       "user_id": "9dafed4d-a88f-40e8-ba66-772edf3a13e9",

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState } from 'react';
-import { AlertCircle, ExternalLink, Loader2, MapPin, Route } from 'lucide-react';
+import { AlertCircle, Clock3, ExternalLink, Globe, Loader2, MapPin, Navigation, Phone, Route, Star, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import API_BASE from '../../lib/api';
 
 const MapCanvas = lazy(() => import('./MapCanvas'));
 
@@ -31,6 +32,13 @@ export default function MapResultCard({ mapData, darkMode = false, compact = fal
   const cardClass = darkMode ? 'border-[#2a2a2a] bg-[#171717] text-gray-200' : 'border-gray-200 bg-white text-gray-800';
   const secondaryText = darkMode ? 'text-gray-400' : 'text-gray-600';
   const selectedPlace = places.find((place) => placeKey(place) === String(selectedPlaceId));
+  const selectedPhoto = selectedPlace?.photoName
+    ? `${API_BASE.replace(/\/+$/, '')}/api/maps/photo?name=${encodeURIComponent(selectedPlace.photoName)}`
+    : '';
+  const selectedDirections = selectedPlace
+    ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${selectedPlace.lat},${selectedPlace.lon}`)}`
+    : '';
+  const todayOpeningHours = selectedPlace?.openingHours?.[(new Date().getDay() + 6) % 7];
   const routeOrigin = mapData.origin?.address || mapData.origin?.name || (mapData.origin ? `${mapData.origin.lat},${mapData.origin.lon}` : '');
   const routeDestination = mapData.destination?.address || mapData.destination?.name || (mapData.destination ? `${mapData.destination.lat},${mapData.destination.lon}` : '');
   const mapTarget = mapData.type === 'route' && routeOrigin && routeDestination
@@ -130,9 +138,10 @@ export default function MapResultCard({ mapData, darkMode = false, compact = fal
                   <li key={placeKey(place) || `${place.name}-${index}`} className={`rounded-lg border ${String(selectedPlaceId) === placeKey(place) ? 'border-blue-500 ring-1 ring-blue-500/30' : 'border-transparent'} ${darkMode ? 'bg-[#111]' : 'bg-gray-50'}`}>
                     <div className="flex items-center gap-3 px-2 py-2">
                       <button type="button" onClick={() => setSelectedPlaceId(String(place.id || `${place.lat},${place.lon}`))} aria-label={`${t('maps.showOnMap')}: ${place.name}`} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                        {place.photoName ? <img src={`${API_BASE.replace(/\/+$/, '')}/api/maps/photo?name=${encodeURIComponent(place.photoName)}`} alt="" className="h-11 w-11 shrink-0 rounded-lg object-cover" loading="lazy" /> : <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500"><MapPin className="h-5 w-5" /></span>}
                         <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-500/10 text-[10px] font-semibold text-blue-500">{index + 1}</span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-xs font-semibold">{place.name}</span>
+                          <span className="block truncate text-xs font-semibold">{place.name}{place.rating != null && <span className="ml-1 inline-flex items-center gap-0.5 text-amber-500"><Star className="h-3 w-3 fill-current" />{place.rating.toFixed(1)}</span>}</span>
                           {place.address && <span className={`mt-0.5 block truncate text-[11px] ${secondaryText}`}>{place.address}</span>}
                         </span>
                         {place.distanceMeters != null && <span className={`shrink-0 text-[10px] ${secondaryText}`}>{formatDistance(place.distanceMeters)}</span>}
@@ -144,6 +153,37 @@ export default function MapResultCard({ mapData, darkMode = false, compact = fal
                   </li>
                 ))}
               </ol>
+            </div>
+          )}
+          {selectedPlace && (
+            <div className="fixed inset-0 z-[1000] flex items-stretch justify-end bg-black/20 p-0 sm:p-3" role="dialog" aria-modal="true" aria-label={`${selectedPlace.name} details`} onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedPlaceId(null); }}>
+              <article className={`relative flex h-full max-h-full w-full max-w-[410px] flex-col overflow-hidden shadow-2xl sm:rounded-2xl sm:border ${darkMode ? 'border-[#333] bg-black text-white' : 'border-gray-200 bg-white text-gray-900'}`}>
+                <button type="button" onClick={() => setSelectedPlaceId(null)} aria-label="Close place details" className="absolute right-3 top-3 z-10 rounded-full bg-black/70 p-2 text-white hover:bg-black"><X className="h-5 w-5" /></button>
+                {selectedPhoto ? <img src={selectedPhoto} alt={selectedPlace.name} onError={(event) => { event.currentTarget.style.display = 'none'; }} className="h-[42vh] max-h-[360px] min-h-[220px] w-full shrink-0 object-cover" /> : <div className="flex h-[34vh] min-h-[220px] shrink-0 items-center justify-center bg-gradient-to-br from-slate-800 via-blue-950 to-slate-900"><MapPin className="h-12 w-12 text-blue-300" /></div>}
+                {selectedPlace.photoAttributions?.length > 0 && <div className="bg-black px-3 py-1 text-right text-[10px] text-gray-300">Photo {selectedPlace.photoAttributions.map((credit, index) => <span key={`${credit.displayName}-${index}`}>{index > 0 ? ', ' : ''}{credit.uri ? <a href={credit.uri} target="_blank" rel="noreferrer" className="underline">{credit.displayName}</a> : credit.displayName}</span>)}</div>}
+                <div className="overflow-y-auto p-5">
+                  <h2 className="text-xl font-bold">{selectedPlace.name}</h2>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-gray-400">
+                    {selectedPlace.rating != null && <span className="inline-flex items-center gap-1 text-amber-400"><Star className="h-4 w-4 fill-current" />{selectedPlace.rating.toFixed(1)}{selectedPlace.userRatingCount != null && <span className="text-gray-500">({selectedPlace.userRatingCount.toLocaleString()})</span>}</span>}
+                    {selectedPlace.categories?.[0] && <span>· {selectedPlace.categories[0].replaceAll('_', ' ')}</span>}
+                    {formatDistance(selectedPlace.distanceMeters) && <span>· {formatDistance(selectedPlace.distanceMeters)} away</span>}
+                  </div>
+                  <div className="mt-4 flex gap-2">
+                    <a href={selectedDirections} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"><Navigation className="h-4 w-4" />Directions</a>
+                    {selectedPlace.website && <a href={selectedPlace.website} target="_blank" rel="noreferrer" className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold ${darkMode ? 'border-[#333] hover:bg-[#171717]' : 'border-gray-200 hover:bg-gray-50'}`}><Globe className="h-4 w-4" />Website</a>}
+                    {selectedPlace.phone && <a href={`tel:${selectedPlace.phone.replace(/[^+\d]/g, '')}`} className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold ${darkMode ? 'border-[#333] hover:bg-[#171717]' : 'border-gray-200 hover:bg-gray-50'}`}><Phone className="h-4 w-4" />Call</a>}
+                  </div>
+                  <div className={`mt-4 space-y-3 border-t pt-4 text-sm ${darkMode ? 'border-[#292929]' : 'border-gray-200'}`}>
+                    {selectedPlace.openNow != null && <div className="flex gap-3"><Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" /><p><span className={selectedPlace.openNow ? 'text-emerald-500' : 'text-red-400'}>{selectedPlace.openNow ? 'Open' : 'Closed'}</span>{todayOpeningHours ? ` · ${todayOpeningHours.slice(todayOpeningHours.indexOf(':') + 1).trim()}` : ''}</p></div>}
+                    {selectedPlace.openingHours?.length > 0 && <details className="pl-7"><summary className="cursor-pointer text-xs text-gray-400">See all opening hours</summary><div className="mt-2 space-y-1">{selectedPlace.openingHours.map((hours) => <p key={hours}>{hours}</p>)}</div></details>}
+                    {selectedPlace.address && <div className="flex gap-3"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" /><p>{selectedPlace.address}</p></div>}
+                    {selectedPlace.phone && <div className="flex gap-3"><Phone className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" /><a href={`tel:${selectedPlace.phone.replace(/[^+\d]/g, '')}`}>{selectedPlace.phone}</a></div>}
+                    {selectedPlace.website && <div className="flex gap-3"><Globe className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" /><a className="truncate text-blue-400 hover:underline" href={selectedPlace.website} target="_blank" rel="noreferrer">{selectedPlace.website}</a></div>}
+                    {selectedPlace.businessStatus && <p className="text-xs text-gray-500">{selectedPlace.businessStatus.replaceAll('_', ' ').toLowerCase()}</p>}
+                    {selectedPlace.description && <p className="border-t border-[#292929] pt-3 text-sm text-gray-300">{selectedPlace.description}</p>}
+                  </div>
+                </div>
+              </article>
             </div>
           )}
           {mapData.steps?.length > 0 && (

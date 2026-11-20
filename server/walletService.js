@@ -56,6 +56,7 @@ export function isModelFree(modelId) {
 // Auth email to userId cache with 60-second TTL
 let authUsersCache = null;
 let authUsersCacheTime = 0;
+const stripeCreditLocks = new Map();
 
 export async function getUserIdByEmail(sb, cleanEmail) {
   if (!sb || !cleanEmail) return null;
@@ -122,39 +123,88 @@ export async function getUserWallet(email, userId = null) {
 /**
  * Credit user wallet (e.g. from Stripe payment or admin topup).
  */
-export async function creditUserWallet(email, amount, { userId = null, stripeSessionId = null, note = 'Stripe Top-Up' } = {}) {
+export async function creditUserWallet(email, amount, options = {}) {
+  const { stripeSessionId } = options;
+  if (!stripeSessionId) {
+    return creditUserWalletInternal(email, amount, options);
+  }
+
+  const previous = stripeCreditLocks.get(stripeSessionId) || Promise.resolve();
+  let release;
+  const lock = new Promise(resolve => { release = resolve; });
+  stripeCreditLocks.set(stripeSessionId, lock);
+  await previous;
+
+  try {
+    return await creditUserWalletInternal(email, amount, options);
+  } finally {
+    if (stripeCreditLocks.get(stripeSessionId) === lock) {
+      stripeCreditLocks.delete(stripeSessionId);
+    }
+    release();
+  }
+}
+
+async function creditUserWalletInternal(email, amount, { userId = null, stripeSessionId = null, note = 'Stripe Top-Up' } = {}) {
   const cleanEmail = String(email || '').trim().toLowerCase();
   const addAmount = Number(amount);
   if ((!cleanEmail && !userId) || isNaN(addAmount) || addAmount <= 0) {
     throw new Error('Valid email or userId and positive amount are required.');
   }
 
-  // Idempotency check: If this Stripe checkout session was already credited, skip to prevent double addition!
-  if (stripeSessionId) {
-    const sb = getSupabase();
-    if (sb) {
-      try {
-        const { data: existingTx } = await sb
-          .from('wallet_transactions')
-          .select('id')
-          .eq('stripe_session_id', stripeSessionId)
-          .limit(1);
-        if (existingTx && existingTx.length > 0) {
-          console.log(`[walletService] Session ${stripeSessionId} already credited in Supabase. Skipping duplicate.`);
-          const current = await getUserWallet(cleanEmail, userId);
-          return { success: true, balance: current.balance, duplicate: true };
-        }
-      } catch (err) {
-        // non-fatal, fallback to local check
-      }
+  const sb = getSupabase();
+  if (stripeSessionId && sb) {
+    const current = await getUserWallet(cleanEmail, userId);
+    const targetUserId = current.userId || userId;
+    if (!targetUserId) {
+      throw new Error(`[walletService] Cannot resolve a Supabase user for Stripe session ${stripeSessionId}.`);
     }
 
+    const { data, error } = await sb.rpc('credit_wallet_once', {
+      p_user_id: targetUserId,
+      p_user_email: cleanEmail,
+      p_amount: addAmount,
+      p_stripe_session_id: stripeSessionId,
+      p_note: note,
+    });
+    if (error) {
+      throw new Error(`[walletService] Atomic wallet credit failed: ${error.message}`);
+    }
+    if (!data || data.success !== true || !Number.isFinite(Number(data.balance))) {
+      throw new Error('[walletService] Atomic wallet credit returned an invalid result.');
+    }
+
+    const localCheck = loadLocalWalletData();
+    localCheck.balances = localCheck.balances || {};
+    if (cleanEmail) localCheck.balances[cleanEmail] = Number(data.balance);
+    if (!data.duplicate) {
+      localCheck.transactions = localCheck.transactions || [];
+      localCheck.transactions.unshift({
+        id: `tx_${crypto.randomBytes(4).toString('hex')}`,
+        user_id: targetUserId,
+        user_email: cleanEmail,
+        type: 'deposit',
+        amount: addAmount,
+        balance_after: Number(data.balance),
+        stripe_session_id: stripeSessionId,
+        metadata: { note },
+        created_at: new Date().toISOString(),
+      });
+      if (localCheck.transactions.length > 500) localCheck.transactions = localCheck.transactions.slice(0, 500);
+    }
+    saveLocalWalletData(localCheck);
+    return { success: true, balance: Number(data.balance), duplicate: Boolean(data.duplicate) };
+  }
+
+  // Supabase-less deployments use the local store; the per-session queue above
+  // serializes concurrent webhook and return-page deliveries in this process.
+  if (stripeSessionId) {
     const localCheck = loadLocalWalletData();
     const isAlreadyCredited = (localCheck.transactions || []).some(
       t => t.stripe_session_id === stripeSessionId
     );
     if (isAlreadyCredited) {
-      console.log(`[walletService] Session ${stripeSessionId} already credited in local store. Skipping duplicate.`);
+      console.log(`[walletService] Session ${stripeSessionId} already credited locally. Skipping duplicate.`);
       const current = await getUserWallet(cleanEmail, userId);
       return { success: true, balance: current.balance, duplicate: true };
     }
@@ -164,7 +214,6 @@ export async function creditUserWallet(email, amount, { userId = null, stripeSes
   const targetUserId = current.userId || userId;
   const newBalance = Number((current.balance + addAmount).toFixed(5));
 
-  const sb = getSupabase();
   let recordedInDb = false;
 
   if (sb && targetUserId) {

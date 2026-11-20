@@ -127,8 +127,8 @@ function ProtectedLayout() {
           />
 
           {/* Models Hub */}
-          <Route path="/models" element={<ModelsPage />} />
-          <Route path="/app/models" element={<ModelsPage />} />
+          <Route path="/models" element={<FeatureGate darkMode={darkMode} feature="models"><ModelsPage /></FeatureGate>} />
+          <Route path="/app/models" element={<FeatureGate darkMode={darkMode} feature="models"><ModelsPage /></FeatureGate>} />
 
           {/* Pricing */}
           <Route path="/pricing" element={<PricingPage />} />
@@ -140,7 +140,7 @@ function ProtectedLayout() {
 
           <Route path="/help" element={<HelpPage />} />
 
-          <Route path="/settings" element={<FeatureGate darkMode={darkMode} feature="settings"><SettingsPage /></FeatureGate>} />
+          <Route path="/settings" element={<SettingsPage />} />
 
           <Route
             path="/project-settings"
@@ -153,18 +153,18 @@ function ProtectedLayout() {
 
           <Route path="/image-studio" element={<FeatureGate darkMode={darkMode} feature="image-studio"><ImageStudioPage /></FeatureGate>} />
 
-          <Route path="/edit-studio" element={<EditStudioPage />} />
-          <Route path="/app/edit-studio" element={<EditStudioPage />} />
+          <Route path="/edit-studio" element={<FeatureGate darkMode={darkMode} feature="image-studio"><EditStudioPage /></FeatureGate>} />
+          <Route path="/app/edit-studio" element={<FeatureGate darkMode={darkMode} feature="image-studio"><EditStudioPage /></FeatureGate>} />
 
           <Route path="/ppt-studio" element={<FeatureGate darkMode={darkMode} feature="ppt-studio"><PptStudioPage /></FeatureGate>} />
 
-          <Route path="/workspace" element={<WorkspacePage />} />
+          <Route path="/workspace" element={<FeatureGate darkMode={darkMode} feature="project-settings"><WorkspacePage /></FeatureGate>} />
 
-          <Route path="/maps" element={<MapsPage />} />
+          <Route path="/maps" element={<FeatureGate darkMode={darkMode} feature="maps"><MapsPage /></FeatureGate>} />
 
-          <Route path="/webinars" element={<Suspense fallback={null}><WebinarsPage /></Suspense>} />
+          <Route path="/webinars" element={<FeatureGate darkMode={darkMode} feature="webinars"><Suspense fallback={null}><WebinarsPage /></Suspense></FeatureGate>} />
 
-          <Route path="/webinars/:roomId" element={<Suspense fallback={null}><WebinarsPage /></Suspense>} />
+          <Route path="/webinars/:roomId" element={<FeatureGate darkMode={darkMode} feature="webinars"><Suspense fallback={null}><WebinarsPage /></Suspense></FeatureGate>} />
 
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

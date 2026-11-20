@@ -46,8 +46,8 @@ export default function ModelDetailModal({
   onPurchase,
 }) {
   const navigate = useNavigate();
-  const { plan } = usePlan();
-  const isPro = plan === 'pro' || plan === 'enterprise';
+  const { plan, featureAccess } = usePlan();
+  const isPro = plan === 'pro' || plan === 'enterprise' || Boolean(featureAccess?.models);
 
   const [activeTab, setActiveTab] = useState('overview'); // overview, pricing, benchmarks, parameters
   const [copiedLink, setCopiedLink] = useState(false);

@@ -51,10 +51,19 @@ export default function Sidebar() {
   const { theme } = useTheme();
   const { accessExpired, featureAccess, plan } = usePlan();
   const canUse = feature => {
-    if (feature === 'ppt-studio') {
-      return true; // Keep visible so user can click to upgrade via FeatureGate
-    }
     return !accessExpired || Boolean(featureAccess?.[feature]);
+  };
+  const featureByPath = {
+    '/app/models': 'models',
+    '/workspace': 'project-settings',
+    '/threads': 'threads',
+    '/files': 'files',
+    '/plugins': 'plugins',
+    '/image-studio': 'image-studio',
+    '/edit-studio': 'image-studio',
+    '/ppt-studio': 'ppt-studio',
+    '/maps': 'maps',
+    '/webinars': 'webinars',
   };
 
   const navigate = useNavigate();
@@ -87,7 +96,7 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav aria-label="Main navigation" className="flex flex-1 flex-col items-center gap-1">
-        {navItems.filter(({ path }) => path === "/dashboard" || path === "/app/models" || path === "/workspace" || path === "/edit-studio" || path === "/maps" || path === "/webinars" || canUse(path === "/threads" ? "threads" : path === "/files" ? "files" : path === "/plugins" ? "plugins" : path === "/image-studio" ? "image-studio" : path === "/ppt-studio" ? "ppt-studio" : "none")).map(({ icon: Icon, path, label }) => {
+        {navItems.filter(({ path }) => path === "/dashboard" || canUse(featureByPath[path])).map(({ icon: Icon, path, label }) => {
           const active = location.pathname === path || (path === '/app/models' && location.pathname.startsWith('/app/models')) || (path === "/webinars" && location.pathname.startsWith("/webinars/"));
           const itemLabel = path === "/maps" ? (t("sidebar.maps") || "Maps") : path === "/webinars" ? (t("sidebar.webinars") || "Webinars") : label;
 
@@ -153,7 +162,7 @@ export default function Sidebar() {
           key={avatarUrl}
           src={avatarUrl}
           alt="avatar"
-          onClick={() => { if (canUse("settings")) navigate("/settings"); }}
+          onClick={() => navigate("/settings")}
           className={`w-9 h-9 rounded-full object-cover border-2 cursor-pointer hover:border-[#3b82f6] transition-colors ${location.pathname === "/settings"
             ? "border-blue-500"
             : darkMode

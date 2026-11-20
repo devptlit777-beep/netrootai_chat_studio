@@ -30,12 +30,14 @@ export default function AdminUserPage() {
     const [reactivateMessage, setReactivateMessage] = useState('');
     const [reactivating, setReactivating] = useState(false);
     const featureOptions = [
+        ['models', t('admin.models')],
+        ['maps', t('admin.maps')],
+        ['webinars', t('admin.webinars')],
         ['threads', t('admin.threads')],
         ['files', t('admin.files')],
         ['plugins', t('admin.plugins')],
         ['image-studio', t('admin.imageStudio')],
         ['ppt-studio', t('admin.pptStudio')],
-        ['settings', t('admin.settings')],
         ['project-settings', t('admin.projectSettings')],
     ];
 

@@ -13,15 +13,17 @@ export default function CheckoutSuccessPage() {
   const darkMode = theme === 'dark';
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { refresh } = usePlan();
+  const { refresh, refreshWallet } = usePlan();
   const { user, profile } = useAuth();
 
   const sessionId = searchParams.get('session_id');
+  const isWalletTopUp = searchParams.get('type') === 'wallet';
   const planId = searchParams.get('plan') || 'pro';
   const planName = planId.charAt(0).toUpperCase() + planId.slice(1);
 
   const [status, setStatus] = useState('verifying'); // verifying | success | error
   const [errorMsg, setErrorMsg] = useState('');
+  const [walletCreditsAdded, setWalletCreditsAdded] = useState(0);
   const [countdown, setCountdown] = useState(5);
 
   useEffect(() => {
@@ -44,17 +46,22 @@ export default function CheckoutSuccessPage() {
           setErrorMsg(data.error || t('checkout.verificationFailed'));
           return;
         }
-        // Refresh plan in context so UI updates immediately
-        await refresh();
-        // Send Pro upgrade email (best-effort)
-        fetch(`${API_BASE}/api/send-pro-upgrade`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: user?.email,
-            full_name: profile?.full_name || user?.user_metadata?.full_name,
-          }),
-        }).catch(() => {});
+        if (data.type === 'wallet_topup') {
+          setWalletCreditsAdded(Number(data.amountAdded) || 0);
+          await refreshWallet();
+        } else {
+          // Refresh plan in context so UI updates immediately
+          await refresh();
+          // Send Pro upgrade email (best-effort)
+          fetch(`${API_BASE}/api/send-pro-upgrade`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: user?.email,
+              full_name: profile?.full_name || user?.user_metadata?.full_name,
+            }),
+          }).catch(() => {});
+        }
         setStatus('success');
       } catch (e) {
         setStatus('error');
@@ -109,14 +116,16 @@ export default function CheckoutSuccessPage() {
               </div>
             </div>
             <h1 className={`text-2xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-              {t('checkout.activatedHeading', { plan: planName })}
+              {isWalletTopUp ? 'Wallet credits added' : t('checkout.activatedHeading', { plan: planName })}
             </h1>
             <p className={`text-sm mb-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              {t('checkout.planActivated')}
+              {isWalletTopUp
+                ? `$${walletCreditsAdded.toFixed(2)} has been added to your wallet.`
+                : t('checkout.planActivated')}
             </p>
             <div className={`rounded-xl border p-4 mb-8 ${darkMode ? 'bg-emerald-500/10 border-emerald-500/25' : 'bg-emerald-50 border-emerald-200'}`}>
               <p className={`text-sm font-medium ${darkMode ? 'text-emerald-400' : 'text-emerald-700'}`}>
-                {t('checkout.activatedSuccessfully')}
+                {isWalletTopUp ? 'Your wallet balance has been refreshed.' : t('checkout.activatedSuccessfully')}
               </p>
             </div>
             <div className="flex flex-col gap-3">

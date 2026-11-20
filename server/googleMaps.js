@@ -37,7 +37,18 @@ function toLocation(result) {
     const name = result.name || result.displayName?.text || result.formatted_address || result.formattedAddress || 'Location';
     return { id: result.place_id || result.id || `${lat},${lon}`, name,
         address: result.formatted_address || result.formattedAddress || result.vicinity || '', lat, lon,
-        categories: result.types || result.primaryType ? (result.types || [result.primaryType]) : [] };
+        categories: result.types || result.primaryType ? (result.types || [result.primaryType]) : [],
+        rating: Number.isFinite(Number(result.rating)) ? Number(result.rating) : undefined,
+        userRatingCount: Number.isFinite(Number(result.userRatingCount ?? result.user_ratings_total)) ? Number(result.userRatingCount ?? result.user_ratings_total) : undefined,
+        phone: result.nationalPhoneNumber || result.formatted_phone_number || undefined,
+        website: result.websiteUri || result.website || undefined,
+        openNow: result.regularOpeningHours?.openNow ?? result.current_opening_hours?.open_now,
+        openingHours: result.regularOpeningHours?.weekdayDescriptions || result.opening_hours?.weekday_text || undefined,
+        description: result.editorialSummary?.text || undefined,
+        businessStatus: result.businessStatus || undefined,
+        priceLevel: result.priceLevel || undefined,
+        photoName: result.photos?.[0]?.name || undefined,
+        photoAttributions: result.photos?.[0]?.authorAttributions || undefined };
 }
 
 export async function geocode(query) {
@@ -67,7 +78,7 @@ async function placesNearby(center, category) {
     const includedTypes = PLACE_TYPES[category] || Object.values(PLACE_TYPES).flat();
     const data = await googleRequest(PLACES_URL, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': getApiKey(),
-            'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType' },
+            'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType,places.rating,places.userRatingCount,places.nationalPhoneNumber,places.websiteUri,places.regularOpeningHours,places.photos,places.editorialSummary,places.businessStatus,places.priceLevel' },
         body: JSON.stringify({ includedTypes: [...new Set(includedTypes)], maxResultCount: 20, rankPreference: 'DISTANCE',
             locationRestriction: { circle: { center: { latitude: center.lat, longitude: center.lon }, radius: 5000 } } }),
     });

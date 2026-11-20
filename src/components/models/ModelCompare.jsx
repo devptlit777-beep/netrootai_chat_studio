@@ -43,8 +43,8 @@ import ProviderLogo from '../common/ProviderLogo';
 
 export default function ModelCompare({ darkMode, initialModelA, onSwitchToCatalog }) {
   const navigate = useNavigate();
-  const { plan } = usePlan();
-  const isPro = plan === 'pro' || plan === 'enterprise';
+  const { plan, featureAccess } = usePlan();
+  const isPro = plan === 'pro' || plan === 'enterprise' || Boolean(featureAccess?.models);
 
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(true);

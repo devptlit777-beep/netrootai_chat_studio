@@ -35,8 +35,8 @@ import ProviderLogo from '../common/ProviderLogo';
 
 export default function ModelHub({ darkMode, onSelectCompare }) {
   const navigate = useNavigate();
-  const { plan } = usePlan();
-  const isPro = plan === 'pro' || plan === 'enterprise';
+  const { plan, featureAccess } = usePlan();
+  const isPro = plan === 'pro' || plan === 'enterprise' || Boolean(featureAccess?.models);
 
   const [searchParams] = useSearchParams();
   const [models, setModels] = useState([]);

@@ -27,8 +27,8 @@ import FalMediaModal from './FalMediaModal';
 
 export default function ModelDiscover({ darkMode, onSelectCompare, onSwitchToCatalog }) {
   const navigate = useNavigate();
-  const { plan } = usePlan();
-  const isPro = plan === 'pro' || plan === 'enterprise';
+  const { plan, featureAccess } = usePlan();
+  const isPro = plan === 'pro' || plan === 'enterprise' || Boolean(featureAccess?.models);
 
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(true);

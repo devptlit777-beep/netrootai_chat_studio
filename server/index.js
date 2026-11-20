@@ -3005,6 +3005,11 @@ async function handleMapsApi(req, res, operation) {
         sendJson(res, 400, { error: 'Map prompts must be 1 to 500 characters.' }, req);
         return;
     }
+    const { plan, email, userId, accessExpired, featureAccess } = await resolveUserPlan(req, body);
+    if (accessExpired && !featureAccess?.maps) {
+        sendJson(res, 403, { error: 'Maps require an active plan or an admin-granted feature access.' }, req);
+        return;
+    }
     if (operation === 'chat' && isCurrentLocationPrompt(prompt) && !coordinates) {
         sendJson(res, 200, { mapData: await createChatMap(prompt) }, req);
         return;
@@ -3014,7 +3019,6 @@ async function handleMapsApi(req, res, operation) {
         return;
     }
 
-    const { plan, email, userId } = await resolveUserPlan(req, body);
     const usage = await consumeMapDailyUsage(req, plan, email, userId);
     if (usage.error) {
         sendJson(res, usage.status, { error: usage.error, usage: { used: usage.limit, limit: usage.limit, remaining: 0 } }, req);
@@ -3039,6 +3043,34 @@ async function handleMapsApi(req, res, operation) {
     }
 }
 
+async function handleMapsPhoto(req, res, requestUrl) {
+    const photoName = requestUrl.searchParams.get('name') || '';
+    if (!/^places\/[A-Za-z0-9_-]+\/photos\/[A-Za-z0-9_-]+$/.test(photoName)) {
+        sendJson(res, 400, { error: 'Place photo is invalid.' }, req);
+        return;
+    }
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+        sendJson(res, 503, { error: 'Maps are not configured.' }, req);
+        return;
+    }
+    try {
+        const photoUrl = `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=1000&key=${encodeURIComponent(apiKey)}`;
+        const response = await fetch(photoUrl, { redirect: 'follow', signal: AbortSignal.timeout(15000) });
+        if (!response.ok) throw new Error(`Google Places photo request failed (${response.status}).`);
+        const contentType = response.headers.get('content-type') || 'image/jpeg';
+        const bytes = Buffer.from(await response.arrayBuffer());
+        res.writeHead(200, {
+            'Content-Type': contentType,
+            'Cache-Control': 'public, max-age=86400',
+            'Access-Control-Allow-Origin': req.headers.origin || '*',
+        });
+        res.end(bytes);
+    } catch (error) {
+        sendJson(res, 502, { error: error.message || 'Place photo could not be loaded.' }, req);
+    }
+}
+
 async function handleWebinarsApi(req, res, operation) {
     const body = await readJson(req);
     const authorization = req.headers.authorization || '';
@@ -3054,6 +3086,11 @@ async function handleWebinarsApi(req, res, operation) {
     const { data: { user }, error: authError } = await supabase.auth.getUser(accessToken);
     if (authError || !user) {
         sendJson(res, 401, { error: 'Your session is no longer valid. Sign in again.' }, req);
+        return;
+    }
+    const { accessExpired, featureAccess } = await resolveUserPlan(req, { email: user.email });
+    if (accessExpired && !featureAccess?.webinars) {
+        sendJson(res, 403, { error: 'Webinars require an active plan or an admin-granted feature access.' }, req);
         return;
     }
 
@@ -3240,7 +3277,7 @@ async function handleCreateWalletTopUp(req, res) {
             },
             quantity: 1,
         }],
-        success_url: `${origin}/dashboard?wallet_success=true&amount=${amount}&session_id={CHECKOUT_SESSION_ID}`,
+        success_url: `${origin}/checkout/success?type=wallet&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${origin}/pricing?wallet_cancelled=true`,
         metadata: {
             type: 'wallet_topup',
@@ -3831,7 +3868,7 @@ async function handleAdminFeatureAccess(req, res) {
         return;
     }
 
-    const allowedFeatures = new Set(['threads', 'files', 'plugins', 'image-studio', 'ppt-studio', 'settings', 'project-settings']);
+    const allowedFeatures = new Set(['models', 'maps', 'webinars', 'threads', 'files', 'plugins', 'image-studio', 'ppt-studio', 'project-settings']);
     if (!allowedFeatures.has(feature)) { sendJson(res, 400, { error: 'Unsupported feature.' }); return; }
 
     const supabase = getSupabaseClient();
@@ -4462,6 +4499,11 @@ async function handleWorkspaceRoute(req, res) {
     const wsId = parsed.searchParams.get('workspaceId') || undefined;
     const userEmail = (req.headers['x-user-email'] || parsed.searchParams.get('userEmail') || '').trim().toLowerCase();
     const userId = req.headers['x-user-id'] || parsed.searchParams.get('userId') || undefined;
+    const { accessExpired, featureAccess } = await resolveUserPlan(req, { email: userEmail });
+    if (accessExpired && !featureAccess?.['project-settings']) {
+        sendJson(res, 403, { error: 'Project settings require an active plan or an admin-granted feature access.' }, req);
+        return;
+    }
 
     if (req.method === 'GET' && path === '/api/workspace/bootstrap') {
         const data = getWorkspaceBootstrapData(wsId, userEmail, userId);
@@ -5181,6 +5223,10 @@ const server = createServer(async (req, res) => {
     }
 
 
+    if (req.method === 'GET' && new URL(req.url, 'http://127.0.0.1').pathname === '/api/maps/photo') {
+        try { await handleMapsPhoto(req, res, new URL(req.url, 'http://127.0.0.1')); } catch (e) { sendJson(res, 500, { error: e.message }, req); }
+        return;
+    }
     if (req.method === 'POST' && new URL(req.url, 'http://127.0.0.1').pathname.startsWith('/api/maps/')) {
         const operation = new URL(req.url, 'http://127.0.0.1').pathname.slice('/api/maps/'.length).replace(/\/+$/, '');
         if (['geocode', 'places', 'route', 'chat'].includes(operation)) {
