@@ -22,7 +22,6 @@
       "name": "Test AI",
       "key_masked": "nr-live-703f0a•••••••••••••92fb",
       "key_hash": "7867a1a2e9be8014edefb21269849e555e8a44233d4b0c5ba3f5b4c5be2f674f",
-      "secret": "nr-live-703f0af7f27de194a3a95adcaafb92fb",
       "created_at": "2026-11-01T01:14:53.689Z",
       "last_used_at": "2026-11-01T04:07:04.185Z",
       "monthly_limit_usd": 50,
@@ -33,7 +32,8 @@
         "nvidia/nemotron-3.5-lightning:free",
         "google/gemma-4-26b-a4b-it:free",
         "openrouter/free"
-      ]
+      ],
+      "owner_email": "admin@netrootai.tech"
     },
     {
       "id": "key_prod_01",
@@ -41,13 +41,13 @@
       "name": "Default Production App Key",
       "key_masked": "nr-live-8f92a1•••••••••••••2c4",
       "key_hash": "a54a77a25cff620845e96101b6b1854af64ea042d763e7710c71ee59fe736270",
-      "secret": "nr-live-8f92a10c74de489b9102c401aa94c2",
       "created_at": "2026-10-15T12:00:00.000Z",
       "last_used_at": "2026-10-21T05:01:12.000Z",
       "monthly_limit_usd": 100,
       "current_spend_usd": 0,
       "status": "active",
-      "allowed_models": []
+      "allowed_models": [],
+      "owner_email": "admin@netrootai.tech"
     }
   ],
   "thisWeekUsage": {

@@ -340,8 +340,20 @@ export default function WorkspaceHub({ darkMode = true }) {
   const [loading, setLoading] = useState(true);
 
   // Authentication & Plan Context (Declared early to prevent TDZ ReferenceError)
-  const { user, session } = useAuth();
+  const { user, session, loading: authLoading } = useAuth();
   const { plan } = usePlan();
+
+  const userEmail = (user?.email || session?.user?.email || '').trim().toLowerCase();
+  const userId = user?.id || session?.user?.id || '';
+  const [sessionKeys, setSessionKeys] = useState({});
+
+  const getWorkspaceHeaders = (extra = {}) => {
+    const headers = { 'Content-Type': 'application/json', ...extra };
+    if (userEmail) headers['x-user-email'] = userEmail;
+    if (userId) headers['x-user-id'] = userId;
+    if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+    return headers;
+  };
 
   // Fleet & Catalog Models State (Declared early for useMemo dependencies)
   const [allCatalogModels, setAllCatalogModels] = useState([]);
@@ -622,30 +634,31 @@ export default function WorkspaceHub({ darkMode = true }) {
 , [session?.access_token]);
 
   useEffect(() => {
-    fetchInitialData();
-  }
-, []);
+    if (!authLoading) {
+      fetchInitialData();
+    }
+  }, [authLoading, user?.email]);
 
   async function fetchInitialData(overrideWsId) {
     setLoading(true);
     try {
       // 1. Parallel loading: Core bootstrap data and fleet models concurrently
-      const userEmailHeader = user?.email || session?.user?.email || '';
+      const wsHeaders = getWorkspaceHeaders();
       const wsQuery = overrideWsId ? `?workspaceId=${encodeURIComponent(overrideWsId)}` : '';
       const logsQuery = overrideWsId ? `?limit=50&workspaceId=${encodeURIComponent(overrideWsId)}` : '?limit=50';
       const [bootRes, modelsRes, logsRes, byokRes, rtRes, prRes, filesRes, toolsRes, clsRes, csRes, obsRes, dynProvRes] = await Promise.all([
-        fetch(`${API_BASE}/api/workspace/bootstrap${wsQuery}`, { headers: { 'x-user-email': userEmailHeader } }).then(r => r.json()).catch(() => ({})),
+        fetch(`${API_BASE}/api/workspace/bootstrap${wsQuery}`, { headers: wsHeaders }).then(r => r.json()).catch(() => ({})),
         fetch(`${API_BASE}/api/models`).then(r => r.json()).catch(() => ({ models: [] })),
-        fetch(`${API_BASE}/api/workspace/logs${logsQuery}`).then(r => r.json()).catch(() => ({ logs: [] })),
-        fetch(`${API_BASE}/api/workspace/byok${wsQuery}`).then(r => r.json()).catch(() => ({ byok: {} })),
-        fetch(`${API_BASE}/api/workspace/routing${wsQuery}`).then(r => r.json()).catch(() => ({ routing: {} })),
-        fetch(`${API_BASE}/api/workspace/presets${wsQuery}`).then(r => r.json()).catch(() => ({ presets: [] })),
-        fetch(`${API_BASE}/api/workspace/files`).then(r => r.json()).catch(() => ({ files: [] })),
-        fetch(`${API_BASE}/api/workspace/tools`).then(r => r.json()).catch(() => ({ tools: [] })),
-        fetch(`${API_BASE}/api/workspace/classifiers${wsQuery}`).then(r => r.json()).catch(() => ({ classifiers: [] })),
-        fetch(`${API_BASE}/api/workspace/cache-settings`).then(r => r.json()).catch(() => ({ cacheSettings: null })),
-        fetch(`${API_BASE}/api/workspace/observability`).then(r => r.json()).catch(() => ({ metrics: null })),
-        fetch(`${API_BASE}/api/workspace/providers`).then(r => r.json()).catch(() => ({ providers: [] })),
+        fetch(`${API_BASE}/api/workspace/logs${logsQuery}`, { headers: wsHeaders }).then(r => r.json()).catch(() => ({ logs: [] })),
+        fetch(`${API_BASE}/api/workspace/byok${wsQuery}`, { headers: wsHeaders }).then(r => r.json()).catch(() => ({ byok: {} })),
+        fetch(`${API_BASE}/api/workspace/routing${wsQuery}`, { headers: wsHeaders }).then(r => r.json()).catch(() => ({ routing: {} })),
+        fetch(`${API_BASE}/api/workspace/presets${wsQuery}`, { headers: wsHeaders }).then(r => r.json()).catch(() => ({ presets: [] })),
+        fetch(`${API_BASE}/api/workspace/files`, { headers: wsHeaders }).then(r => r.json()).catch(() => ({ files: [] })),
+        fetch(`${API_BASE}/api/workspace/tools`, { headers: wsHeaders }).then(r => r.json()).catch(() => ({ tools: [] })),
+        fetch(`${API_BASE}/api/workspace/classifiers${wsQuery}`, { headers: wsHeaders }).then(r => r.json()).catch(() => ({ classifiers: [] })),
+        fetch(`${API_BASE}/api/workspace/cache-settings`, { headers: wsHeaders }).then(r => r.json()).catch(() => ({ cacheSettings: null })),
+        fetch(`${API_BASE}/api/workspace/observability`, { headers: wsHeaders }).then(r => r.json()).catch(() => ({ metrics: null })),
+        fetch(`${API_BASE}/api/workspace/providers`, { headers: wsHeaders }).then(r => r.json()).catch(() => ({ providers: [] })),
       ]);
 
       if (bootRes?.workspaces) setWorkspaces(bootRes.workspaces);
@@ -696,51 +709,42 @@ export default function WorkspaceHub({ darkMode = true }) {
         : [];
       const res = await fetch(`${API_BASE}/api/workspace/keys`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getWorkspaceHeaders(),
         body: JSON.stringify({
           name: newKeyForm.name || 'Developer API Key',
           monthly_limit_usd: Number(newKeyForm.monthly_limit_usd) || 100,
           allowed_models: allowedArr,
-        }
-),
-      }
-);
+          workspaceId: activeWorkspace?.id,
+        }),
+      });
       const data = await res.json();
       if (data.key) {
         setCreatedKeyResult(data.key);
+        setSessionKeys(prev => ({ ...prev, [data.key.id]: data.key.key }));
         setApiKeys(prev => [data.key, ...prev]);
         setNewKeyForm({ name: '', monthly_limit_usd: 100, allowed_models: '' });
       }
-
-    }
- catch (err) {
+    } catch (err) {
       alert('Failed to generate key: ' + err.message);
     }
-
   }
-
 
   // Key toggle
   async function handleToggleKey(keyId) {
     try {
       const res = await fetch(`${API_BASE}/api/workspace/keys/toggle`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyId }),
-      }
-);
+        headers: getWorkspaceHeaders(),
+        body: JSON.stringify({ keyId, workspaceId: activeWorkspace?.id }),
+      });
       const data = await res.json();
       if (data.key) {
         setApiKeys(prev => prev.map(k => (k.id === keyId ? { ...k, status: data.key.status } : k)));
       }
-
-    }
- catch (err) {
+    } catch (err) {
       alert('Failed to toggle key status');
     }
-
   }
-
 
   // Key delete
   async function handleDeleteKey(keyId) {
@@ -748,13 +752,11 @@ export default function WorkspaceHub({ darkMode = true }) {
     try {
       await fetch(`${API_BASE}/api/workspace/keys/delete`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyId }),
-      }
-);
+        headers: getWorkspaceHeaders(),
+        body: JSON.stringify({ keyId, workspaceId: activeWorkspace?.id }),
+      });
       setApiKeys(prev => prev.filter(k => k.id !== keyId));
-    }
- catch (err) {
+    } catch (err) {
       alert('Failed to delete key');
     }
 
@@ -767,10 +769,9 @@ export default function WorkspaceHub({ darkMode = true }) {
       const payload = override || guardrails;
       const res = await fetch(`${API_BASE}/api/workspace/guardrails`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getWorkspaceHeaders(),
         body: JSON.stringify(payload),
-      }
-);
+      });
       const data = await res.json();
       if (data.success) {
         if (override) setGuardrails(override);
@@ -871,19 +872,14 @@ export default function WorkspaceHub({ darkMode = true }) {
     try {
       const res = await fetch(`${API_BASE}/api/workspace/byok`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-plan': normalizePlan(plan),
-        }
-,
+        headers: getWorkspaceHeaders({ 'x-user-plan': normalizePlan(plan) }),
         body: JSON.stringify({
           provider,
           key: rawVal,
           user_plan: normalizePlan(plan),
-        }
-),
-      }
-);
+          workspaceId: activeWorkspace?.id,
+        }),
+      });
       const data = await res.json();
       if (data.success) {
         setByok(data.byok);
@@ -892,16 +888,13 @@ export default function WorkspaceHub({ darkMode = true }) {
         flashToast(`${provider.toUpperCase()} key encrypted & saved into secure vault!`);
         // Test key validity immediately
         handleTestByok(provider, rawVal);
-      }
- else {
+      } else {
         alert(data.error || 'Failed to save BYOK key');
       }
 
-    }
- catch (err) {
+    } catch (err) {
       alert('Failed to save BYOK key: ' + err.message);
-    }
- finally {
+    } finally {
       setSavingProvider(null);
     }
 
@@ -913,10 +906,9 @@ export default function WorkspaceHub({ darkMode = true }) {
     try {
       const res = await fetch(`${API_BASE}/api/workspace/byok/test`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, key: optionalKey, base_url: optionalBaseUrl }),
-      }
-);
+        headers: getWorkspaceHeaders(),
+        body: JSON.stringify({ provider, key: optionalKey, base_url: optionalBaseUrl, workspaceId: activeWorkspace?.id }),
+      });
       const data = await res.json();
       if (data.byok) {
         setByok(data.byok);
@@ -1019,10 +1011,9 @@ export default function WorkspaceHub({ darkMode = true }) {
     try {
       const res = await fetch(`${API_BASE}/api/workspace/byok`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider }),
-      }
-);
+        headers: getWorkspaceHeaders(),
+        body: JSON.stringify({ provider, workspaceId: activeWorkspace?.id }),
+      });
       const data = await res.json();
       if (data.success) {
         setByok(data.byok);
@@ -1609,7 +1600,7 @@ export default function WorkspaceHub({ darkMode = true }) {
     try {
       const res = await fetch(`${API_BASE}/api/workspace/workspaces/active`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getWorkspaceHeaders(),
         body: JSON.stringify({ workspaceId: targetWs.id }),
       });
       const d = await res.json();
@@ -1631,7 +1622,7 @@ export default function WorkspaceHub({ darkMode = true }) {
     try {
       const res = await fetch(`${API_BASE}/api/workspace/workspaces`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getWorkspaceHeaders(),
         body: JSON.stringify({
           name: newWsForm.name.trim(),
           description: newWsForm.description.trim(),
@@ -2884,22 +2875,30 @@ console.log(completion.choices[0].message.content);`
                             <td className="py-3 px-4 font-mono text-gray-300">
                               <div className="flex items-center gap-2">
                                 <span>{k.key_masked}</span>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    copyWithFeedback(k.key_masked, `sec_${k.id}`);
-                                  }
-}
-                                  className="text-gray-500 hover:text-white transition-colors"
-                                  title="Copy masked key"
-                                >
-                                  {copiedState[`sec_${k.id}`] ? (
-                                    <Check className="w-3 h-3 text-emerald-400" />
-                                  ) : (
-                                    <Copy className="w-3 h-3" />
-                                  )}
-                                </button>
+                                {sessionKeys[k.id] ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      copyWithFeedback(sessionKeys[k.id], `sec_${k.id}`);
+                                    }}
+                                    className="text-emerald-400 hover:text-emerald-300 transition-colors"
+                                    title="Copy full secret key"
+                                  >
+                                    {copiedState[`sec_${k.id}`] ? (
+                                      <Check className="w-3 h-3 text-emerald-400" />
+                                    ) : (
+                                      <Copy className="w-3 h-3 text-emerald-400" />
+                                    )}
+                                  </button>
+                                ) : (
+                                  <span
+                                    className="text-[10px] text-gray-500 cursor-help"
+                                    title="Secret keys are not stored in plaintext for security. If lost, please generate a new key."
+                                  >
+                                    (hidden)
+                                  </span>
+                                )}
                               </div>
                             </td>
                             <td className="py-3 px-4">
@@ -5864,14 +5863,16 @@ console.log(completion.choices[0].message.content);`
                     <span>ID: {selectedKeyForAnalytics.id}</span>
                     <span>•</span>
                     <span>{selectedKeyForAnalytics.key_masked}</span>
-                    <button
-                      type="button"
-                      onClick={() => copyWithFeedback(selectedKeyForAnalytics.key_masked, 'modal_key_mask')}
-                      className="text-gray-500 hover:text-white"
-                      title="Copy Key"
-                    >
-                      {copiedState['modal_key_mask'] ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                    </button>
+                    {sessionKeys[selectedKeyForAnalytics.id] ? (
+                      <button
+                        type="button"
+                        onClick={() => copyWithFeedback(sessionKeys[selectedKeyForAnalytics.id], 'modal_key_mask')}
+                        className="text-emerald-400 hover:text-emerald-300"
+                        title="Copy Secret Key"
+                      >
+                        {copiedState['modal_key_mask'] ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               </div>

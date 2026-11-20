@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
+import { isModelFree, getUserWallet, deductUserWallet } from './walletService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -16,21 +17,23 @@ function getDefaultWorkspaceData() {
         id: 'ws_default',
         name: 'Default Workspace',
         slug: 'default-workspace',
-        description: 'We created this workspace for you with all your existing API keys, routing rules, privacy settings, guardrails, and configurations.',
+        description: 'Default workspace for API keys, routing rules, privacy settings, and configurations.',
         created_at: '2026-10-01T00:00:00.000Z',
         environment: 'production',
         is_default: true,
       },
     ],
     activeWorkspaceId: 'ws_default',
+    userActiveWorkspaces: {},
+    byokByWorkspace: {},
     apiKeys: [
       {
         id: 'key_prod_01',
         workspace_id: 'ws_default',
+        owner_email: 'admin@netrootai.tech',
         name: 'Default Production App Key',
         key_masked: 'nr-live-8f92a1•••••••••••••2c4',
         key_hash: crypto.createHash('sha256').update('nr-live-8f92a10c74de489b9102c401aa94c2').digest('hex'),
-        secret: 'nr-live-8f92a10c74de489b9102c401aa94c2',
         created_at: '2026-10-15T12:00:00.000Z',
         last_used_at: '2026-10-21T05:01:12.000Z',
         monthly_limit_usd: 100,
@@ -284,44 +287,146 @@ function saveData(data) {
 
 // ── Service API ─────────────────────────────────────────────────────────────
 
-export function getWorkspaces(userEmail) {
-  const data = loadData();
-  let workspaces = data.workspaces || [];
+export function resolveUserWorkspace(data, userEmail, userId, preferredWsId) {
+  const normEmail = (userEmail || '').trim().toLowerCase();
+  data.workspaces = data.workspaces || [];
 
-  if (userEmail) {
-    const normalizedUserEmail = userEmail.toLowerCase().trim();
-    const memberEntries = (data.members || []).filter(m => m.email && m.email.toLowerCase() === normalizedUserEmail);
-    workspaces = workspaces.map(w => {
-      const mem = memberEntries.find(m => m.workspace_id === w.id);
-      if (mem) {
-        return { ...w, member_role: mem.role, is_shared: true };
-      }
-      return w;
+  // 1. If preferredWsId is explicitly passed, verify access
+  if (preferredWsId) {
+    const found = data.workspaces.find(w => w.id === preferredWsId);
+    if (found) {
+      if (!normEmail) return found;
+      if (found.owner_email && found.owner_email.toLowerCase() === normEmail) return found;
+      if (userId && found.user_id && found.user_id === userId) return found;
+      const isMember = (data.members || []).some(m => m.workspace_id === found.id && m.email?.toLowerCase() === normEmail);
+      if (isMember) return found;
+    }
+  }
+
+  // 2. Check user's saved active workspace mapping
+  data.userActiveWorkspaces = data.userActiveWorkspaces || {};
+  if (normEmail && data.userActiveWorkspaces[normEmail]) {
+    const savedId = data.userActiveWorkspaces[normEmail];
+    const ws = data.workspaces.find(w => w.id === savedId);
+    if (ws) return ws;
+  }
+
+  // 3. Find any workspace owned by this user
+  if (normEmail) {
+    const owned = data.workspaces.find(w => w.owner_email && w.owner_email.toLowerCase() === normEmail);
+    if (owned) {
+      data.userActiveWorkspaces[normEmail] = owned.id;
+      return owned;
+    }
+  }
+
+  // 4. Auto-initialize personal workspace if user is identified
+  if (normEmail) {
+    const newWsId = `ws_${crypto.randomBytes(6).toString('hex')}`;
+    const userWs = {
+      id: newWsId,
+      owner_email: normEmail,
+      user_id: userId || null,
+      name: 'Personal Workspace',
+      slug: 'personal-workspace',
+      description: 'Your private workspace for API keys, routing rules, guardrails, and configurations.',
+      created_at: new Date().toISOString(),
+      environment: 'production',
+      is_default: true,
+    };
+    data.workspaces.push(userWs);
+    data.members = data.members || [];
+    data.members.push({
+      id: `mem_${crypto.randomBytes(6).toString('hex')}`,
+      workspace_id: newWsId,
+      email: normEmail,
+      role: 'owner',
+      status: 'active',
+      created_at: new Date().toISOString(),
     });
+    data.userActiveWorkspaces[normEmail] = newWsId;
+    saveData(data);
+    return userWs;
+  }
+
+  // 5. Fallback for unauthenticated/demo
+  return data.workspaces[0] || {
+    id: 'ws_default',
+    name: 'Default Workspace',
+    slug: 'default-workspace',
+    description: 'Default developer workspace',
+    created_at: new Date().toISOString(),
+    environment: 'production',
+    is_default: true,
+  };
+}
+
+export function getWorkspaces(userEmail, userId) {
+  const data = loadData();
+  const normalizedUserEmail = (userEmail || '').toLowerCase().trim();
+  let allWorkspaces = data.workspaces || [];
+
+  data.userActiveWorkspaces = data.userActiveWorkspaces || {};
+
+  if (normalizedUserEmail) {
+    const memberEntries = (data.members || []).filter(m => m.email && m.email.toLowerCase() === normalizedUserEmail);
+    let userWorkspaces = allWorkspaces.filter(w => {
+      if (w.owner_email && w.owner_email.toLowerCase() === normalizedUserEmail) return true;
+      if (userId && w.user_id && w.user_id === userId) return true;
+      return memberEntries.some(m => m.workspace_id === w.id);
+    });
+
+    if (userWorkspaces.length === 0) {
+      const userWs = resolveUserWorkspace(data, normalizedUserEmail, userId);
+      userWorkspaces = [userWs];
+    }
+
+    const activeId = data.userActiveWorkspaces[normalizedUserEmail] || userWorkspaces[0]?.id;
+    return {
+      workspaces: userWorkspaces.map(w => {
+        const mem = memberEntries.find(m => m.workspace_id === w.id);
+        return {
+          ...w,
+          member_role: mem?.role || (w.owner_email?.toLowerCase() === normalizedUserEmail ? 'owner' : 'member'),
+          is_shared: Boolean(mem && w.owner_email?.toLowerCase() !== normalizedUserEmail),
+        };
+      }),
+      activeWorkspaceId: activeId,
+    };
   }
 
   return {
-    workspaces,
+    workspaces: allWorkspaces,
     activeWorkspaceId: data.activeWorkspaceId || 'ws_default',
   };
 }
 
-export function setActiveWorkspace(workspaceId) {
+export function setActiveWorkspace(workspaceId, userEmail) {
   const data = loadData();
-  const found = data.workspaces?.find(w => w.id === workspaceId);
+  const normalizedUserEmail = (userEmail || '').toLowerCase().trim();
+  const found = (data.workspaces || []).find(w => w.id === workspaceId);
   if (!found) throw new Error('Workspace not found.');
-  data.activeWorkspaceId = workspaceId;
+
+  if (normalizedUserEmail) {
+    data.userActiveWorkspaces = data.userActiveWorkspaces || {};
+    data.userActiveWorkspaces[normalizedUserEmail] = workspaceId;
+  } else {
+    data.activeWorkspaceId = workspaceId;
+  }
   saveData(data);
   return found;
 }
 
-export function createWorkspace({ name, description, environment = 'production' }) {
+export function createWorkspace({ name, description, environment = 'production', userEmail, userId }) {
   const data = loadData();
+  const normalizedUserEmail = (userEmail || '').toLowerCase().trim();
   const id = `ws_${crypto.randomBytes(6).toString('hex')}`;
-  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const slug = (name || 'Workspace').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const ws = {
     id,
-    name: name.trim(),
+    owner_email: normalizedUserEmail || null,
+    user_id: userId || null,
+    name: name?.trim() || 'Custom Workspace',
     slug,
     description: (description || '').trim(),
     created_at: new Date().toISOString(),
@@ -330,25 +435,40 @@ export function createWorkspace({ name, description, environment = 'production' 
   };
   data.workspaces = data.workspaces || [];
   data.workspaces.push(ws);
-  data.activeWorkspaceId = id;
+  if (normalizedUserEmail) {
+    data.members = data.members || [];
+    data.members.push({
+      id: `mem_${crypto.randomBytes(6).toString('hex')}`,
+      workspace_id: id,
+      email: normalizedUserEmail,
+      role: 'owner',
+      status: 'active',
+      created_at: new Date().toISOString(),
+    });
+    data.userActiveWorkspaces = data.userActiveWorkspaces || {};
+    data.userActiveWorkspaces[normalizedUserEmail] = id;
+  } else {
+    data.activeWorkspaceId = id;
+  }
   saveData(data);
   return ws;
 }
 
-export function getWorkspaceOverview(workspaceId) {
+export function getWorkspaceOverview(workspaceId, userEmail, userId) {
   const data = loadData();
-  const wsId = workspaceId || data.activeWorkspaceId || 'ws_default';
-  const workspace = data.workspaces?.find(w => w.id === wsId) || data.workspaces?.[0] || {
-    id: 'ws_default',
-    name: 'Default Workspace',
-    description: 'We created this workspace for you with all your existing API keys, routing rules, privacy settings, guardrails, and configurations.',
-  };
+  const ws = resolveUserWorkspace(data, userEmail, userId, workspaceId);
+  const wsId = ws.id;
+  const normEmail = (userEmail || '').toLowerCase().trim();
 
-  const keys = (data.apiKeys || []).filter(k => k.workspace_id === wsId);
+  const keys = (data.apiKeys || []).filter(k => {
+    if (k.workspace_id !== wsId) return false;
+    if (normEmail && k.owner_email && k.owner_email.toLowerCase() !== normEmail) return false;
+    return true;
+  });
   const logs = (data.logs || []).filter(l => l.workspace_id === wsId);
 
   return {
-    workspace,
+    workspace: ws,
     usageThisWeek: data.thisWeekUsage || { spend_usd: 0, requests_count: 0, tokens_count: 0 },
     stats: {
       totalKeys: keys.length,
@@ -358,13 +478,13 @@ export function getWorkspaceOverview(workspaceId) {
       budgetCap: data.guardrails?.monthly_budget_cap_usd || 250,
       profitMarginPct: data.profit_margin_pct || 20,
     },
-    guardrails: data.guardrails,
-    routing: data.routing,
+    guardrails: getGuardrails(wsId),
+    routing: getRouting(wsId),
     presetsCount: (data.presets || []).length,
   };
 }
 
-export function getWorkspaceActivity(workspaceId) {
+export function getWorkspaceActivity(workspaceId, userEmail, userId) {
   const data = loadData();
   return {
     timeseries: data.activityTimeseries || [],
@@ -373,11 +493,18 @@ export function getWorkspaceActivity(workspaceId) {
   };
 }
 
-export function getApiKeys(workspaceId) {
+export function getApiKeys(workspaceId, userEmail, userId) {
   const data = loadData();
-  const wsId = workspaceId || data.activeWorkspaceId || 'ws_default';
+  const ws = resolveUserWorkspace(data, userEmail, userId, workspaceId);
+  const wsId = ws.id;
+  const normEmail = (userEmail || '').toLowerCase().trim();
+
   const keys = (data.apiKeys || [])
-    .filter(k => k.workspace_id === wsId)
+    .filter(k => {
+      if (k.workspace_id !== wsId) return false;
+      if (normEmail && k.owner_email && k.owner_email.toLowerCase() !== normEmail) return false;
+      return true;
+    })
     .map(k => ({
       id: k.id,
       name: k.name,
@@ -388,13 +515,17 @@ export function getApiKeys(workspaceId) {
       current_spend_usd: k.current_spend_usd,
       status: k.status,
       allowed_models: k.allowed_models || [],
+      owner_email: k.owner_email || null,
     }));
   return keys;
 }
 
-export function createApiKey({ workspaceId, name, monthly_limit_usd = 100, allowed_models = [] }) {
+export function createApiKey({ workspaceId, name, monthly_limit_usd = 100, allowed_models = [], userEmail, userId }) {
   const data = loadData();
-  const wsId = workspaceId || data.activeWorkspaceId || 'ws_default';
+  const ws = resolveUserWorkspace(data, userEmail, userId, workspaceId);
+  const wsId = ws.id;
+  const normEmail = (userEmail || '').toLowerCase().trim();
+
   const rawHex = crypto.randomBytes(16).toString('hex');
   const fullSecret = `nr-live-${rawHex}`;
   const masked = `nr-live-${rawHex.slice(0, 6)}•••••••••••••${rawHex.slice(-4)}`;
@@ -403,10 +534,11 @@ export function createApiKey({ workspaceId, name, monthly_limit_usd = 100, allow
   const newKey = {
     id: `key_${crypto.randomBytes(5).toString('hex')}`,
     workspace_id: wsId,
+    owner_email: normEmail || null,
+    user_id: userId || null,
     name: name?.trim() || 'API Key',
     key_masked: masked,
     key_hash: hash,
-    secret: fullSecret, // Saved so developer can use proxy or copy once
     created_at: new Date().toISOString(),
     last_used_at: null,
     monthly_limit_usd: Number(monthly_limit_usd) || 100,
@@ -422,7 +554,7 @@ export function createApiKey({ workspaceId, name, monthly_limit_usd = 100, allow
   return {
     id: newKey.id,
     name: newKey.name,
-    key: fullSecret, // returned in full ONLY on creation
+    key: fullSecret, // returned in full ONLY on creation response
     key_masked: masked,
     monthly_limit_usd: newKey.monthly_limit_usd,
     current_spend_usd: 0.00,
@@ -433,18 +565,29 @@ export function createApiKey({ workspaceId, name, monthly_limit_usd = 100, allow
   };
 }
 
-export function deleteApiKey(keyId) {
+export function deleteApiKey(keyId, userEmail, userId) {
   const data = loadData();
+  const normEmail = (userEmail || '').toLowerCase().trim();
   const before = data.apiKeys?.length || 0;
-  data.apiKeys = (data.apiKeys || []).filter(k => k.id !== keyId);
+  data.apiKeys = (data.apiKeys || []).filter(k => {
+    if (k.id !== keyId) return true;
+    if (normEmail && k.owner_email && k.owner_email.toLowerCase() !== normEmail) {
+      return true; // Not owned by requesting user
+    }
+    return false;
+  });
   saveData(data);
   return { success: true, deleted: data.apiKeys.length < before };
 }
 
-export function toggleApiKeyStatus(keyId) {
+export function toggleApiKeyStatus(keyId, userEmail, userId) {
   const data = loadData();
+  const normEmail = (userEmail || '').toLowerCase().trim();
   const key = (data.apiKeys || []).find(k => k.id === keyId);
   if (!key) throw new Error('API Key not found.');
+  if (normEmail && key.owner_email && key.owner_email.toLowerCase() !== normEmail) {
+    throw new Error('Permission denied: You do not own this API key.');
+  }
   key.status = key.status === 'active' ? 'disabled' : 'active';
   saveData(data);
   return key;
@@ -506,9 +649,10 @@ export function getKeyAnalytics(workspaceId, keyId) {
   };
 }
 
-export function getLogs(workspaceId, { search = '', limit = 50, offset = 0 } = {}) {
+export function getLogs(workspaceId, { search = '', limit = 50, offset = 0, userEmail, userId } = {}) {
   const data = loadData();
-  const wsId = workspaceId || data.activeWorkspaceId || 'ws_default';
+  const ws = resolveUserWorkspace(data, userEmail, userId, workspaceId);
+  const wsId = ws.id;
   let logs = (data.logs || []).filter(l => l.workspace_id === wsId);
 
   if (search) {
@@ -525,6 +669,7 @@ export function getLogs(workspaceId, { search = '', limit = 50, offset = 0 } = {
   const paginated = logs.slice(offset, offset + limit);
   return { logs: paginated, total, limit, offset };
 }
+export const getWorkspaceLogs = getLogs;
 
 export function getGuardrails(workspaceId) {
   const data = loadData();
@@ -903,9 +1048,12 @@ export function decryptApiKey(record) {
   }
 }
 
-export function getByok(workspaceId) {
+export function getByok(workspaceId, userEmail, userId) {
   const data = loadData();
-  const rawByok = data.byok || {};
+  const ws = resolveUserWorkspace(data, userEmail, userId, workspaceId);
+  const wsId = ws.id;
+  data.byokByWorkspace = data.byokByWorkspace || {};
+  const rawByok = data.byokByWorkspace[wsId] || (wsId === 'ws_default' ? data.byok || {} : {});
   const sanitized = {};
   for (const [provider, rec] of Object.entries(rawByok)) {
     if (!rec) continue;
@@ -935,12 +1083,16 @@ export function updateByok(workspaceId, provider, rawKey, options = {}) {
   }
 
   const data = loadData();
-  data.byok = data.byok || {};
+  const ws = resolveUserWorkspace(data, options.userEmail, options.userId, workspaceId);
+  const wsId = ws.id;
+  data.byokByWorkspace = data.byokByWorkspace || {};
+  data.byokByWorkspace[wsId] = data.byokByWorkspace[wsId] || {};
+
   const cleanProvider = (provider || '').toLowerCase().trim();
-  if (!cleanProvider) return getByok(workspaceId);
+  if (!cleanProvider) return getByok(wsId, options.userEmail, options.userId);
 
   // Guardrail check: Prevent configuring BYOK keys for blocked providers
-  const guardrails = getGuardrails(workspaceId) || {};
+  const guardrails = getGuardrails(wsId) || {};
   const blockedProviders = (guardrails.blocked_providers || []).map(p => p.toLowerCase().trim());
   if (blockedProviders.includes(cleanProvider)) {
     const err = new Error(`Cannot configure BYOK key: Provider '${cleanProvider}' is restricted by workspace guardrails.`);
@@ -949,21 +1101,21 @@ export function updateByok(workspaceId, provider, rawKey, options = {}) {
   }
 
   if (!rawKey || !rawKey.trim()) {
-    delete data.byok[cleanProvider];
+    delete data.byokByWorkspace[wsId][cleanProvider];
     saveData(data);
-    return getByok(workspaceId);
+    return getByok(wsId, options.userEmail, options.userId);
   }
 
   const key = rawKey.trim();
   // Protection against accidentally persisting masked strings
   if (key.includes('••••')) {
-    return getByok(workspaceId);
+    return getByok(wsId, options.userEmail, options.userId);
   }
 
   const masked = key.length > 8 ? `${key.slice(0, 6)}••••••••${key.slice(-4)}` : '••••••••';
   const encrypted = encryptApiKey(key);
 
-  data.byok[cleanProvider] = {
+  data.byokByWorkspace[wsId][cleanProvider] = {
     configured: true,
     key_masked: masked,
     ciphertext: encrypted.ciphertext,
@@ -973,31 +1125,41 @@ export function updateByok(workspaceId, provider, rawKey, options = {}) {
     updated_at: new Date().toISOString(),
     last_tested_at: null,
     error: null,
-    display_name: options.display_name || cleanProvider,
-    base_url: options.base_url ? options.base_url.replace(/\/+$/, '') : null,
-    model_prefix: options.model_prefix || null,
-    is_custom: Boolean(options.is_custom),
+    display_name: options.displayName || options.display_name || cleanProvider,
+    base_url: options.baseUrl || options.base_url ? (options.baseUrl || options.base_url).replace(/\/+$/, '') : null,
+    model_prefix: options.modelPrefix || options.model_prefix || null,
+    is_custom: Boolean(options.isCustom || options.is_custom),
   };
   saveData(data);
-  return getByok(workspaceId);
+  return getByok(wsId, options.userEmail, options.userId);
 }
 
-export function deleteByokKey(workspaceId, provider) {
+export function deleteByokKey(workspaceId, provider, userEmail, userId) {
   const data = loadData();
-  data.byok = data.byok || {};
+  const ws = resolveUserWorkspace(data, userEmail, userId, workspaceId);
+  const wsId = ws.id;
+  data.byokByWorkspace = data.byokByWorkspace || {};
   const cleanProvider = (provider || '').toLowerCase().trim();
-  delete data.byok[cleanProvider];
+  if (data.byokByWorkspace[wsId]) {
+    delete data.byokByWorkspace[wsId][cleanProvider];
+  }
+  if (wsId === 'ws_default' && data.byok) {
+    delete data.byok[cleanProvider];
+  }
   saveData(data);
-  return getByok(workspaceId);
+  return getByok(wsId, userEmail, userId);
 }
 
-export async function testByokKey(workspaceId, provider, optionalRawKey, optionalBaseUrl) {
+export async function testByokKey(workspaceId, provider, optionalRawKey, optionalBaseUrl, userEmail, userId) {
   const data = loadData();
-  data.byok = data.byok || {};
+  const ws = resolveUserWorkspace(data, userEmail, userId, workspaceId);
+  const wsId = ws.id;
+  data.byokByWorkspace = data.byokByWorkspace || {};
+  const wsByok = data.byokByWorkspace[wsId] || (wsId === 'ws_default' ? data.byok || {} : {});
   const cleanProvider = (provider || '').toLowerCase().trim();
 
   // Guardrail check: Prevent testing BYOK keys for blocked providers
-  const guardrails = getGuardrails(workspaceId) || {};
+  const guardrails = getGuardrails(wsId) || {};
   const blockedProviders = (guardrails.blocked_providers || []).map(p => p.toLowerCase().trim());
   if (blockedProviders.includes(cleanProvider)) {
     return {
@@ -1008,7 +1170,7 @@ export async function testByokKey(workspaceId, provider, optionalRawKey, optiona
   }
 
   let rawKey = optionalRawKey ? optionalRawKey.trim() : null;
-  const existingRec = data.byok[cleanProvider];
+  const existingRec = wsByok[cleanProvider];
   if (!rawKey || rawKey.includes('••••')) {
     if (existingRec && existingRec.ciphertext) {
       rawKey = decryptApiKey(existingRec);
@@ -1123,8 +1285,13 @@ export async function testByokKey(workspaceId, provider, optionalRawKey, optiona
     statusMessage = `Connection failed: ${netErr.message}`;
   }
 
-  // Update persistent state in data.byok
-  if (data.byok[cleanProvider]) {
+  // Update persistent state in data.byok and data.byokByWorkspace
+  if (data.byokByWorkspace?.[wsId]?.[cleanProvider]) {
+    data.byokByWorkspace[wsId][cleanProvider].status = isValid ? 'verified' : 'invalid';
+    data.byokByWorkspace[wsId][cleanProvider].last_tested_at = new Date().toISOString();
+    data.byokByWorkspace[wsId][cleanProvider].error = isValid ? null : statusMessage;
+    saveData(data);
+  } else if (data.byok?.[cleanProvider]) {
     data.byok[cleanProvider].status = isValid ? 'verified' : 'invalid';
     data.byok[cleanProvider].last_tested_at = new Date().toISOString();
     data.byok[cleanProvider].error = isValid ? null : statusMessage;
@@ -1135,7 +1302,7 @@ export async function testByokKey(workspaceId, provider, optionalRawKey, optiona
     success: isValid,
     status: isValid ? 'verified' : 'invalid',
     message: statusMessage,
-    byok: getByok(workspaceId),
+    byok: getByok(wsId, userEmail, userId),
   };
 }
 
@@ -1274,7 +1441,8 @@ export function getActiveByokKey(workspaceId, targetModel, userPlan) {
   }
 
   const data = loadData();
-  const rawByok = data.byok || {};
+  data.byokByWorkspace = data.byokByWorkspace || {};
+  const rawByok = (workspaceId && data.byokByWorkspace[workspaceId]) || data.byok || {};
   const modelNameLower = (targetModel || '').toLowerCase().trim();
 
   // Guardrail check: Blocked providers cannot return any active BYOK key
@@ -1385,6 +1553,27 @@ async function executeSingleGatewayAttempt({
         },
       },
     };
+  }
+
+  // Check user wallet balance if using platform key on a paid model
+  if (!isByok && matchedKey.owner_email && !isModelFree(targetModel)) {
+    try {
+      const wallet = await getUserWallet(matchedKey.owner_email, matchedKey.user_id);
+      if (wallet && Number(wallet.balance) <= 0) {
+        return {
+          status: 402,
+          payload: {
+            error: {
+              message: 'Your NetRoot AI wallet balance is depleted ($0.00). Please top up your wallet in the dashboard to make API calls with premium models.',
+              type: 'insufficient_funds',
+              code: 'wallet_balance_depleted',
+            },
+          },
+        };
+      }
+    } catch (e) {
+      console.warn('[gateway] Wallet balance check error:', e.message);
+    }
   }
 
   const startMs = Date.now();
@@ -1569,6 +1758,21 @@ async function executeSingleGatewayAttempt({
       if (!isByok) {
         matchedKey.current_spend_usd = Number((matchedKey.current_spend_usd + billedCost).toFixed(5));
         data.thisWeekUsage.spend_usd = Number((data.thisWeekUsage.spend_usd + billedCost).toFixed(5));
+        if (matchedKey.owner_email && billedCost > 0) {
+          try {
+            await deductUserWallet({
+              email: matchedKey.owner_email,
+              userId: matchedKey.user_id,
+              billedCost,
+              model: targetModel,
+              promptTokens: 50,
+              completionTokens: estimatedTokens,
+              targetService: 'developer_gateway',
+            });
+          } catch (deductErr) {
+            console.warn('[gateway] deductUserWallet error:', deductErr.message);
+          }
+        }
       }
       matchedKey.last_used_at = new Date().toISOString();
       data.thisWeekUsage.requests_count += 1;
@@ -1647,6 +1851,21 @@ async function executeSingleGatewayAttempt({
     if (!isByok) {
       matchedKey.current_spend_usd = Number((matchedKey.current_spend_usd + billedCost).toFixed(5));
       data.thisWeekUsage.spend_usd = Number((data.thisWeekUsage.spend_usd + billedCost).toFixed(5));
+      if (matchedKey.owner_email && billedCost > 0) {
+        try {
+          await deductUserWallet({
+            email: matchedKey.owner_email,
+            userId: matchedKey.user_id,
+            billedCost,
+            model: targetModel,
+            promptTokens,
+            completionTokens,
+            targetService: 'developer_gateway',
+          });
+        } catch (deductErr) {
+          console.warn('[gateway] deductUserWallet error:', deductErr.message);
+        }
+      }
     }
     matchedKey.last_used_at = new Date().toISOString();
 
@@ -1774,17 +1993,17 @@ export function updateWorkspaceSettings(workspaceId, updates = {}) {
   return ws;
 }
 
-export function getWorkspaceBootstrapData(workspaceId, userEmail) {
+export function getWorkspaceBootstrapData(workspaceId, userEmail, userId) {
   const data = loadData();
-  const wsId = workspaceId || data.activeWorkspaceId || 'ws_default';
-  const overview = getWorkspaceOverview(wsId);
-  const keys = getApiKeys(wsId);
-  const guardrails = getGuardrails(wsId);
-  const activity = getWorkspaceActivity(wsId);
-  const workspaces = getWorkspaces(userEmail);
+  const wsInfo = getWorkspaces(userEmail, userId);
+  const activeWsId = workspaceId || wsInfo.activeWorkspaceId || 'ws_default';
+  const overview = getWorkspaceOverview(activeWsId, userEmail, userId);
+  const keys = getApiKeys(activeWsId, userEmail, userId);
+  const guardrails = getGuardrails(activeWsId);
+  const activity = getWorkspaceActivity(activeWsId, userEmail, userId);
   return {
-    workspaces: workspaces.workspaces,
-    activeWorkspaceId: workspaces.activeWorkspaceId,
+    workspaces: wsInfo.workspaces,
+    activeWorkspaceId: activeWsId,
     overview,
     keys,
     guardrails,

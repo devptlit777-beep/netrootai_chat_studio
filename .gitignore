@@ -30,6 +30,8 @@ Netroot AI ChatBix/
 
 
 server/usage-data.json
+server/walletData.json
+server/systemAlerts.json
 
 
 coverage/

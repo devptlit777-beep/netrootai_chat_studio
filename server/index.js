@@ -4460,67 +4460,68 @@ async function handleWorkspaceRoute(req, res) {
     const parsed = new URL(req.url, 'http://127.0.0.1');
     const path = parsed.pathname;
     const wsId = parsed.searchParams.get('workspaceId') || undefined;
-    const userEmail = req.headers['x-user-email'] || parsed.searchParams.get('userEmail') || undefined;
+    const userEmail = (req.headers['x-user-email'] || parsed.searchParams.get('userEmail') || '').trim().toLowerCase();
+    const userId = req.headers['x-user-id'] || parsed.searchParams.get('userId') || undefined;
 
     if (req.method === 'GET' && path === '/api/workspace/bootstrap') {
-        const data = getWorkspaceBootstrapData(wsId, userEmail);
+        const data = getWorkspaceBootstrapData(wsId, userEmail, userId);
         sendJson(res, 200, data, req);
         return;
     }
     if (req.method === 'GET' && path === '/api/workspace/workspaces') {
-        const data = getWorkspaces(userEmail);
+        const data = getWorkspaces(userEmail, userId);
         sendJson(res, 200, data, req);
         return;
     }
     if (req.method === 'POST' && path === '/api/workspace/workspaces') {
         const body = await readJson(req);
-        const ws = createWorkspace(body);
+        const ws = createWorkspace({ ...body, userEmail, userId });
         sendJson(res, 201, { success: true, workspace: ws }, req);
         return;
     }
     if (req.method === 'POST' && path === '/api/workspace/workspaces/active') {
         const body = await readJson(req);
-        const ws = setActiveWorkspace(body.workspaceId);
+        const ws = setActiveWorkspace(body.workspaceId, userEmail);
         sendJson(res, 200, { success: true, activeWorkspace: ws }, req);
         return;
     }
     if (req.method === 'GET' && path === '/api/workspace/overview') {
-        const data = getWorkspaceOverview(wsId);
+        const data = getWorkspaceOverview(wsId, userEmail, userId);
         sendJson(res, 200, data, req);
         return;
     }
     if (req.method === 'GET' && path === '/api/workspace/activity') {
-        const data = getWorkspaceActivity(wsId);
+        const data = getWorkspaceActivity(wsId, userEmail, userId);
         sendJson(res, 200, data, req);
         return;
     }
     if (req.method === 'GET' && path === '/api/workspace/keys') {
-        const keys = getApiKeys(wsId);
+        const keys = getApiKeys(wsId, userEmail, userId);
         sendJson(res, 200, { keys }, req);
         return;
     }
     if (req.method === 'POST' && path === '/api/workspace/keys') {
         const body = await readJson(req);
-        const newKey = createApiKey({ ...body, workspaceId: wsId || body.workspaceId });
+        const newKey = createApiKey({ ...body, workspaceId: wsId || body.workspaceId, userEmail, userId });
         sendJson(res, 201, { success: true, key: newKey }, req);
         return;
     }
     if (req.method === 'POST' && path === '/api/workspace/keys/toggle') {
         const body = await readJson(req);
-        const updated = toggleApiKeyStatus(body.keyId);
+        const updated = toggleApiKeyStatus(body.keyId, userEmail, userId);
         sendJson(res, 200, { success: true, key: updated }, req);
         return;
     }
     if (req.method === 'POST' && path === '/api/workspace/keys/delete') {
         const body = await readJson(req);
-        const resDel = deleteApiKey(body.keyId);
+        const resDel = deleteApiKey(body.keyId, userEmail, userId);
         sendJson(res, 200, resDel, req);
         return;
     }
     if (req.method === 'GET' && path === '/api/workspace/keys/analytics') {
         const keyId = parsed.searchParams.get('keyId');
         if (!keyId) { sendJson(res, 400, { error: 'keyId is required.' }, req); return; }
-        const analytics = getKeyAnalytics(wsId, keyId);
+        const analytics = getKeyAnalytics(wsId, keyId, userEmail, userId);
         if (!analytics) { sendJson(res, 404, { error: 'API Key not found.' }, req); return; }
         sendJson(res, 200, analytics, req);
         return;
@@ -4529,7 +4530,7 @@ async function handleWorkspaceRoute(req, res) {
         const search = parsed.searchParams.get('search') || '';
         const limit = Number(parsed.searchParams.get('limit')) || 50;
         const offset = Number(parsed.searchParams.get('offset')) || 0;
-        const data = getWorkspaceLogs(wsId, { search, limit, offset });
+        const data = getWorkspaceLogs(wsId, { search, limit, offset, userEmail, userId });
         sendJson(res, 200, data, req);
         return;
     }
@@ -4550,7 +4551,7 @@ async function handleWorkspaceRoute(req, res) {
         return;
     }
     if (req.method === 'GET' && path === '/api/workspace/byok') {
-        const data = getByok(wsId);
+        const data = getByok(wsId, userEmail, userId);
         sendJson(res, 200, { byok: data }, req);
         return;
     }
@@ -4564,6 +4565,8 @@ async function handleWorkspaceRoute(req, res) {
                 model_prefix: body.model_prefix,
                 is_custom: body.is_custom,
                 user_plan: userPlan,
+                userEmail,
+                userId,
             });
             sendJson(res, 200, { success: true, byok: data }, req);
         } catch (byokErr) {
@@ -4574,13 +4577,13 @@ async function handleWorkspaceRoute(req, res) {
     if (req.method === 'DELETE' && path === '/api/workspace/byok') {
         const body = await readJson(req).catch(() => ({}));
         const provider = body.provider || req.query?.provider;
-        const data = deleteByokKey(wsId, provider);
+        const data = deleteByokKey(wsId, provider, userEmail, userId);
         sendJson(res, 200, { success: true, byok: data }, req);
         return;
     }
     if (req.method === 'POST' && path === '/api/workspace/byok/test') {
         const body = await readJson(req);
-        const result = await testByokKey(wsId, body.provider, body.key, body.base_url);
+        const result = await testByokKey(wsId, body.provider, body.key, body.base_url, userEmail, userId);
         sendJson(res, 200, result, req);
         return;
     }
