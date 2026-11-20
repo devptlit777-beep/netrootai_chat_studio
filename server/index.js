@@ -173,7 +173,7 @@ function sendJson(res, statusCode, payload, req) {
         'Expires': '0',
         'Access-Control-Allow-Origin': corsOrigin,
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-user-email, x-user-plan, stripe-signature',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-user-id, x-user-email, x-user-plan, stripe-signature',
     });
     res.end(JSON.stringify(payload));
 }
